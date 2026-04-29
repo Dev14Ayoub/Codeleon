@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+*.iml
+
+# Java / Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/dependency-reduced-pom.xml
+*.class
+
+# Node
+node_modules/
+frontend-web/dist/
+frontend-web/.vite/
+frontend-web/*.tsbuildinfo
+frontend-web/*.config.js
+frontend-web/*.config.d.ts
+frontend-mobile/.expo/
+frontend-mobile/dist/
+
+# Tests
+coverage/
+.nyc_output/
+
+# Docker volumes (if mounted locally)
+infra/data/
+
+# Misc
+*.bak
+*.tmp

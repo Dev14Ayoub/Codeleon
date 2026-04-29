@@ -1,0 +1,23 @@
+server:
+  servlet:
+    context-path: /api/v1
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:codeleon;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+codeleon:
+  security:
+    jwt-secret: test_secret_key_for_codeleon_auth_tests_minimum_64_characters_long
+    access-token-expiration-ms: 900000
+    refresh-token-expiration-ms: 604800000
+    cors-allowed-origins: http://localhost:5173
