@@ -14,6 +14,22 @@ export interface AuthResponse {
   user: User;
 }
 
+export type RoomVisibility = "PUBLIC" | "PRIVATE";
+export type RoomMemberRole = "OWNER" | "EDITOR" | "VIEWER";
+
+export interface Room {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: RoomVisibility;
+  inviteCode: string;
+  ownerId: string;
+  ownerName: string;
+  currentUserRole: RoomMemberRole | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1",
   headers: {
@@ -45,5 +61,29 @@ export async function loginUser(payload: { email: string; password: string }) {
 
 export async function fetchCurrentUser() {
   const { data } = await api.get<User>("/auth/me");
+  return data;
+}
+
+export async function fetchMyRooms() {
+  const { data } = await api.get<Room[]>("/rooms");
+  return data;
+}
+
+export async function fetchPublicRooms() {
+  const { data } = await api.get<Room[]>("/rooms/public");
+  return data;
+}
+
+export async function createRoom(payload: {
+  name: string;
+  description?: string;
+  visibility: RoomVisibility;
+}) {
+  const { data } = await api.post<Room>("/rooms", payload);
+  return data;
+}
+
+export async function joinRoom(inviteCode: string) {
+  const { data } = await api.post<Room>(`/rooms/join/${inviteCode}`);
   return data;
 }

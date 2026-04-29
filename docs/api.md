@@ -12,4 +12,10 @@ Base URL: `/api/v1`
 
 ## Rooms
 
-Room entities are included in the first schema. Room endpoints will be implemented in the next feature milestone.
+- `POST /rooms`
+- `GET /rooms`
+- `GET /rooms/public`
+- `GET /rooms/{roomId}`
+- `POST /rooms/join/{inviteCode}`
+
+Rooms support two visibility modes: `PRIVATE` and `PUBLIC`. Membership roles are `OWNER`, `EDITOR`, and `VIEWER`.
