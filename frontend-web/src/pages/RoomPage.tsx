@@ -1,16 +1,24 @@
-import Editor, { type BeforeMount } from "@monaco-editor/react";
+import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Braces, Circle, Copy, FileCode2, Play, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  Braces,
+  Circle,
+  Copy,
+  FileCode2,
+  Play,
+  Users,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
+import { MonacoBinding } from "y-monaco";
+import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { fetchRoom } from "@/lib/api";
-
-const starterCode = `public class Main {
-    public static void main(String[] args) {
-        System.out.println("Welcome to Codeleon");
-    }
-}
-`;
+import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
 export function RoomPage() {
   const { roomId } = useParams();
@@ -21,11 +29,43 @@ export function RoomPage() {
     enabled: Boolean(roomId),
   });
 
+  const collab = useCollabRoom(roomId);
+
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const bindingRef = useRef<MonacoBinding | null>(null);
+  const [editorReady, setEditorReady] = useState(false);
+
+  useEffect(() => {
+    if (!editorReady) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+    if (!collab.awareness) return;
+
+    bindingRef.current = new MonacoBinding(
+      collab.yText,
+      model,
+      new Set([editor]),
+      collab.awareness,
+    );
+
+    return () => {
+      bindingRef.current?.destroy();
+      bindingRef.current = null;
+    };
+  }, [editorReady, collab.awareness, collab.yText]);
+
   if (!roomId) {
     return <Navigate to="/dashboard" replace />;
   }
 
   const room = roomQuery.data;
+
+  const onEditorMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    setEditorReady(true);
+  };
 
   return (
     <main className="flex min-h-screen flex-col bg-background text-zinc-100">
@@ -50,7 +90,12 @@ export function RoomPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => void navigator.clipboard?.writeText(room?.inviteCode ?? "")} disabled={!room}>
+          <ConnectionPill connected={collab.isConnected} />
+          <Button
+            variant="secondary"
+            onClick={() => void navigator.clipboard?.writeText(room?.inviteCode ?? "")}
+            disabled={!room}
+          >
             <Copy className="h-4 w-4" />
             Invite
           </Button>
@@ -79,12 +124,15 @@ export function RoomPage() {
               <FileCode2 className="h-4 w-4 text-zinc-500" />
               Main.java
             </div>
-            <span className="text-xs text-zinc-500">Monaco Editor</span>
+            <span className="text-xs text-zinc-500">
+              {collab.isReady ? "Live" : "Connecting..."}
+            </span>
           </div>
           <Editor
             beforeMount={configureMonaco}
+            onMount={onEditorMount}
             defaultLanguage="java"
-            defaultValue={starterCode}
+            defaultValue=""
             height="calc(100vh - 6.5rem)"
             theme="codeleon-dark"
             options={{
@@ -104,11 +152,21 @@ export function RoomPage() {
           <section className="border-b border-zinc-800 p-4">
             <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
               <Users className="h-4 w-4 text-cyan" />
-              Participants
+              Participants ({collab.peers.length})
             </div>
             <div className="space-y-3">
-              <Participant name={room?.ownerName ?? "Owner"} status={room?.currentUserRole ?? "OWNER"} />
-              <Participant name="Leo AI" status="assistant" />
+              {collab.peers.length === 0 ? (
+                <p className="text-xs text-zinc-500">No live participants yet.</p>
+              ) : (
+                collab.peers.map((peer) => (
+                  <Participant
+                    key={peer.clientId}
+                    name={peer.name}
+                    color={peer.color}
+                    isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
+                  />
+                ))
+              )}
             </div>
           </section>
 
@@ -129,20 +187,39 @@ export function RoomPage() {
   );
 }
 
-function Participant({ name, status }: { name: string; status: string }) {
+function Participant({ name, color, isMe }: { name: string; color: string; isMe?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
       <div className="flex items-center gap-3">
-        <span className="h-2.5 w-2.5 rounded-full bg-success" />
+        <span
+          className="h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: color }}
+          aria-hidden
+        />
         <span className="text-sm text-zinc-200">{name}</span>
       </div>
-      <span className="text-xs text-zinc-500">{status.toLowerCase()}</span>
+      <span className="text-xs text-zinc-500">{isMe ? "you" : "online"}</span>
     </div>
   );
 }
 
-const configureMonaco: BeforeMount = (monaco) => {
-  monaco.editor.defineTheme("codeleon-dark", {
+function ConnectionPill({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+        connected
+          ? "border-emerald-700/60 bg-emerald-900/20 text-emerald-300"
+          : "border-zinc-700 bg-zinc-900 text-zinc-400"
+      }`}
+    >
+      {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+      {connected ? "Live" : "Offline"}
+    </span>
+  );
+}
+
+const configureMonaco: BeforeMount = (monacoNs) => {
+  monacoNs.editor.defineTheme("codeleon-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [
