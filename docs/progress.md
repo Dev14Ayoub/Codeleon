@@ -228,9 +228,53 @@ Frontend:
   - Live participants panel driven by Yjs awareness (colored dot per peer).
   - Connection status pill (Live / Offline) in the header.
 
+### 7. Code Runner (Python in Docker sandbox)
+
+Added safe per-execution Python sandboxing driven from the room editor.
+
+Backend:
+
+- New `runner` package with:
+  - `RunLanguage` enum (currently `PYTHON`).
+  - `RunRequest` / `RunResult` records (validated input, stdout/stderr/exitCode/durationMs/timedOut output).
+  - `CodeRunnerService` interface and `DockerCodeRunnerService` implementation.
+  - `CodeRunnerProperties` bound to `codeleon.runner.*` (image, timeout, memory, cpus, pids-limit, max-output-bytes, enabled flag).
+- `DockerCodeRunnerService` spawns a one-shot container per run with hardened flags:
+  - `--rm -i --network=none --cap-drop=ALL --security-opt=no-new-privileges`.
+  - `--memory`, `--memory-swap`, `--cpus`, `--pids-limit` from properties.
+  - Source code is piped to `python -` via stdin so nothing is written to disk.
+  - Stdout/stderr captured asynchronously with a hard byte cap to prevent flooding.
+  - `process.waitFor(timeoutMs)` enforces the wall clock; `docker kill <name>` runs on timeout.
+- `RunController` exposes `POST /api/v1/rooms/{roomId}/run`:
+  - `@AuthenticationPrincipal User` resolved from the JWT.
+  - Reuses `RoomFileService.canEdit` to enforce OWNER/EDITOR membership; returns 404 otherwise.
+- `application.yml` and `application-test.yml` ship sane defaults.
+
+Frontend:
+
+- `runCode(roomId, payload)` API helper added to `lib/api.ts` with `RunRequest` / `RunResult` types.
+- Room editor `Run` button is now wired:
+  - Sends the current Monaco buffer to the backend via TanStack Query mutation.
+  - New `OutputPanel` shows stdout, stderr (red), exit code, duration, and timeout state.
+  - Loading spinner during execution, error rendering on Axios failures.
+
+Tests:
+
+- `RunControllerTest` (Spring Boot + MockMvc):
+  - Member can run code; mocked `CodeRunnerService` returns the canned `RunResult`.
+  - Non-member receives 404 and the runner is never invoked.
+
+Verification:
+
+- `mvn test` — 8 / 8 tests passing on JDK 23 (Java 21 release target).
+- `tsc -b` on `frontend-web` — type-check clean.
+
 ## Current Git History
 
 ```text
+b2bfb94 docs: log real-time collaboration milestone
+e00e1ae feat: add real-time collaborative editing with Yjs and WebSocket
+1905e82 docs: add project progress log
 c7eac9b feat: add room editor page
 475067a feat: add room management
 9ea55b4 feat: bootstrap codeleon foundation
@@ -238,13 +282,12 @@ c7eac9b feat: add room editor page
 
 ## Next Planned Work
 
-1. Add the Code Runner microservice (Python first, then JavaScript and Java) inside Docker sandboxes.
-2. Wire the `Run` button to the new `POST /rooms/{roomId}/run` endpoint.
-3. Add Ollama and Qdrant to `docker-compose.yml`.
-4. Build the RAG indexing pipeline (embeddings via Nomic, vector store in Qdrant).
-5. Add the AI chat panel with streaming responses.
-6. Add the text chat (re-uses the WebSocket plumbing already in place).
+1. Extend the Code Runner to JavaScript (Node) and Java sandboxes.
+2. Add Ollama and Qdrant to `docker-compose.yml`.
+3. Build the RAG indexing pipeline (embeddings via Nomic, vector store in Qdrant).
+4. Add the AI chat panel with streaming responses.
+5. Add the text chat (re-uses the WebSocket plumbing already in place).
 
 Immediate next technical milestone:
 
-**Code Runner service — Python execution inside an isolated Docker container.**
+**RAG stack bootstrap — Ollama + Qdrant in `docker-compose.yml`, embedding pipeline scaffold.**
