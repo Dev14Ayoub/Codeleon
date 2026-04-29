@@ -1,5 +1,6 @@
 import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AxiosError } from "axios";
 import {
   ArrowLeft,
   Bot,
@@ -7,7 +8,9 @@ import {
   Circle,
   Copy,
   FileCode2,
+  Loader2,
   Play,
+  Terminal,
   Users,
   Wifi,
   WifiOff,
@@ -17,7 +20,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { MonacoBinding } from "y-monaco";
 import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
-import { fetchRoom } from "@/lib/api";
+import { fetchRoom, runCode, type RunResult } from "@/lib/api";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
 export function RoomPage() {
@@ -34,6 +37,29 @@ export function RoomPage() {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const [editorReady, setEditorReady] = useState(false);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const runMutation = useMutation({
+    mutationFn: () => {
+      const code = editorRef.current?.getValue() ?? "";
+      return runCode(roomId ?? "", { language: "PYTHON", code });
+    },
+    onSuccess: (data) => {
+      setRunResult(data);
+      setRunError(null);
+    },
+    onError: (error: unknown) => {
+      setRunResult(null);
+      if (error instanceof AxiosError) {
+        const message =
+          (error.response?.data as { message?: string } | undefined)?.message ?? error.message;
+        setRunError(message);
+      } else {
+        setRunError("Failed to run code");
+      }
+    },
+  });
 
   useEffect(() => {
     if (!editorReady) return;
@@ -99,8 +125,15 @@ export function RoomPage() {
             <Copy className="h-4 w-4" />
             Invite
           </Button>
-          <Button disabled>
-            <Play className="h-4 w-4" />
+          <Button
+            onClick={() => runMutation.mutate()}
+            disabled={!editorReady || runMutation.isPending}
+          >
+            {runMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
             Run
           </Button>
         </div>
@@ -118,7 +151,7 @@ export function RoomPage() {
           </button>
         </aside>
 
-        <section className="min-h-[34rem] bg-zinc-950">
+        <section className="flex min-h-[34rem] flex-col bg-zinc-950">
           <div className="flex h-10 items-center justify-between border-b border-zinc-800 bg-surface px-4">
             <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
               <FileCode2 className="h-4 w-4 text-zinc-500" />
@@ -128,23 +161,30 @@ export function RoomPage() {
               {collab.isReady ? "Live" : "Connecting..."}
             </span>
           </div>
-          <Editor
-            beforeMount={configureMonaco}
-            onMount={onEditorMount}
-            defaultLanguage="java"
-            defaultValue=""
-            height="calc(100vh - 6.5rem)"
-            theme="codeleon-dark"
-            options={{
-              fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, monospace",
-              fontSize: 14,
-              minimap: { enabled: false },
-              padding: { top: 18, bottom: 18 },
-              scrollBeyondLastLine: false,
-              smoothScrolling: true,
-              tabSize: 4,
-              wordWrap: "on",
-            }}
+          <div className="flex-1 min-h-0">
+            <Editor
+              beforeMount={configureMonaco}
+              onMount={onEditorMount}
+              defaultLanguage="java"
+              defaultValue=""
+              height="100%"
+              theme="codeleon-dark"
+              options={{
+                fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, monospace",
+                fontSize: 14,
+                minimap: { enabled: false },
+                padding: { top: 18, bottom: 18 },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                tabSize: 4,
+                wordWrap: "on",
+              }}
+            />
+          </div>
+          <OutputPanel
+            isPending={runMutation.isPending}
+            result={runResult}
+            error={runError}
           />
         </section>
 
@@ -184,6 +224,60 @@ export function RoomPage() {
         </aside>
       </section>
     </main>
+  );
+}
+
+function OutputPanel({
+  isPending,
+  result,
+  error,
+}: {
+  isPending: boolean;
+  result: RunResult | null;
+  error: string | null;
+}) {
+  const exitTone = result
+    ? result.timedOut
+      ? "text-amber-400"
+      : result.exitCode === 0
+        ? "text-emerald-400"
+        : "text-rose-400"
+    : "text-zinc-500";
+
+  return (
+    <div className="h-48 border-t border-zinc-800 bg-zinc-950">
+      <div className="flex h-9 items-center justify-between border-b border-zinc-800 bg-surface px-4">
+        <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
+          <Terminal className="h-3.5 w-3.5 text-zinc-500" />
+          Output
+        </div>
+        <div className={`font-mono text-xs ${exitTone}`}>
+          {isPending
+            ? "Running..."
+            : result
+              ? result.timedOut
+                ? `timed out after ${result.durationMs} ms`
+                : `exit ${result.exitCode} • ${result.durationMs} ms`
+              : error
+                ? "error"
+                : "idle"}
+        </div>
+      </div>
+      <pre className="h-[calc(100%-2.25rem)] overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
+        {error ? (
+          <span className="text-rose-400">{error}</span>
+        ) : result ? (
+          <>
+            {result.stdout}
+            {result.stderr && <span className="text-rose-400">{result.stderr}</span>}
+          </>
+        ) : (
+          <span className="text-zinc-600">
+            Press Run to execute the current file with Python.
+          </span>
+        )}
+      </pre>
+    </div>
   );
 }
 

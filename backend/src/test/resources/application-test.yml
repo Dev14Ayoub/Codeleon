@@ -21,3 +21,11 @@ codeleon:
     access-token-expiration-ms: 900000
     refresh-token-expiration-ms: 604800000
     cors-allowed-origins: http://localhost:5173
+  runner:
+    enabled: true
+    python-image: python:3.12-slim
+    timeout-ms: 5000
+    memory-mb: 256
+    cpus: 0.5
+    pids-limit: 64
+    max-output-bytes: 65536
