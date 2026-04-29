@@ -195,6 +195,39 @@ Known note:
 - Standard `mvn test` will require JDK 21.
 - Temporary validation was done with `-Djava.version=17`.
 
+### 6. Real-time Collaboration (Yjs + WebSocket)
+
+Added live collaborative editing on top of Monaco using Yjs CRDT.
+
+Backend:
+
+- Migration `V2__room_files.sql` adds the `room_files` table (binary `state_update` snapshots).
+- New entity `RoomFile`, repository, and `RoomFileService` enforce read/edit access by room role.
+- REST endpoints for snapshot persistence:
+  - `GET /api/v1/rooms/{roomId}/snapshot` returns the binary Y.Doc state.
+  - `PUT /api/v1/rooms/{roomId}/snapshot` saves the binary Y.Doc state.
+- `spring-boot-starter-websocket` added to `pom.xml`.
+- WebSocket endpoint `/ws/rooms/{roomId}` with:
+  - JWT handshake authentication via `?token=` query param.
+  - Room membership and edit-role check at handshake time.
+  - Pure binary relay: each `BinaryMessage` is forwarded to every other connected peer of the same room.
+  - Viewers can read updates but cannot push CRDT or awareness frames.
+- Security config now permits `/ws/**` (handshake interceptor handles auth).
+
+Frontend:
+
+- New dependencies: `yjs`, `y-monaco`, `y-websocket`, `y-protocols`.
+- `useCollabRoom(roomId)` hook:
+  - Loads the persisted snapshot via REST and applies it to a fresh `Y.Doc`.
+  - Connects through `WebsocketProvider` with the JWT in the URL params.
+  - Publishes the local user (id, name, color) via Yjs awareness.
+  - Pushes a debounced (3s) snapshot back to the backend, plus a final snapshot on unmount.
+  - Exposes `isConnected`, `isReady`, and the live `peers` list.
+- Room editor page (`/rooms/:roomId`):
+  - Monaco model bound to `Y.Text` via `MonacoBinding`.
+  - Live participants panel driven by Yjs awareness (colored dot per peer).
+  - Connection status pill (Live / Offline) in the header.
+
 ## Current Git History
 
 ```text
@@ -205,18 +238,13 @@ c7eac9b feat: add room editor page
 
 ## Next Planned Work
 
-According to the MVP plan, the next steps are:
-
-1. Add basic Yjs collaboration on the frontend.
-2. Add backend WebSocket support for room collaboration.
-3. Add user awareness in rooms.
-4. Add persistent room files/code model.
-5. Add Code Runner service, starting with Python.
-6. Add JavaScript and Java execution.
-7. Add Ollama and Qdrant services.
-8. Build the RAG indexing pipeline.
-9. Add AI chat panel and streaming responses.
+1. Add the Code Runner microservice (Python first, then JavaScript and Java) inside Docker sandboxes.
+2. Wire the `Run` button to the new `POST /rooms/{roomId}/run` endpoint.
+3. Add Ollama and Qdrant to `docker-compose.yml`.
+4. Build the RAG indexing pipeline (embeddings via Nomic, vector store in Qdrant).
+5. Add the AI chat panel with streaming responses.
+6. Add the text chat (re-uses the WebSocket plumbing already in place).
 
 Immediate next technical milestone:
 
-**Basic Yjs collaboration inside the Monaco room editor.**
+**Code Runner service — Python execution inside an isolated Docker container.**
