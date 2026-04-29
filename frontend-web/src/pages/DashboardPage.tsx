@@ -229,7 +229,7 @@ function RoomGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoadin
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {rooms.map((room) => (
-        <article key={room.id} className="rounded-lg border border-zinc-800 bg-surface p-5">
+        <Link key={room.id} to={`/rooms/${room.id}`} className="rounded-lg border border-zinc-800 bg-surface p-5 transition hover:border-signature/60 hover:bg-surfaceRaised">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-medium text-zinc-100">{room.name}</p>
@@ -242,7 +242,7 @@ function RoomGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoadin
             <span className="font-mono text-xs text-zinc-500">{room.inviteCode}</span>
             <span className="text-xs font-medium text-cyan">{room.currentUserRole ?? "guest"}</span>
           </div>
-        </article>
+        </Link>
       ))}
     </div>
   );

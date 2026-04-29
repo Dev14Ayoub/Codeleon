@@ -74,6 +74,11 @@ export async function fetchPublicRooms() {
   return data;
 }
 
+export async function fetchRoom(roomId: string) {
+  const { data } = await api.get<Room>(`/rooms/${roomId}`);
+  return data;
+}
+
 export async function createRoom(payload: {
   name: string;
   description?: string;
