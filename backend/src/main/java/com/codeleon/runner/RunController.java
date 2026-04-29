@@ -1,0 +1,36 @@
+package com.codeleon.runner;
+
+import com.codeleon.common.exception.NotFoundException;
+import com.codeleon.room.RoomFileService;
+import com.codeleon.user.User;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/rooms/{roomId}/run")
+@RequiredArgsConstructor
+public class RunController {
+
+    private final CodeRunnerService runnerService;
+    private final RoomFileService roomFileService;
+
+    @PostMapping
+    public RunResult run(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody RunRequest request
+    ) {
+        if (!roomFileService.canEdit(roomId, user)) {
+            throw new NotFoundException("Room not found");
+        }
+        return runnerService.run(request);
+    }
+}

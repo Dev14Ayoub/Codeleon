@@ -92,3 +92,24 @@ export async function joinRoom(inviteCode: string) {
   const { data } = await api.post<Room>(`/rooms/join/${inviteCode}`);
   return data;
 }
+
+export type RunLanguage = "PYTHON";
+
+export interface RunRequest {
+  language: RunLanguage;
+  code: string;
+  stdin?: string;
+}
+
+export interface RunResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  durationMs: number;
+  timedOut: boolean;
+}
+
+export async function runCode(roomId: string, payload: RunRequest) {
+  const { data } = await api.post<RunResult>(`/rooms/${roomId}/run`, payload);
+  return data;
+}
