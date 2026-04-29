@@ -269,9 +269,47 @@ Verification:
 - `mvn test` — 8 / 8 tests passing on JDK 23 (Java 21 release target).
 - `tsc -b` on `frontend-web` — type-check clean.
 
+### 8. RAG Infrastructure (Ollama + Qdrant)
+
+Added the local AI stack to `docker-compose.yml` as opt-in services so they don't burn RAM while doing non-AI dev work on this 8 GB / no-GPU machine.
+
+Compose changes:
+
+- `qdrant` service (image `qdrant/qdrant:v1.11.0`) under profile `ai`, exposing REST `6333` and gRPC `6334`, with a persistent `qdrant_data` volume.
+- `ollama` service (image `ollama/ollama:latest`) under profile `ai`, exposing `11434`, with a persistent `ollama_data` volume.
+- Ollama tuned for low-RAM hosts:
+  - `OLLAMA_KEEP_ALIVE=0` — model is unloaded between requests to free RAM.
+  - `OLLAMA_NUM_PARALLEL=1` and `OLLAMA_MAX_LOADED_MODELS=1`.
+- Postgres + Redis stay default (no profile) so `docker compose up -d` only starts core infra.
+
+`.env.example` additions:
+
+- `QDRANT_HTTP_PORT`, `QDRANT_GRPC_PORT`, `QDRANT_URL`.
+- `OLLAMA_PORT`, `OLLAMA_URL`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS`.
+- Default models targeted at the dev machine: `OLLAMA_CHAT_MODEL=qwen2.5-coder:0.5b`, `OLLAMA_EMBED_MODEL=nomic-embed-text`.
+
+Operator workflow:
+
+```bash
+# Day-to-day dev (no AI)
+docker compose up -d
+
+# When working on the AI feature
+docker compose --profile ai up -d
+docker exec -it codeleon-ollama ollama pull qwen2.5-coder:0.5b
+docker exec -it codeleon-ollama ollama pull nomic-embed-text
+
+# Free RAM on demand
+docker compose stop ollama qdrant
+```
+
+Note: the Spring backend wiring (Ollama/Qdrant clients, embedding pipeline, `/chat` endpoint) is the next milestone — this commit ships only the infrastructure.
+
 ## Current Git History
 
 ```text
+e9ccbbc docs: log code runner milestone
+28356e8 feat: add Python code runner via Docker sandbox
 b2bfb94 docs: log real-time collaboration milestone
 e00e1ae feat: add real-time collaborative editing with Yjs and WebSocket
 1905e82 docs: add project progress log
@@ -282,12 +320,11 @@ c7eac9b feat: add room editor page
 
 ## Next Planned Work
 
-1. Extend the Code Runner to JavaScript (Node) and Java sandboxes.
-2. Add Ollama and Qdrant to `docker-compose.yml`.
-3. Build the RAG indexing pipeline (embeddings via Nomic, vector store in Qdrant).
-4. Add the AI chat panel with streaming responses.
-5. Add the text chat (re-uses the WebSocket plumbing already in place).
+1. Backend: Ollama + Qdrant clients, room file embedding pipeline, `POST /rooms/{roomId}/chat` with streaming.
+2. Frontend: AI chat panel wired to the streaming endpoint inside the room editor.
+3. Extend the Code Runner to JavaScript (Node) and Java sandboxes.
+4. Add the text chat (re-uses the WebSocket plumbing already in place).
 
 Immediate next technical milestone:
 
-**RAG stack bootstrap — Ollama + Qdrant in `docker-compose.yml`, embedding pipeline scaffold.**
+**RAG backend pipeline — index `RoomFile` content to Qdrant on save, `POST /rooms/{roomId}/chat` that retrieves top-K context and streams an Ollama response.**
