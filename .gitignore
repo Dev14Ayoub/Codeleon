@@ -18,6 +18,10 @@ logs/
 !.vscode/settings.json
 !.vscode/extensions.json
 *.iml
+.classpath
+.project
+.factorypath
+.settings/
 
 # Java / Maven
 backend/target/
