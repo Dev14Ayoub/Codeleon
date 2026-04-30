@@ -29,3 +29,15 @@ codeleon:
     cpus: 0.5
     pids-limit: 64
     max-output-bytes: 65536
+  ai:
+    enabled: false
+    ollama:
+      url: http://localhost:11434
+      chat-model: qwen2.5-coder:0.5b
+      embed-model: nomic-embed-text
+      request-timeout: 5s
+    qdrant:
+      url: http://localhost:6333
+      collection: codeleon-room-files-test
+      vector-size: 768
+      distance: Cosine
