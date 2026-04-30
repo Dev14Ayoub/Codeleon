@@ -64,6 +64,15 @@ public class QdrantClient {
                 .toBodilessEntity();
     }
 
+    public void deleteByFilter(Map<String, Object> filter) {
+        http.post()
+                .uri("/collections/{name}/points/delete?wait=true", config.collection())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("filter", filter))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public List<ScoredPoint> search(float[] vector, int topK, Map<String, Object> filter) {
         SearchRequest req = new SearchRequest(vector, topK, true, filter);
         SearchResponse response = http.post()
