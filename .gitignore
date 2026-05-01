@@ -12,9 +12,10 @@ Thumbs.db
 *.log
 logs/
 
-# IDE
+# IDE / AI assistant local state
 .idea/
 .vscode/
+.claude/
 !.vscode/settings.json
 !.vscode/extensions.json
 *.iml
