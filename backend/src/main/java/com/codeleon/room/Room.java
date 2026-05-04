@@ -51,6 +51,14 @@ public class Room {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
+    /**
+     * Yjs Y.Doc snapshot for the whole room. The Y.Doc holds one Y.Text per
+     * file path inside the room, so this single byte[] persists state for
+     * every file at once.
+     */
+    @Column(name = "state_update")
+    private byte[] stateUpdate;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

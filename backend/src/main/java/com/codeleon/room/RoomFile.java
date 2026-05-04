@@ -40,9 +40,6 @@ public class RoomFile {
     @Column(nullable = false, length = 40)
     private String language;
 
-    @Column(name = "state_update")
-    private byte[] stateUpdate;
-
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
