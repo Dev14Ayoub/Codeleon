@@ -95,14 +95,19 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
 
       provider.on("status", ({ status }: { status: string }) => {
         if (cancelled) return;
-        setIsConnected(status === "connected");
+        const connected = status === "connected";
+        setIsConnected(connected);
+        // Our backend is a relay-only WS (no server-side Y.Doc), so
+        // y-websocket's "sync" event never fires when you are alone in
+        // the room. The snapshot REST call already loaded the prior
+        // state before the WS opened, so once the WS is connected we
+        // are effectively ready.
+        if (connected) setIsReady(true);
       });
 
       provider.on("sync", (synced: boolean) => {
         if (cancelled) return;
-        if (synced) {
-          setIsReady(true);
-        }
+        if (synced) setIsReady(true);
       });
 
       const refreshPeers = () => {
