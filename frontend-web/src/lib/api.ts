@@ -113,3 +113,19 @@ export async function runCode(roomId: string, payload: RunRequest) {
   const { data } = await api.post<RunResult>(`/rooms/${roomId}/run`, payload);
   return data;
 }
+
+export interface IndexResult {
+  chunks: number;
+  durationMs: number;
+}
+
+export async function indexRoom(
+  roomId: string,
+  payload: { path?: string; text: string },
+) {
+  const { data } = await api.post<IndexResult>(`/rooms/${roomId}/index`, payload);
+  return data;
+}
+
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";

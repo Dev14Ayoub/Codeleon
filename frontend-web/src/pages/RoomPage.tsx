@@ -3,7 +3,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ArrowLeft,
-  Bot,
   Braces,
   Circle,
   Copy,
@@ -15,11 +14,12 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { MonacoBinding } from "y-monaco";
 import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import { fetchRoom, runCode, type RunResult } from "@/lib/api";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
@@ -92,6 +92,8 @@ export function RoomPage() {
     editorRef.current = editor;
     setEditorReady(true);
   };
+
+  const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
 
   return (
     <main className="flex min-h-screen flex-col bg-background text-zinc-100">
@@ -210,16 +212,8 @@ export function RoomPage() {
             </div>
           </section>
 
-          <section className="p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
-              <Bot className="h-4 w-4 text-cyan" />
-              AI context
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <p className="text-sm leading-6 text-zinc-400">
-                The RAG assistant will use this room context once Ollama and Qdrant are connected.
-              </p>
-            </div>
+          <section className="flex min-h-0 flex-col p-4">
+            <ChatPanel roomId={roomId} getEditorText={getEditorText} />
           </section>
         </aside>
       </section>
