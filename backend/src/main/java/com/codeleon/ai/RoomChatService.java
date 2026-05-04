@@ -54,12 +54,14 @@ public class RoomChatService {
             messages.addAll(request.historyOrEmpty());
             messages.add(OllamaClient.ChatMessage.user(request.query()));
 
-            // 5. Stream tokens
+            // 5. Stream tokens. Wrapped in {"t": ...} so the SSE 'data:' line is
+            // always JSON — avoids the spec's leading-space stripping eating
+            // whitespace at token boundaries.
             int[] tokenCount = {0};
             String full = streamer.streamChat(messages, token -> {
                 tokenCount[0]++;
                 try {
-                    emitter.send(SseEmitter.event().name("token").data(token));
+                    emitter.send(SseEmitter.event().name("token").data(Map.of("t", token)));
                 } catch (IOException ex) {
                     throw new IllegalStateException("Client disconnected", ex);
                 }
