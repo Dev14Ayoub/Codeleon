@@ -106,20 +106,24 @@ backend/src/test/java/com/codeleon/ai/
 - RAG infrastructure (Qdrant + Ollama under "ai" compose profile)
 - **RAG commit #1** — Ollama and Qdrant Spring clients (`1012d87`)
 - **RAG commit #2** — file indexing pipeline (`5291c2f`)
-- **RAG commit #3** — chat endpoint with SSE streaming (PENDING COMMIT, code on disk)
+- **RAG commit #3** — chat endpoint with SSE streaming (`5bac642`)
+- **RAG commit #4** — ChatPanel UI (`2afe043`)
+- One-shot Windows launcher (`1982305`, fixed quoting in `a475981`)
 
 ### Remaining for the PFE (4-week plan agreed 2026-05-01)
 
 #### Week 1 — finish RAG (~10h)
-- [x] commit #3: chat endpoint backend (in progress, finish first thing)
-- [ ] **commit #4: ChatPanel React component** (4-5h)
-  - EventSource client for SSE
-  - Markdown rendering
-  - Side panel in RoomPage
-  - Send button + history state
+- [x] commit #3: chat endpoint backend
+- [x] commit #4: ChatPanel React component
+- ✅ **WEEK 1 COMPLETE**
 
 #### Week 2 — branding + visual docs (~10h)
 - [ ] **Logo Caméléon** (SVG + favicon, replace `<Braces />` everywhere)
+      → being delegated to Codex (prompt drafted; user will paste it).
+- [ ] **OAuth2 social login** (GitHub + Google) — full plan in
+      [docs/oauth-plan.md](oauth-plan.md). Two commits, ~5h. Wait until
+      after the logo lands so the LoginPage looks final before adding
+      the social buttons.
 - [ ] **README pro** with screenshots, badges, feature list
 - [ ] **3 Mermaid UML diagrams** (component, collab sequence, RAG sequence)
 - [ ] **1 Merise MCD** (User, Room, RoomMember, RoomFile, RefreshToken)
