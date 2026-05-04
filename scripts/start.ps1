@@ -97,29 +97,41 @@ if (-not $SkipDocker) {
 # -----------------------------------------------------------------------------
 # 3. Backend window
 # -----------------------------------------------------------------------------
+# We pass the spawned command via -EncodedCommand (base64 UTF-16LE) instead of
+# -Command to avoid any embedded-quote / backslash-escape weirdness when the
+# new powershell.exe parses its argv. The script that runs in the child window
+# is plain readable PowerShell; only the transport is encoded.
+
+function Invoke-NewPSWindow {
+    param([string]$Script)
+    $bytes = [System.Text.Encoding]::Unicode.GetBytes($Script)
+    $encoded = [Convert]::ToBase64String($bytes)
+    Start-Process powershell -ArgumentList "-NoExit", "-EncodedCommand", $encoded | Out-Null
+}
+
 Write-Step "Spawning backend window (Spring Boot)"
 $aiFlag = if ($Ai) { "true" } else { "false" }
-$backendCmd = @"
+$backendScript = @"
 `$Host.UI.RawUI.WindowTitle = 'Codeleon Backend'
 Set-Location '$projectRoot\backend'
-`$env:JAVA_HOME    = '$jdkPath'
-`$env:Path         = "`$env:JAVA_HOME\bin;`$env:Path"
+`$env:JAVA_HOME = '$jdkPath'
+`$env:Path = '$jdkPath\bin;' + `$env:Path
 `$env:POSTGRES_PORT = '5433'
-`$env:AI_ENABLED   = '$aiFlag'
+`$env:AI_ENABLED = '$aiFlag'
 Write-Host '=== Codeleon backend (Spring Boot) ===' -ForegroundColor Cyan
-Write-Host "JAVA_HOME=`$env:JAVA_HOME"
-Write-Host "POSTGRES_PORT=`$env:POSTGRES_PORT  AI_ENABLED=`$env:AI_ENABLED"
+Write-Host ('JAVA_HOME=' + `$env:JAVA_HOME)
+Write-Host ('POSTGRES_PORT=' + `$env:POSTGRES_PORT + '  AI_ENABLED=' + `$env:AI_ENABLED)
 Write-Host ''
 mvn spring-boot:run
 "@
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCmd | Out-Null
+Invoke-NewPSWindow -Script $backendScript
 Write-Ok "Backend window opened"
 
 # -----------------------------------------------------------------------------
 # 4. Frontend window
 # -----------------------------------------------------------------------------
 Write-Step "Spawning frontend window (Vite)"
-$frontendCmd = @"
+$frontendScript = @"
 `$Host.UI.RawUI.WindowTitle = 'Codeleon Frontend'
 Set-Location '$projectRoot\frontend-web'
 if (-not (Test-Path 'node_modules')) {
@@ -129,7 +141,7 @@ if (-not (Test-Path 'node_modules')) {
 Write-Host '=== Codeleon frontend (Vite) ===' -ForegroundColor Cyan
 npm run dev
 "@
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCmd | Out-Null
+Invoke-NewPSWindow -Script $frontendScript
 Write-Ok "Frontend window opened"
 
 # -----------------------------------------------------------------------------
