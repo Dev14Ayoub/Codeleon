@@ -1,9 +1,11 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Edit3, FileCode2, FilePlus2, FolderOpen, Loader2, Trash2 } from "lucide-react";
 import {
+  forwardRef,
   FormEvent,
   KeyboardEvent,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
@@ -18,19 +20,32 @@ interface FileExplorerProps {
   canEdit: boolean;
 }
 
+export interface FileExplorerHandle {
+  /** Opens the inline "new file" input. Used by the menubar's File > New File item. */
+  openNewFileInput: () => void;
+}
+
 type Pending =
   | { kind: "new" }
   | { kind: "rename"; fileId: string; currentPath: string }
   | null;
 
-export function FileExplorer({
-  roomId,
-  activePath,
-  onActivePathChange,
-  canEdit,
-}: FileExplorerProps) {
+export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
+  { roomId, activePath, onActivePathChange, canEdit },
+  ref,
+) {
   const { files, loading, error, create, rename, remove } = useRoomFiles(roomId);
   const [pending, setPending] = useState<Pending>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openNewFileInput: () => {
+        if (canEdit) setPending({ kind: "new" });
+      },
+    }),
+    [canEdit],
+  );
 
   // Auto-pick the first file as active when the list loads or the
   // active file gets deleted under us.
@@ -175,7 +190,7 @@ export function FileExplorer({
       </ContextMenu.Root>
     </div>
   );
-}
+});
 
 function FileRow({
   file,
