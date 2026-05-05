@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Braces,
   Copy,
-  FileCode2,
   Loader2,
   Play,
   Terminal,
@@ -19,6 +18,7 @@ import { MonacoBinding } from "y-monaco";
 import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer } from "@/components/files/FileExplorer";
 import { fetchRoom, runCode, type RunResult } from "@/lib/api";
 import { languageFromPath } from "@/lib/files/file-language";
@@ -36,13 +36,18 @@ export function RoomPage() {
   const collab = useCollabRoom(roomId);
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  // The Monaco namespace passed to beforeMount comes from
-  // @monaco-editor/react's `editor.api`, which is a strict subset of the
-  // top-level `monaco-editor` typings. We only need `editor.setModelLanguage`
-  // and `editor.defineTheme`, both available on the api module.
   const monacoNsRef = useRef<Parameters<BeforeMount>[0] | null>(null);
+  // One Monaco model per open file path. Keeping models alive across
+  // tab switches preserves each file's cursor, scroll position, undo
+  // history and selection independently — the way VS Code does it.
+  const modelsRef = useRef<Map<string, monaco.editor.ITextModel>>(new Map());
+  // Yjs binding for the *currently active* model only. We tear it down
+  // and recreate it on every tab switch instead of holding N bindings,
+  // because y-monaco bindings tie themselves to the editor instance and
+  // would otherwise fire selection events on the wrong model.
   const bindingRef = useRef<MonacoBinding | null>(null);
   const [editorReady, setEditorReady] = useState(false);
+  const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -72,38 +77,79 @@ export function RoomPage() {
     },
   });
 
-  // Re-bind Monaco to a new Y.Text whenever the active file changes.
-  // The Y.Text is keyed by the file's path inside the room's single Y.Doc;
-  // ydoc.getText(path) auto-creates the structure on first access.
+  // Open a file as a tab (idempotent) and make it active.
+  const openFile = useCallback((path: string) => {
+    setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
+    setActivePath(path);
+  }, []);
+
+  // Close a tab. Disposes the model + adjusts the active selection.
+  const closeTab = useCallback((path: string) => {
+    setOpenPaths((prev) => {
+      const idx = prev.indexOf(path);
+      if (idx < 0) return prev;
+      const next = [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      setActivePath((current) => {
+        if (current !== path) return current;
+        if (next.length === 0) return null;
+        return next[Math.min(idx, next.length - 1)];
+      });
+      const model = modelsRef.current.get(path);
+      if (model) {
+        model.dispose();
+        modelsRef.current.delete(path);
+      }
+      return next;
+    });
+  }, []);
+
+  // Switch the editor to the model for `activePath`, creating it on first
+  // open. Destroys the previous Yjs binding and creates a fresh one
+  // pointing at the new model.
   useEffect(() => {
     if (!editorReady) return;
-    if (!collab.awareness) return;
-    if (!activePath) return;
     const editor = editorRef.current;
-    if (!editor) return;
-    const model = editor.getModel();
-    if (!model) return;
+    const monacoNs = monacoNsRef.current;
+    if (!editor || !monacoNs) return;
+    if (!activePath || !collab.awareness) {
+      bindingRef.current?.destroy();
+      bindingRef.current = null;
+      return;
+    }
 
+    let model = modelsRef.current.get(activePath);
+    if (!model) {
+      model = monacoNs.editor.createModel("", languageFromPath(activePath));
+      modelsRef.current.set(activePath, model);
+    } else {
+      monacoNs.editor.setModelLanguage(model, languageFromPath(activePath));
+    }
+    editor.setModel(model);
+
+    bindingRef.current?.destroy();
     const yText = collab.ydoc.getText(activePath);
-    const binding = new MonacoBinding(yText, model, new Set([editor]), collab.awareness);
-    bindingRef.current = binding;
+    bindingRef.current = new MonacoBinding(
+      yText,
+      model,
+      new Set([editor]),
+      collab.awareness,
+    );
 
     return () => {
-      binding.destroy();
+      bindingRef.current?.destroy();
       bindingRef.current = null;
     };
-  }, [editorReady, collab.awareness, collab.ydoc, activePath]);
+  }, [editorReady, activePath, collab.awareness, collab.ydoc]);
 
-  // Keep Monaco's syntax highlighting in sync with the active file's extension.
+  // Dispose every cached Monaco model when the page unmounts so we
+  // don't leak editor state between rooms.
   useEffect(() => {
-    if (!editorReady || !activePath) return;
-    const monacoNs = monacoNsRef.current;
-    const editor = editorRef.current;
-    if (!monacoNs || !editor) return;
-    const model = editor.getModel();
-    if (!model) return;
-    monacoNs.editor.setModelLanguage(model, languageFromPath(activePath));
-  }, [editorReady, activePath]);
+    const cache = modelsRef.current;
+    return () => {
+      cache.forEach((m) => m.dispose());
+      cache.clear();
+    };
+  }, []);
 
   if (!roomId) {
     return <Navigate to="/dashboard" replace />;
@@ -172,18 +218,22 @@ export function RoomPage() {
           <FileExplorer
             roomId={roomId}
             activePath={activePath}
-            onActivePathChange={setActivePath}
+            onActivePathChange={openFile}
             canEdit={canEdit}
           />
         </aside>
 
         <section className="flex min-h-[34rem] flex-col bg-zinc-950">
-          <div className="flex h-10 items-center justify-between border-b border-zinc-800 bg-surface px-4">
-            <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
-              <FileCode2 className="h-4 w-4 text-zinc-500" />
-              {activePath ?? "no file selected"}
+          <div className="flex items-center justify-between border-b border-zinc-800 bg-surface pr-4">
+            <div className="flex-1 min-w-0">
+              <EditorTabs
+                openPaths={openPaths}
+                activePath={activePath}
+                onActivate={setActivePath}
+                onClose={closeTab}
+              />
             </div>
-            <span className="text-xs text-zinc-500">
+            <span className="ml-3 shrink-0 text-xs text-zinc-500">
               {collab.isReady ? "Live" : "Connecting..."}
             </span>
           </div>
