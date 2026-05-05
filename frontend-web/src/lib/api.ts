@@ -114,6 +114,33 @@ export async function runCode(roomId: string, payload: RunRequest) {
   return data;
 }
 
+export interface RoomFile {
+  id: string;
+  path: string;
+  language: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listRoomFiles(roomId: string) {
+  const { data } = await api.get<RoomFile[]>(`/rooms/${roomId}/files`);
+  return data;
+}
+
+export async function createRoomFile(roomId: string, path: string) {
+  const { data } = await api.post<RoomFile>(`/rooms/${roomId}/files`, { path });
+  return data;
+}
+
+export async function renameRoomFile(roomId: string, fileId: string, path: string) {
+  const { data } = await api.patch<RoomFile>(`/rooms/${roomId}/files/${fileId}`, { path });
+  return data;
+}
+
+export async function deleteRoomFile(roomId: string, fileId: string) {
+  await api.delete(`/rooms/${roomId}/files/${fileId}`);
+}
+
 export interface IndexResult {
   chunks: number;
   durationMs: number;
