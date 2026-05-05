@@ -4,7 +4,6 @@ import { AxiosError } from "axios";
 import {
   ArrowLeft,
   Braces,
-  Circle,
   Copy,
   FileCode2,
   Loader2,
@@ -20,7 +19,9 @@ import { MonacoBinding } from "y-monaco";
 import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { FileExplorer } from "@/components/files/FileExplorer";
 import { fetchRoom, runCode, type RunResult } from "@/lib/api";
+import { languageFromPath } from "@/lib/files/file-language";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
 export function RoomPage() {
@@ -35,10 +36,20 @@ export function RoomPage() {
   const collab = useCollabRoom(roomId);
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  // The Monaco namespace passed to beforeMount comes from
+  // @monaco-editor/react's `editor.api`, which is a strict subset of the
+  // top-level `monaco-editor` typings. We only need `editor.setModelLanguage`
+  // and `editor.defineTheme`, both available on the api module.
+  const monacoNsRef = useRef<Parameters<BeforeMount>[0] | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const [editorReady, setEditorReady] = useState(false);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+
+  const room = roomQuery.data;
+  const canEdit =
+    room?.currentUserRole === "OWNER" || room?.currentUserRole === "EDITOR";
 
   const runMutation = useMutation({
     mutationFn: () => {
@@ -61,36 +72,51 @@ export function RoomPage() {
     },
   });
 
+  // Re-bind Monaco to a new Y.Text whenever the active file changes.
+  // The Y.Text is keyed by the file's path inside the room's single Y.Doc;
+  // ydoc.getText(path) auto-creates the structure on first access.
   useEffect(() => {
     if (!editorReady) return;
+    if (!collab.awareness) return;
+    if (!activePath) return;
     const editor = editorRef.current;
     if (!editor) return;
     const model = editor.getModel();
     if (!model) return;
-    if (!collab.awareness) return;
 
-    bindingRef.current = new MonacoBinding(
-      collab.yText,
-      model,
-      new Set([editor]),
-      collab.awareness,
-    );
+    const yText = collab.ydoc.getText(activePath);
+    const binding = new MonacoBinding(yText, model, new Set([editor]), collab.awareness);
+    bindingRef.current = binding;
 
     return () => {
-      bindingRef.current?.destroy();
+      binding.destroy();
       bindingRef.current = null;
     };
-  }, [editorReady, collab.awareness, collab.yText]);
+  }, [editorReady, collab.awareness, collab.ydoc, activePath]);
+
+  // Keep Monaco's syntax highlighting in sync with the active file's extension.
+  useEffect(() => {
+    if (!editorReady || !activePath) return;
+    const monacoNs = monacoNsRef.current;
+    const editor = editorRef.current;
+    if (!monacoNs || !editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+    monacoNs.editor.setModelLanguage(model, languageFromPath(activePath));
+  }, [editorReady, activePath]);
 
   if (!roomId) {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const room = roomQuery.data;
-
   const onEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
     setEditorReady(true);
+  };
+
+  const beforeMount: BeforeMount = (monacoNs) => {
+    monacoNsRef.current = monacoNs;
+    monacoNs.editor.defineTheme("codeleon-dark", CODELEON_DARK_THEME);
   };
 
   const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
@@ -142,22 +168,20 @@ export function RoomPage() {
       </header>
 
       <section className="grid min-h-[calc(100vh-4rem)] grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]">
-        <aside className="hidden border-r border-zinc-800 bg-surface/70 p-4 lg:block">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
-            <FileCode2 className="h-4 w-4 text-cyan" />
-            Files
-          </div>
-          <button className="flex w-full items-center gap-2 rounded-md bg-surfaceRaised px-3 py-2 text-left font-mono text-sm text-zinc-100">
-            <Circle className="h-2 w-2 fill-cyan text-cyan" />
-            Main.java
-          </button>
+        <aside className="hidden flex-col border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
+          <FileExplorer
+            roomId={roomId}
+            activePath={activePath}
+            onActivePathChange={setActivePath}
+            canEdit={canEdit}
+          />
         </aside>
 
         <section className="flex min-h-[34rem] flex-col bg-zinc-950">
           <div className="flex h-10 items-center justify-between border-b border-zinc-800 bg-surface px-4">
             <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
               <FileCode2 className="h-4 w-4 text-zinc-500" />
-              Main.java
+              {activePath ?? "no file selected"}
             </div>
             <span className="text-xs text-zinc-500">
               {collab.isReady ? "Live" : "Connecting..."}
@@ -165,9 +189,9 @@ export function RoomPage() {
           </div>
           <div className="flex-1 min-h-0">
             <Editor
-              beforeMount={configureMonaco}
+              beforeMount={beforeMount}
               onMount={onEditorMount}
-              defaultLanguage="java"
+              defaultLanguage="plaintext"
               defaultValue=""
               height="100%"
               theme="codeleon-dark"
@@ -180,6 +204,7 @@ export function RoomPage() {
                 smoothScrolling: true,
                 tabSize: 4,
                 wordWrap: "on",
+                readOnly: !canEdit,
               }}
             />
           </div>
@@ -306,24 +331,22 @@ function ConnectionPill({ connected }: { connected: boolean }) {
   );
 }
 
-const configureMonaco: BeforeMount = (monacoNs) => {
-  monacoNs.editor.defineTheme("codeleon-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "71717A" },
-      { token: "keyword", foreground: "8B5CF6" },
-      { token: "string", foreground: "10B981" },
-      { token: "number", foreground: "06B6D4" },
-    ],
-    colors: {
-      "editor.background": "#09090B",
-      "editor.foreground": "#FAFAFA",
-      "editor.lineHighlightBackground": "#18181B",
-      "editorLineNumber.foreground": "#52525B",
-      "editorCursor.foreground": "#06B6D4",
-      "editor.selectionBackground": "#6366F166",
-      "editor.inactiveSelectionBackground": "#27272A",
-    },
-  });
+const CODELEON_DARK_THEME: monaco.editor.IStandaloneThemeData = {
+  base: "vs-dark",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "71717A" },
+    { token: "keyword", foreground: "8B5CF6" },
+    { token: "string", foreground: "10B981" },
+    { token: "number", foreground: "06B6D4" },
+  ],
+  colors: {
+    "editor.background": "#09090B",
+    "editor.foreground": "#FAFAFA",
+    "editor.lineHighlightBackground": "#18181B",
+    "editorLineNumber.foreground": "#52525B",
+    "editorCursor.foreground": "#06B6D4",
+    "editor.selectionBackground": "#6366F166",
+    "editor.inactiveSelectionBackground": "#27272A",
+  },
 };
