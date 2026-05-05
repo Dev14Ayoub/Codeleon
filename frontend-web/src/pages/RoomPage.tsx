@@ -19,7 +19,8 @@ import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EditorTabs } from "@/components/files/EditorTabs";
-import { FileExplorer } from "@/components/files/FileExplorer";
+import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
+import { MenuBar } from "@/components/layout/MenuBar";
 import { fetchRoom, runCode, type RunResult } from "@/lib/api";
 import { languageFromPath } from "@/lib/files/file-language";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
@@ -37,6 +38,7 @@ export function RoomPage() {
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoNsRef = useRef<Parameters<BeforeMount>[0] | null>(null);
+  const fileExplorerRef = useRef<FileExplorerHandle | null>(null);
   // One Monaco model per open file path. Keeping models alive across
   // tab switches preserves each file's cursor, scroll position, undo
   // history and selection independently — the way VS Code does it.
@@ -51,6 +53,8 @@ export function RoomPage() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [showAiPanel, setShowAiPanel] = useState(true);
 
   const room = roomQuery.data;
   const canEdit =
@@ -102,6 +106,38 @@ export function RoomPage() {
       return next;
     });
   }, []);
+
+  // Menubar handlers.
+  const closeActiveTab = useCallback(() => {
+    if (activePath) closeTab(activePath);
+  }, [activePath, closeTab]);
+
+  const closeAllTabs = useCallback(() => {
+    modelsRef.current.forEach((m) => m.dispose());
+    modelsRef.current.clear();
+    setOpenPaths([]);
+    setActivePath(null);
+  }, []);
+
+  const triggerEditorAction = useCallback((actionId: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.getAction(actionId)?.run();
+  }, []);
+
+  const onFind = useCallback(() => triggerEditorAction("actions.find"), [triggerEditorAction]);
+  const onReplace = useCallback(
+    () => triggerEditorAction("editor.action.startFindReplaceAction"),
+    [triggerEditorAction],
+  );
+  const onFormatDocument = useCallback(
+    () => triggerEditorAction("editor.action.formatDocument"),
+    [triggerEditorAction],
+  );
+
+  const onNewFile = useCallback(() => fileExplorerRef.current?.openNewFileInput(), []);
+  const onRunFile = useCallback(() => runMutation.mutate(), [runMutation]);
 
   // Switch the editor to the model for `activePath`, creating it on first
   // open. Destroys the previous Yjs binding and creates a fresh one
@@ -213,15 +249,46 @@ export function RoomPage() {
         </div>
       </header>
 
-      <section className="grid min-h-[calc(100vh-4rem)] grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)_20rem]">
-        <aside className="hidden flex-col border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
-          <FileExplorer
-            roomId={roomId}
-            activePath={activePath}
-            onActivePathChange={openFile}
-            canEdit={canEdit}
-          />
-        </aside>
+      <MenuBar
+        onNewFile={onNewFile}
+        onCloseTab={closeActiveTab}
+        onCloseAllTabs={closeAllTabs}
+        onFind={onFind}
+        onReplace={onReplace}
+        onFormatDocument={onFormatDocument}
+        onToggleFileExplorer={() => setShowFileExplorer((v) => !v)}
+        onToggleAiPanel={() => setShowAiPanel((v) => !v)}
+        onRunFile={onRunFile}
+        isFileExplorerVisible={showFileExplorer}
+        isAiPanelVisible={showAiPanel}
+        hasActiveTab={activePath !== null}
+        hasOpenTabs={openPaths.length > 0}
+        canEdit={canEdit}
+      />
+
+      <section
+        className="grid min-h-[calc(100vh-7.25rem)] grid-cols-1"
+        style={{
+          gridTemplateColumns: [
+            showFileExplorer ? "17rem" : null,
+            "minmax(0, 1fr)",
+            showAiPanel ? "20rem" : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        }}
+      >
+        {showFileExplorer && (
+          <aside className="hidden flex-col border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
+            <FileExplorer
+              ref={fileExplorerRef}
+              roomId={roomId}
+              activePath={activePath}
+              onActivePathChange={openFile}
+              canEdit={canEdit}
+            />
+          </aside>
+        )}
 
         <section className="flex min-h-[34rem] flex-col bg-zinc-950">
           <div className="flex items-center justify-between border-b border-zinc-800 bg-surface pr-4">
@@ -265,32 +332,34 @@ export function RoomPage() {
           />
         </section>
 
-        <aside className="grid border-l border-zinc-800 bg-surface/70 lg:grid-rows-[auto_1fr]">
-          <section className="border-b border-zinc-800 p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
-              <Users className="h-4 w-4 text-cyan" />
-              Participants ({collab.peers.length})
-            </div>
-            <div className="space-y-3">
-              {collab.peers.length === 0 ? (
-                <p className="text-xs text-zinc-500">No live participants yet.</p>
-              ) : (
-                collab.peers.map((peer) => (
-                  <Participant
-                    key={peer.clientId}
-                    name={peer.name}
-                    color={peer.color}
-                    isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
-                  />
-                ))
-              )}
-            </div>
-          </section>
+        {showAiPanel && (
+          <aside className="grid border-l border-zinc-800 bg-surface/70 lg:grid-rows-[auto_1fr]">
+            <section className="border-b border-zinc-800 p-4">
+              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
+                <Users className="h-4 w-4 text-cyan" />
+                Participants ({collab.peers.length})
+              </div>
+              <div className="space-y-3">
+                {collab.peers.length === 0 ? (
+                  <p className="text-xs text-zinc-500">No live participants yet.</p>
+                ) : (
+                  collab.peers.map((peer) => (
+                    <Participant
+                      key={peer.clientId}
+                      name={peer.name}
+                      color={peer.color}
+                      isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
 
-          <section className="flex min-h-0 flex-col p-4">
-            <ChatPanel roomId={roomId} getEditorText={getEditorText} />
-          </section>
-        </aside>
+            <section className="flex min-h-0 flex-col p-4">
+              <ChatPanel roomId={roomId} getEditorText={getEditorText} />
+            </section>
+          </aside>
+        )}
       </section>
     </main>
   );
