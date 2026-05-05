@@ -1,6 +1,15 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Edit3, FileCode2, FilePlus2, FolderOpen, Loader2, Trash2 } from "lucide-react";
 import {
+  Edit3,
+  FileCode2,
+  FilePlus2,
+  FolderOpen,
+  FolderUp,
+  Loader2,
+  Trash2,
+} from "lucide-react";
+import {
+  ChangeEvent,
   forwardRef,
   FormEvent,
   KeyboardEvent,
@@ -18,11 +27,17 @@ interface FileExplorerProps {
   activePath: string | null;
   onActivePathChange: (path: string) => void;
   canEdit: boolean;
+  /** Called when the user picks a folder to import from disk. */
+  onImportLocal?: (files: FileList) => void;
+  /** Indicates an in-flight bulk import; disables the upload button. */
+  importing?: boolean;
 }
 
 export interface FileExplorerHandle {
   /** Opens the inline "new file" input. Used by the menubar's File > New File item. */
   openNewFileInput: () => void;
+  /** Re-fetch the file list from the backend. Used after bulk imports. */
+  refresh: () => Promise<void>;
 }
 
 type Pending =
@@ -31,11 +46,26 @@ type Pending =
   | null;
 
 export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
-  { roomId, activePath, onActivePathChange, canEdit },
+  { roomId, activePath, onActivePathChange, canEdit, onImportLocal, importing },
   ref,
 ) {
-  const { files, loading, error, create, rename, remove } = useRoomFiles(roomId);
+  const { files, loading, error, create, rename, remove, refresh } = useRoomFiles(roomId);
   const [pending, setPending] = useState<Pending>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    if (importing) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0 && onImportLocal) {
+      onImportLocal(files);
+    }
+    // Reset so picking the same folder twice in a row still fires onChange.
+    if (event.target) event.target.value = "";
+  };
 
   useImperativeHandle(
     ref,
@@ -43,8 +73,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
       openNewFileInput: () => {
         if (canEdit) setPending({ kind: "new" });
       },
+      refresh,
     }),
-    [canEdit],
+    [canEdit, refresh],
   );
 
   // Auto-pick the first file as active when the list loads or the
@@ -86,17 +117,53 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
           )}
         </div>
         {canEdit && (
-          <button
-            type="button"
-            onClick={() => setPending({ kind: "new" })}
-            className="rounded p-1 text-zinc-500 hover:bg-surfaceRaised hover:text-zinc-200"
-            aria-label="New file"
-            title="New file"
-          >
-            <FilePlus2 className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onImportLocal && (
+              <button
+                type="button"
+                onClick={handleImportClick}
+                disabled={importing}
+                className="rounded p-1 text-zinc-500 hover:bg-surfaceRaised hover:text-zinc-200 disabled:opacity-50"
+                aria-label="Import folder from disk"
+                title="Import folder from disk"
+              >
+                {importing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FolderUp className="h-4 w-4" />
+                )}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setPending({ kind: "new" })}
+              className="rounded p-1 text-zinc-500 hover:bg-surfaceRaised hover:text-zinc-200"
+              aria-label="New file"
+              title="New file"
+            >
+              <FilePlus2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
+
+      {/*
+       * Hidden folder picker. webkitdirectory is a non-standard but
+       * widely supported attribute (Chrome / Edge / Firefox) that turns
+       * the picker into a directory selector. The selected FileList
+       * carries each File's webkitRelativePath used by prepareLocalImport.
+       */}
+      <input
+        ref={importInputRef}
+        type="file"
+        multiple
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore — webkitdirectory is missing from the standard React types.
+        webkitdirectory=""
+        directory=""
+        className="hidden"
+        onChange={handleImportChange}
+      />
 
       {error && (
         <p className="mb-2 rounded border border-rose-900 bg-rose-950/40 px-2 py-1 text-[11px] text-rose-300">

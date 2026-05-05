@@ -21,8 +21,9 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
 import { MenuBar } from "@/components/layout/MenuBar";
-import { fetchRoom, runCode, type RunResult } from "@/lib/api";
+import { createRoomFile, fetchRoom, runCode, type RunResult } from "@/lib/api";
 import { languageFromPath } from "@/lib/files/file-language";
+import { prepareLocalImport } from "@/lib/files/local-import";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
 export function RoomPage() {
@@ -55,6 +56,8 @@ export function RoomPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const [showAiPanel, setShowAiPanel] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const room = roomQuery.data;
   const canEdit =
@@ -138,6 +141,85 @@ export function RoomPage() {
 
   const onNewFile = useCallback(() => fileExplorerRef.current?.openNewFileInput(), []);
   const onRunFile = useCallback(() => runMutation.mutate(), [runMutation]);
+
+  // Bulk-import a folder picked via FileExplorer's Upload button.
+  // For every prepared file we (1) create the RoomFile metadata via REST
+  // (so it appears in the explorer and gets a stable id + language), then
+  // (2) write its content into the Y.Doc's Y.Text(path) so the Yjs sync
+  // and snapshot persistence both pick it up automatically.
+  const handleImportLocal = useCallback(
+    async (fileList: FileList) => {
+      if (!roomId || importing) return;
+      setImporting(true);
+      setImportStatus("Reading files...");
+
+      try {
+        const report = await prepareLocalImport(fileList);
+        if (report.prepared.length === 0) {
+          setImportStatus(
+            `No file imported (${report.skipped.length} skipped). Check size, type, and folder filters.`,
+          );
+          return;
+        }
+
+        let success = 0;
+        let conflicts = 0;
+        let failed = 0;
+
+        for (let i = 0; i < report.prepared.length; i += 1) {
+          const { path, content } = report.prepared[i];
+          setImportStatus(
+            `Importing ${i + 1}/${report.prepared.length}: ${path}`,
+          );
+          try {
+            await createRoomFile(roomId, path);
+          } catch (ex) {
+            const message = ex instanceof Error ? ex.message : String(ex);
+            if (
+              ex instanceof AxiosError &&
+              ex.response?.status === 400 &&
+              /already exists/i.test(
+                (ex.response.data as { message?: string })?.message ?? "",
+              )
+            ) {
+              conflicts += 1;
+            } else {
+              failed += 1;
+              console.warn(`Import failed for ${path}: ${message}`);
+              continue;
+            }
+          }
+          // Seed the Y.Text with the file's content. Yjs broadcasts the
+          // update over the WS and the snapshot debounce in
+          // useCollabRoom persists it to Postgres.
+          const yText = collab.ydoc.getText(path);
+          if (yText.length === 0) {
+            yText.insert(0, content);
+          }
+          success += 1;
+        }
+
+        const parts = [
+          `${success} imported`,
+          conflicts > 0 ? `${conflicts} already existed` : null,
+          report.skipped.length > 0 ? `${report.skipped.length} skipped` : null,
+          report.truncated ? "list truncated at 200 files" : null,
+          failed > 0 ? `${failed} failed` : null,
+        ].filter(Boolean);
+        setImportStatus(parts.join(" · "));
+
+        if (success > 0) {
+          // Re-fetch the file list so the new files actually show up,
+          // then open the first one as a tab.
+          await fileExplorerRef.current?.refresh();
+          openFile(report.prepared[0].path);
+        }
+      } finally {
+        setImporting(false);
+      }
+    },
+    [roomId, importing, collab.ydoc, openFile],
+  );
 
   // Switch the editor to the model for `activePath`, creating it on first
   // open. Destroys the previous Yjs binding and creates a fresh one
@@ -279,14 +361,21 @@ export function RoomPage() {
         }}
       >
         {showFileExplorer && (
-          <aside className="hidden flex-col border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
+          <aside className="hidden flex-col gap-2 border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
             <FileExplorer
               ref={fileExplorerRef}
               roomId={roomId}
               activePath={activePath}
               onActivePathChange={openFile}
               canEdit={canEdit}
+              onImportLocal={handleImportLocal}
+              importing={importing}
             />
+            {importStatus && (
+              <p className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-400">
+                {importStatus}
+              </p>
+            )}
           </aside>
         )}
 
