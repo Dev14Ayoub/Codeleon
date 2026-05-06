@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
+import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LandingPage } from "@/pages/LandingPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -18,6 +19,10 @@ export const router = createBrowserRouter([
   {
     path: "/signup",
     element: <SignupPage />,
+  },
+  {
+    path: "/auth/callback",
+    element: <AuthCallbackPage />,
   },
   {
     element: <ProtectedRoute />,
