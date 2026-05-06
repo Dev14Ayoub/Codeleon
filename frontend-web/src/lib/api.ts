@@ -64,6 +64,20 @@ export async function fetchCurrentUser() {
   return data;
 }
 
+export interface OAuthProviders {
+  providers: string[];
+}
+
+/**
+ * Returns the list of OAuth providers the backend has client credentials
+ * configured for. Used by the login / signup pages to decide whether to
+ * render social-login buttons. The endpoint is unauthenticated.
+ */
+export async function fetchOAuthProviders() {
+  const { data } = await api.get<OAuthProviders>("/auth/providers");
+  return data;
+}
+
 export async function fetchMyRooms() {
   const { data } = await api.get<Room[]>("/rooms");
   return data;
