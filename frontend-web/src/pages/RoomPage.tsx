@@ -3,7 +3,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ArrowLeft,
-  Braces,
   Copy,
   Loader2,
   Play,
@@ -17,6 +16,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { MonacoBinding } from "y-monaco";
 import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
@@ -326,9 +326,7 @@ export function RoomPage() {
             </Link>
           </Button>
           <Link to="/" className="hidden items-center gap-3 sm:flex">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-signature text-white">
-              <Braces className="h-4 w-4" />
-            </span>
+            <Logo size={36} />
           </Link>
           <div className="min-w-0">
             <p className="truncate text-sm text-zinc-500">Room workspace</p>

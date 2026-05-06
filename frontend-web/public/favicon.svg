@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codeleon">
+  <defs>
+    <linearGradient id="codeleon-favicon-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#codeleon-favicon-bg)"/>
+  <ellipse cx="34" cy="30" rx="14" ry="9" fill="#FAFAFA"/>
+  <path d="M 46 27 Q 52 28 52 32 Q 52 35 46 34 Z" fill="#FAFAFA"/>
+  <rect x="22" y="37" width="3" height="6" rx="1" fill="#FAFAFA"/>
+  <rect x="32" y="37" width="3" height="6" rx="1" fill="#FAFAFA"/>
+  <rect x="40" y="37" width="3" height="6" rx="1" fill="#FAFAFA"/>
+  <path d="M 22 28 Q 14 28 14 34 Q 14 40 20 40 Q 26 40 26 34 Q 26 32 24 32"
+        fill="none" stroke="#FAFAFA" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="42" cy="28" r="3.5" fill="#0F172A"/>
+  <circle cx="42" cy="28" r="1.5" fill="#06B6D4"/>
+</svg>
