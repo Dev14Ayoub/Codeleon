@@ -1,10 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { Braces, DoorOpen, Globe2, Lock, LogOut, Plus, Radio, Users } from "lucide-react";
+import { DoorOpen, Globe2, Lock, LogOut, Plus, Radio, Users } from "lucide-react";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
+import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
@@ -80,9 +81,7 @@ export function DashboardPage() {
     <main className="min-h-screen bg-background">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-zinc-800 bg-surface/80 p-4 lg:block">
         <Link to="/" className="flex items-center gap-3 px-2 py-2">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-signature text-white">
-            <Braces className="h-5 w-5" />
-          </span>
+          <Logo size={40} />
           <span className="font-semibold text-zinc-50">Codeleon</span>
         </Link>
         <nav className="mt-8 space-y-1 text-sm text-zinc-400">

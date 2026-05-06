@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Braces, Github, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Github, Sparkles, Users } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 
 export function LandingPage() {
@@ -8,9 +9,7 @@ export function LandingPage() {
     <main className="min-h-screen overflow-hidden">
       <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-6">
         <Link to="/" className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-signature text-white">
-            <Braces className="h-5 w-5" />
-          </span>
+          <Logo size={40} />
           <span className="font-semibold text-zinc-50">Codeleon</span>
         </Link>
         <div className="flex items-center gap-2">

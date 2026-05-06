@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { Braces } from "lucide-react";
 import { ReactNode } from "react";
+import { Logo } from "@/components/brand/Logo";
 
 interface AuthShellProps {
   title: string;
@@ -23,9 +23,7 @@ export function AuthShell({
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <section className="w-full max-w-md rounded-lg border border-zinc-800 bg-surface/80 p-6 shadow-glow backdrop-blur">
         <Link to="/" className="mb-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-signature text-white">
-            <Braces className="h-5 w-5" />
-          </span>
+          <Logo size={40} />
           <span className="font-semibold text-zinc-50">Codeleon</span>
         </Link>
 
