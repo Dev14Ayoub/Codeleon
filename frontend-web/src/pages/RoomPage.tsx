@@ -20,8 +20,15 @@ import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
+import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
 import { MenuBar } from "@/components/layout/MenuBar";
-import { createRoomFile, fetchRoom, runCode, type RunResult } from "@/lib/api";
+import {
+  createRoomFile,
+  fetchRoom,
+  runCode,
+  type GithubImportResponse,
+  type RunResult,
+} from "@/lib/api";
 import { languageFromPath } from "@/lib/files/file-language";
 import { prepareLocalImport } from "@/lib/files/local-import";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
@@ -58,6 +65,7 @@ export function RoomPage() {
   const [showAiPanel, setShowAiPanel] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [githubDialogOpen, setGithubDialogOpen] = useState(false);
 
   const room = roomQuery.data;
   const canEdit =
@@ -221,6 +229,29 @@ export function RoomPage() {
     [roomId, importing, collab.ydoc, openFile],
   );
 
+  // Seed the Y.Doc with the contents the backend extracted from the
+  // GitHub archive. Backend already created the RoomFile rows, so we
+  // only need to push text into the matching Y.Texts and refresh the
+  // explorer.
+  const handleGithubImported = useCallback(
+    async (response: GithubImportResponse) => {
+      for (const file of response.imported) {
+        const yText = collab.ydoc.getText(file.path);
+        if (yText.length === 0) {
+          yText.insert(0, file.content);
+        }
+      }
+      if (response.imported.length > 0) {
+        await fileExplorerRef.current?.refresh();
+        openFile(response.imported[0].path);
+        setImportStatus(
+          `Imported ${response.imported.length} file${response.imported.length === 1 ? "" : "s"} from ${response.owner}/${response.repo}@${response.branchUsed}`,
+        );
+      }
+    },
+    [collab.ydoc, openFile],
+  );
+
   // Switch the editor to the model for `activePath`, creating it on first
   // open. Destroys the previous Yjs binding and creates a fresh one
   // pointing at the new model.
@@ -333,6 +364,7 @@ export function RoomPage() {
 
       <MenuBar
         onNewFile={onNewFile}
+        onImportGithub={() => setGithubDialogOpen(true)}
         onCloseTab={closeActiveTab}
         onCloseAllTabs={closeAllTabs}
         onFind={onFind}
@@ -346,6 +378,13 @@ export function RoomPage() {
         hasActiveTab={activePath !== null}
         hasOpenTabs={openPaths.length > 0}
         canEdit={canEdit}
+      />
+
+      <ImportGithubDialog
+        open={githubDialogOpen}
+        onOpenChange={setGithubDialogOpen}
+        roomId={roomId}
+        onImported={handleGithubImported}
       />
 
       <section
