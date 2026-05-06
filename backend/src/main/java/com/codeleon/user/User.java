@@ -40,11 +40,24 @@ public class User implements UserDetails {
     @Column(nullable = false, unique = true, length = 180)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    /**
+     * BCrypt hash of the user's password. {@code null} for accounts created
+     * via OAuth2 social login — those authenticate through their external
+     * provider only.
+     */
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
+
+    /** "github" or "google" when this account was provisioned via OAuth2; {@code null} otherwise. */
+    @Column(name = "oauth_provider", length = 20)
+    private String oauthProvider;
+
+    /** External provider's stable user identifier (GitHub user id, Google {@code sub}). */
+    @Column(name = "oauth_subject", length = 255)
+    private String oauthSubject;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
