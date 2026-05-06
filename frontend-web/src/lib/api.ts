@@ -141,6 +141,38 @@ export async function deleteRoomFile(roomId: string, fileId: string) {
   await api.delete(`/rooms/${roomId}/files/${fileId}`);
 }
 
+export interface GithubImportedFile {
+  fileId: string;
+  path: string;
+  language: string;
+  content: string;
+}
+
+export interface GithubImportSkippedFile {
+  path: string;
+  reason: string;
+}
+
+export interface GithubImportResponse {
+  owner: string;
+  repo: string;
+  branchUsed: string;
+  truncated: boolean;
+  imported: GithubImportedFile[];
+  skipped: GithubImportSkippedFile[];
+}
+
+export async function importGithub(
+  roomId: string,
+  payload: { repoUrl: string; branch?: string },
+) {
+  const { data } = await api.post<GithubImportResponse>(
+    `/rooms/${roomId}/import/github`,
+    payload,
+  );
+  return data;
+}
+
 export interface IndexResult {
   chunks: number;
   durationMs: number;

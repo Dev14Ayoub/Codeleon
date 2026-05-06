@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 export interface MenuBarActions {
   onNewFile: () => void;
+  onImportGithub: () => void;
   onCloseTab: () => void;
   onCloseAllTabs: () => void;
   onFind: () => void;
@@ -54,6 +55,7 @@ export function MenuBar(actions: MenuBarActions) {
 
 function FileMenu({
   onNewFile,
+  onImportGithub,
   onCloseTab,
   onCloseAllTabs,
   hasActiveTab,
@@ -76,6 +78,10 @@ function FileMenu({
           <span className="ml-2 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-400">
             auto
           </span>
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem onSelect={onImportGithub} disabled={!canEdit}>
+          Import from GitHub...
         </MenuItem>
         <MenuSeparator />
         <MenuItem onSelect={onCloseTab} shortcut="Ctrl+W" disabled={!hasActiveTab}>
