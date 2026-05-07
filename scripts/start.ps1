@@ -110,19 +110,11 @@ function Invoke-NewPSWindow {
 }
 
 Write-Step "Spawning backend window (Spring Boot)"
-$aiFlag = if ($Ai) { "true" } else { "false" }
+# Delegate to run-backend.ps1 so .env loading + JDK pinning + defaults
+# stay in a single source of truth (also used by .claude/launch.json).
 $backendScript = @"
 `$Host.UI.RawUI.WindowTitle = 'Codeleon Backend'
-Set-Location '$projectRoot\backend'
-`$env:JAVA_HOME = '$jdkPath'
-`$env:Path = '$jdkPath\bin;' + `$env:Path
-`$env:POSTGRES_PORT = '5433'
-`$env:AI_ENABLED = '$aiFlag'
-Write-Host '=== Codeleon backend (Spring Boot) ===' -ForegroundColor Cyan
-Write-Host ('JAVA_HOME=' + `$env:JAVA_HOME)
-Write-Host ('POSTGRES_PORT=' + `$env:POSTGRES_PORT + '  AI_ENABLED=' + `$env:AI_ENABLED)
-Write-Host ''
-mvn spring-boot:run
+& '$projectRoot\scripts\run-backend.ps1'
 "@
 Invoke-NewPSWindow -Script $backendScript
 Write-Ok "Backend window opened"
