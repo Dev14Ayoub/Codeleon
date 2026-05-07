@@ -5,10 +5,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.oauth2.client.CommonOAuth2Provider;
+import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenDecoderFactory;
+import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenValidator;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -66,5 +73,24 @@ public class OAuth2ClientConfig {
                     .build());
         }
         return new InMemoryClientRegistrationRepository(registrations);
+    }
+
+    /**
+     * Custom OIDC ID-token decoder factory that tolerates a five-minute
+     * clock skew between Codeleon and the OIDC provider (Google in our
+     * case). Spring Security's default tolerance is 60 seconds, which is
+     * tight enough to break sign-in on a developer machine whose system
+     * clock has drifted — we observed that crash on Windows + Docker
+     * Desktop where the host clock can fall a few minutes behind.
+     */
+    @Bean
+    public OidcIdTokenDecoderFactory oidcIdTokenDecoderFactory() {
+        OidcIdTokenDecoderFactory factory = new OidcIdTokenDecoderFactory();
+        factory.setJwtValidatorFactory(registration -> {
+            OAuth2TokenValidator<Jwt> idToken = new OidcIdTokenValidator(registration);
+            OAuth2TokenValidator<Jwt> timestamps = new JwtTimestampValidator(Duration.ofMinutes(5));
+            return new DelegatingOAuth2TokenValidator<>(idToken, timestamps);
+        });
+        return factory;
     }
 }
