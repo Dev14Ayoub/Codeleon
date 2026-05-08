@@ -57,6 +57,9 @@ public class SecurityConfig {
                         // /oauth2/authorization/{provider} starts the redirect dance,
                         // /login/oauth2/code/{provider} receives the provider's callback.
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        // Admin dashboard endpoints — guarded at the routing layer
+                        // so a curl with a USER-role JWT cannot probe them.
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())

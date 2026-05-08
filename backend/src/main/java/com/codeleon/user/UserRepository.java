@@ -12,4 +12,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByEmail(String email);
 
     Optional<User> findByOauthProviderAndOauthSubject(String oauthProvider, String oauthSubject);
+
+    java.util.List<User> findAllByOrderByCreatedAtDesc();
+
+    long countByRole(com.codeleon.user.UserRole role);
+
+    long countByOauthProvider(String oauthProvider);
+
+    long countByOauthProviderIsNull();
+
+    long countByCreatedAtAfter(java.time.Instant cutoff);
 }

@@ -14,4 +14,8 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, UUID> {
     List<RoomMember> findByUserOrderByJoinedAtDesc(User user);
 
     Optional<RoomMember> findByRoomAndUser(Room room, User user);
+
+    long countByUser(User user);
+
+    long countByRoom(Room room);
 }

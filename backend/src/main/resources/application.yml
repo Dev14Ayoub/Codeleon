@@ -39,6 +39,11 @@ codeleon:
     google:
       client-id: ${GOOGLE_CLIENT_ID:}
       client-secret: ${GOOGLE_CLIENT_SECRET:}
+  admin:
+    # Email of the account to promote to ADMIN at startup. Leave blank to
+    # disable the bootstrap; once at least one admin exists, role changes
+    # are managed via the /admin dashboard.
+    bootstrap-email: ${CODELEON_BOOTSTRAP_ADMIN_EMAIL:}
   runner:
     enabled: ${RUNNER_ENABLED:true}
     python-image: ${RUNNER_PYTHON_IMAGE:python:3.12-slim}
