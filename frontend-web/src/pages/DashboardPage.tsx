@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { DoorOpen, Globe2, Lock, LogOut, Plus, Radio, ShieldCheck, Users } from "lucide-react";
+import { DoorOpen, Globe2, Lock, LogOut, Plus, Radio, Users } from "lucide-react";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
@@ -102,20 +102,10 @@ export function DashboardPage() {
             <p className="text-sm text-zinc-500">Dashboard</p>
             <h1 className="text-xl font-semibold text-zinc-50">Welcome, {user?.fullName ?? "builder"}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            {user?.role === "ADMIN" && (
-              <Button asChild variant="secondary">
-                <Link to="/admin">
-                  <ShieldCheck className="h-4 w-4" />
-                  Admin
-                </Link>
-              </Button>
-            )}
-            <Button variant="secondary" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-              Logout
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={handleLogout}>
+            <LogOut className="h-4 w-4" />
+            Logout
+          </Button>
         </header>
 
         <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 lg:px-8">
