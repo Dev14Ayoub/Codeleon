@@ -15,4 +15,6 @@ public interface RoomFileRepository extends JpaRepository<RoomFile, UUID> {
     List<RoomFile> findByRoomOrderByPathAsc(Room room);
 
     boolean existsByRoomAndPath(Room room, String path);
+
+    long countByRoom(Room room);
 }

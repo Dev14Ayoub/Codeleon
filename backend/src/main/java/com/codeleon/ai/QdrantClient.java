@@ -88,6 +88,30 @@ public class QdrantClient {
         return config;
     }
 
+    /**
+     * Returns the number of indexed points in the collection. Used by the
+     * admin stats endpoint. Throws if Qdrant is unreachable so the caller
+     * can decide whether to fall back to a placeholder value.
+     */
+    public long countPoints() {
+        CollectionInfoResponse response = http.get()
+                .uri("/collections/{name}", config.collection())
+                .retrieve()
+                .body(CollectionInfoResponse.class);
+        if (response == null || response.result() == null) return 0L;
+        return response.result().pointsCount();
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record CollectionInfoResponse(CollectionInfo result) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record CollectionInfo(
+            @com.fasterxml.jackson.annotation.JsonProperty("points_count") long pointsCount
+    ) {
+    }
+
     public record Point(UUID id, float[] vector, Map<String, Object> payload) {
     }
 

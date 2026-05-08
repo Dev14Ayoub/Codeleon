@@ -91,7 +91,7 @@ public class AuthService {
     }
 
     public UserResponse toUserResponse(User user) {
-        return new UserResponse(user.getId(), user.getFullName(), user.getEmail(), user.getAvatarUrl());
+        return new UserResponse(user.getId(), user.getFullName(), user.getEmail(), user.getAvatarUrl(), user.getRole());
     }
 
     private AuthResponse buildAuthResponse(User user) {
