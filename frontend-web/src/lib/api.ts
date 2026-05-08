@@ -1,11 +1,14 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth-store";
 
+export type UserRole = "USER" | "ADMIN";
+
 export interface User {
   id: string;
   fullName: string;
   email: string;
   avatarUrl: string | null;
+  role: UserRole;
 }
 
 export interface AuthResponse {
@@ -202,3 +205,85 @@ export async function indexRoom(
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
+
+// ===========================================================================
+// Admin dashboard
+// ===========================================================================
+
+export type AuthMethod = "PASSWORD" | "GITHUB" | "GOOGLE";
+
+export interface AdminUser {
+  id: string;
+  fullName: string;
+  email: string;
+  avatarUrl: string | null;
+  role: UserRole;
+  authMethod: AuthMethod;
+  oauthProvider: string | null;
+  oauthSubject: string | null;
+  createdAt: string;
+  updatedAt: string;
+  ownedRoomsCount: number;
+  memberRoomsCount: number;
+}
+
+export interface AdminRoom {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: RoomVisibility;
+  inviteCode: string;
+  ownerId: string | null;
+  ownerEmail: string | null;
+  ownerFullName: string | null;
+  memberCount: number;
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminStats {
+  totalUsers: number;
+  usersByRole: Record<string, number>;
+  usersByAuthMethod: Record<string, number>;
+  usersJoinedLast7Days: number;
+  totalRooms: number;
+  roomsByVisibility: Record<string, number>;
+  totalFiles: number;
+  totalMembers: number;
+  totalRagChunks: number;
+  ragInfrastructureUp: boolean;
+}
+
+export async function fetchAdminUsers() {
+  const { data } = await api.get<AdminUser[]>("/admin/users");
+  return data;
+}
+
+export async function fetchAdminUser(userId: string) {
+  const { data } = await api.get<AdminUser>(`/admin/users/${userId}`);
+  return data;
+}
+
+export async function updateAdminUserRole(userId: string, role: UserRole) {
+  const { data } = await api.patch<AdminUser>(`/admin/users/${userId}/role`, { role });
+  return data;
+}
+
+export async function deleteAdminUser(userId: string) {
+  await api.delete(`/admin/users/${userId}`);
+}
+
+export async function fetchAdminRooms() {
+  const { data } = await api.get<AdminRoom[]>("/admin/rooms");
+  return data;
+}
+
+export async function deleteAdminRoom(roomId: string) {
+  await api.delete(`/admin/rooms/${roomId}`);
+}
+
+export async function fetchAdminStats() {
+  const { data } = await api.get<AdminStats>("/admin/stats");
+  return data;
+}
