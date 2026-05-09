@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ArrowLeft,
+  Check,
   Copy,
   Loader2,
   Play,
@@ -66,6 +67,7 @@ export function RoomPage() {
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const room = roomQuery.data;
   const canEdit =
@@ -340,11 +342,43 @@ export function RoomPage() {
           <ConnectionPill connected={collab.isConnected} />
           <Button
             variant="secondary"
-            onClick={() => void navigator.clipboard?.writeText(room?.inviteCode ?? "")}
+            onClick={() => {
+              if (!room?.inviteCode) return;
+              const fallback = () => {
+                const ta = document.createElement("textarea");
+                ta.value = room.inviteCode;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                  document.execCommand("copy");
+                } finally {
+                  document.body.removeChild(ta);
+                }
+              };
+              const showCopied = () => {
+                setInviteCopied(true);
+                window.setTimeout(() => setInviteCopied(false), 1800);
+              };
+              if (navigator.clipboard?.writeText) {
+                navigator.clipboard
+                  .writeText(room.inviteCode)
+                  .then(showCopied)
+                  .catch(() => {
+                    fallback();
+                    showCopied();
+                  });
+              } else {
+                fallback();
+                showCopied();
+              }
+            }}
             disabled={!room}
+            title={room?.inviteCode ? `Copy invite code: ${room.inviteCode}` : "Loading invite code..."}
           >
-            <Copy className="h-4 w-4" />
-            Invite
+            {inviteCopied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+            {inviteCopied ? "Copied!" : "Invite"}
           </Button>
           <Button
             onClick={() => runMutation.mutate()}
