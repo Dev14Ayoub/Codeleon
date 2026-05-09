@@ -17,6 +17,8 @@ public record RoomResponse(
         RoomMemberRole currentUserRole,
         long fileCount,
         long memberCount,
+        boolean pinned,
+        boolean archived,
         Instant createdAt,
         Instant updatedAt
 ) {

@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, Lock, LogOut, Plus, Radio, Search, Users } from "lucide-react";
+import { Archive, ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, LayoutGrid, Lock, LogOut, Pin, Plus, Radio, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
@@ -15,6 +15,7 @@ import { CreateRoomValues, JoinRoomValues, createRoomSchema, joinRoomSchema } fr
 import { useAuthStore } from "@/stores/auth-store";
 
 type SortKey = "recent" | "alphabetical" | "files";
+type FilterKey = "all" | "pinned" | "archived";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export function DashboardPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [filterKey, setFilterKey] = useState<FilterKey>("all");
 
   const createForm = useForm<CreateRoomValues>({
     resolver: zodResolver(createRoomSchema),
@@ -53,9 +55,13 @@ export function DashboardPage() {
     }
   }, [setUser, user]);
 
+  // The "Archived" filter needs the server to include archived rooms,
+  // which the default listing hides. We pass the includeArchived flag
+  // and key the query on it so React Query keeps separate cache entries.
+  const includeArchived = filterKey === "archived";
   const myRoomsQuery = useQuery({
-    queryKey: ["rooms", "mine"],
-    queryFn: fetchMyRooms,
+    queryKey: ["rooms", "mine", { archived: includeArchived }],
+    queryFn: () => fetchMyRooms(includeArchived),
   });
 
   const publicRoomsQuery = useQuery({
@@ -88,11 +94,13 @@ export function DashboardPage() {
   const publicRooms = publicRoomsQuery.data ?? [];
 
   const myRoomsView = useMemo(
-    () => filterAndSort(myRooms, searchQuery, sortKey),
-    [myRooms, searchQuery, sortKey],
+    () => filterAndSort(myRooms, searchQuery, sortKey, filterKey),
+    [myRooms, searchQuery, sortKey, filterKey],
   );
+  // Public rooms ignore the pinned/archived filter — that filter is about
+  // how the user organizes their *own* projects, not what they discover.
   const publicRoomsView = useMemo(
-    () => filterAndSort(publicRooms, searchQuery, sortKey),
+    () => filterAndSort(publicRooms, searchQuery, sortKey, "all"),
     [publicRooms, searchQuery, sortKey],
   );
 
@@ -158,6 +166,7 @@ export function DashboardPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
+                <FilterMenu filterKey={filterKey} onChange={setFilterKey} />
                 <SortMenu sortKey={sortKey} onChange={setSortKey} />
               </div>
             </div>
@@ -264,14 +273,30 @@ export function DashboardPage() {
   );
 }
 
-function filterAndSort(rooms: Room[], query: string, sortKey: SortKey): Room[] {
+function filterAndSort(rooms: Room[], query: string, sortKey: SortKey, filterKey: FilterKey): Room[] {
+  let filtered = rooms;
+
+  switch (filterKey) {
+    case "pinned":
+      filtered = filtered.filter((r) => r.pinned);
+      break;
+    case "archived":
+      filtered = filtered.filter((r) => r.archived);
+      break;
+    case "all":
+    default:
+      // Backend already excludes archived from the default listing, so
+      // there is nothing more to filter here.
+      break;
+  }
+
   const trimmed = query.trim().toLowerCase();
-  const filtered = trimmed
-    ? rooms.filter((room) => {
-        const haystack = `${room.name} ${room.description ?? ""} ${room.ownerName}`.toLowerCase();
-        return haystack.includes(trimmed);
-      })
-    : rooms;
+  if (trimmed) {
+    filtered = filtered.filter((room) => {
+      const haystack = `${room.name} ${room.description ?? ""} ${room.ownerName}`.toLowerCase();
+      return haystack.includes(trimmed);
+    });
+  }
 
   const sorted = [...filtered];
   switch (sortKey) {
@@ -286,6 +311,11 @@ function filterAndSort(rooms: Room[], query: string, sortKey: SortKey): Room[] {
       sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       break;
   }
+  // Pinned rooms always come first within whatever sort order is selected,
+  // so the user's most-used projects stay at the top of the grid.
+  if (filterKey !== "pinned") {
+    sorted.sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  }
   return sorted;
 }
 
@@ -297,6 +327,34 @@ function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string
         {label}
       </div>
       <p className="mt-2 text-2xl font-semibold text-zinc-50">{value}</p>
+    </div>
+  );
+}
+
+function FilterMenu({ filterKey, onChange }: { filterKey: FilterKey; onChange: (key: FilterKey) => void }) {
+  const options: { key: FilterKey; label: string; icon: React.ReactNode }[] = [
+    { key: "all", label: "All", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+    { key: "pinned", label: "Pinned", icon: <Pin className="h-3.5 w-3.5" /> },
+    { key: "archived", label: "Archived", icon: <Archive className="h-3.5 w-3.5" /> },
+  ];
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-zinc-800 bg-surface p-1">
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => onChange(opt.key)}
+          className={
+            opt.key === filterKey
+              ? "inline-flex items-center gap-1.5 rounded-sm bg-surfaceRaised px-2.5 py-1 text-xs font-medium text-zinc-100"
+              : "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-surfaceRaised hover:text-zinc-200"
+          }
+          aria-pressed={opt.key === filterKey}
+        >
+          {opt.icon}
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
