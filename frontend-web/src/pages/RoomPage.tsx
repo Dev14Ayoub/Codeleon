@@ -319,7 +319,7 @@ export function RoomPage() {
   const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
 
   return (
-    <main className="flex min-h-screen flex-col bg-background text-zinc-100">
+    <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
       <header className="flex min-h-16 items-center justify-between border-b border-zinc-800 bg-background/95 px-4 backdrop-blur">
         <div className="flex min-w-0 items-center gap-4">
           <Button asChild variant="ghost" className="px-2">
@@ -420,7 +420,7 @@ export function RoomPage() {
       />
 
       <section
-        className="grid min-h-[calc(100vh-7.25rem)] grid-cols-1"
+        className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden"
         style={{
           gridTemplateColumns: [
             showFileExplorer ? "17rem" : null,
@@ -432,7 +432,7 @@ export function RoomPage() {
         }}
       >
         {showFileExplorer && (
-          <aside className="hidden flex-col gap-2 border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
+          <aside className="hidden min-h-0 flex-col gap-2 overflow-y-auto border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
             <FileExplorer
               ref={fileExplorerRef}
               roomId={roomId}
@@ -450,7 +450,7 @@ export function RoomPage() {
           </aside>
         )}
 
-        <section className="flex min-h-[34rem] flex-col bg-zinc-950">
+        <section className="flex min-h-0 flex-col overflow-hidden bg-zinc-950">
           <div className="flex items-center justify-between border-b border-zinc-800 bg-surface pr-4">
             <div className="flex-1 min-w-0">
               <EditorTabs
@@ -493,7 +493,7 @@ export function RoomPage() {
         </section>
 
         {showAiPanel && (
-          <aside className="grid border-l border-zinc-800 bg-surface/70 lg:grid-rows-[auto_1fr]">
+          <aside className="grid min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70 lg:grid-rows-[auto_1fr]">
             <section className="border-b border-zinc-800 p-4">
               <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
                 <Users className="h-4 w-4 text-cyan" />
