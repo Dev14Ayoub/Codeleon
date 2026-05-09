@@ -56,20 +56,34 @@ if (-not (Test-Path ".env")) {
 # -----------------------------------------------------------------------------
 if (-not $SkipDocker) {
     Write-Step "Checking Docker daemon"
-    try {
-        docker info --format '{{.ServerVersion}}' | Out-Null
-    } catch {
-        Write-Err "Docker daemon unreachable. Start Docker Desktop, then re-run."
+    # PowerShell try/catch does not catch native command exit codes, so we
+    # have to check $LASTEXITCODE explicitly. We also discard stderr to keep
+    # the output clean — the exit code alone tells us whether the daemon is
+    # reachable.
+    docker info --format '{{.ServerVersion}}' *>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Docker daemon unreachable. Start Docker Desktop and wait for"
+        Write-Err "the icon to turn green, then re-run this script. If the daemon"
+        Write-Err "refuses to start, try: wsl --shutdown, then relaunch Docker Desktop."
+        Write-Err "If you have Postgres + Redis running outside Docker, re-run with -SkipDocker."
         exit 1
     }
     Write-Ok "Docker is up"
 
     Write-Step "Starting core containers (postgres + redis)"
-    docker compose up -d | Out-Null
+    docker compose up -d
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "docker compose up failed. See output above."
+        exit 1
+    }
 
     if ($Ai) {
         Write-Step "Starting AI containers (qdrant + ollama)"
-        docker compose --profile ai up -d | Out-Null
+        docker compose --profile ai up -d
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "docker compose up (ai profile) failed. See output above."
+            exit 1
+        }
     }
 
     Write-Step "Waiting for containers to become healthy"
