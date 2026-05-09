@@ -342,6 +342,7 @@ serve your demo story best.
 | 18 | **Mobile-friendly dashboard** | The room editor is desktop-only by nature, but the dashboard could become a phone-friendly read-only view. | 4h |
 | 19 | **Audit log** in the admin panel | Already mentioned — a row per admin action with who/when/what. Easy ops sell. | 3h |
 | 20 | **System health page** for non-admins | `/status` page showing Postgres / Redis / Qdrant / Ollama up/down. Doubles as a "uptime" panel for the defense. | 2h |
+| 21 | **Embedded terminal (bash MVP)** | xterm.js panel + WebSocket PTY proxy that pipes a sandboxed bash inside the room's runner container. Materialises the room's `RoomFile` rows into a tmpfs so `python main.py` actually works. **Bash only**: PowerShell adds another container image and Windows `cmd` is a different Docker engine entirely (host isolation), so it is intentionally out of scope. **Stretch goal — only attempted after the memoire is done.** | 8h |
 
 ---
 
@@ -369,6 +370,11 @@ Pick **one or two** from section 6 above for additional wow factor:
 - Idea **5** (public project page) — easy crowd-pleaser
 - Idea **12** (presence map) — reinforces the collaboration story
 - Idea **20** (system health page) — useful for the soutenance Q&A
+- Idea **21** (embedded bash terminal) — confirmed late-stretch goal,
+  decided 2026-05-09. Only attempt with at least 2 free days and after
+  the memoire is finalised. The full multi-shell version (PowerShell +
+  Windows cmd) is explicitly post-PFE; only a sandboxed bash will be
+  attempted, sharing the existing runner Docker pipeline.
 
 ### What to NOT do before the defense
 - Section **5.2 (nested folders)** — looks essential but is 5h of
