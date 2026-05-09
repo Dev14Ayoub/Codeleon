@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,14 +51,17 @@ class AdminControllerTest {
     }
 
     @Test
-    void usersListRejectsAnonymous() throws Exception {
-        // Spring Security with OAuth2 login on the chain forwards
-        // unauthenticated traffic through the authorization filter
-        // before the entry point, so the response is 403 Forbidden
-        // rather than the more typical 401 Unauthorized. Either is a
-        // valid rejection — we just assert the request did not succeed.
+    void usersListRejectsAnonymousWith401Json() throws Exception {
+        // The custom AuthenticationEntryPoint short-circuits the default
+        // OAuth2 login page so unauthenticated API calls always return a
+        // 401 with a JSON body. Without this, the SPA's axios layer would
+        // try to parse the OAuth login HTML as JSON and crash the
+        // dashboard whenever the access token expires.
         mockMvc.perform(get("/admin/users"))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Authentication required"));
     }
 
     // ---------------------------------------------------------------
