@@ -380,7 +380,129 @@ Pick **one or two** from section 6 above for additional wow factor:
 
 ---
 
-## 8. How to keep this file fresh
+## 8. Deployment & sharing — can other people visit a room?
+
+Out of the box Codeleon binds everything to `localhost`, so the
+short answer is **no, not without configuration**. Here are the four
+realistic levels of "remote access", from cheapest to most involved.
+
+### 8.1 Level 0 — Same machine, multiple browsers ✅ free
+
+Open Chrome with the OWNER account and Edge in private mode with a
+second account. Both will land on `http://localhost:5173`, both will
+see each other's cursors in the editor. Perfect for the PFE
+projector demo and requires **zero** setup. This is what we will
+recommend on stage.
+
+### 8.2 Level 1 — Same Wi-Fi / LAN ⚠️ 5 changes
+
+Lets a second device on the same Wi-Fi (a friend's laptop, your
+phone) connect to your machine via your local IP.
+
+```powershell
+# 1. Find your LAN IP (e.g. 192.168.1.42)
+ipconfig | Select-String "IPv4"
+```
+
+```diff
+# 2. Edit .env
+- VITE_API_BASE_URL=http://localhost:8080/api/v1
++ VITE_API_BASE_URL=http://192.168.1.42:8080/api/v1
+- CORS_ALLOWED_ORIGINS=http://localhost:5173
++ CORS_ALLOWED_ORIGINS=http://localhost:5173,http://192.168.1.42:5173
+```
+
+```bash
+# 3. Bind Vite to all interfaces
+cd frontend-web
+npm run dev -- --host 0.0.0.0
+```
+
+```powershell
+# 4. Open Windows firewall ports (admin PS)
+New-NetFirewallRule -DisplayName "Codeleon backend"  -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Codeleon frontend" -Direction Inbound -LocalPort 5173 -Protocol TCP -Action Allow
+```
+
+5. Restart the backend so it picks up the new `CORS_ALLOWED_ORIGINS`
+   and `VITE_API_BASE_URL`.
+
+The visitor opens `http://192.168.1.42:5173`. Email/password login
+works. **OAuth fails** because the GitHub / Google callback URLs
+are fixed at `http://localhost:8080/api/v1/login/oauth2/code/...`.
+Adding a second callback URL at each provider lets the LAN host
+work too.
+
+### 8.3 Level 2 — Internet via ngrok 🟠 single demo, ~10 min setup
+
+Lets anyone on the internet (your jury, your remote supervisor)
+hit your laptop. Useful as a backup if the auditorium projector
+fails on defense day.
+
+```powershell
+choco install ngrok    # or: winget install ngrok
+
+# Two parallel PowerShell tabs:
+ngrok http 5173        # → https://abc123.ngrok.app  (frontend)
+ngrok http 8080        # → https://xyz789.ngrok.app  (backend)
+```
+
+```diff
+# .env
+- VITE_API_BASE_URL=http://localhost:8080/api/v1
++ VITE_API_BASE_URL=https://xyz789.ngrok.app/api/v1
+- CORS_ALLOWED_ORIGINS=http://localhost:5173
++ CORS_ALLOWED_ORIGINS=https://abc123.ngrok.app
+```
+
+Restart both processes; the public URL is now
+`https://abc123.ngrok.app`.
+
+Caveats:
+- Free ngrok URLs change on every restart (paid plans get fixed
+  domains).
+- OAuth needs the ngrok URLs registered in each provider's callback
+  list every session — painful, **so disable OAuth for the
+  ngrok-hosted demo and rely on email/password only**.
+- WebSockets work over `wss://` automatically because ngrok proxies
+  TCP, so live collaboration still functions.
+
+### 8.4 Level 3 — Real cloud deployment 🔴 ~2-3 days, optional for PFE
+
+Sustained, public, 24/7 access at e.g. `https://codeleon.bznitar.dev`.
+Recommended **after** the defense — it's nice for a portfolio link,
+not required for the PFE itself.
+
+| Layer | Service | Cost |
+|---|---|---|
+| Frontend (Vite build) | Vercel or Cloudflare Pages | free |
+| Backend (Spring Boot JAR) | Render or Fly.io free tier | free, with cold starts |
+| Postgres | Supabase or Neon free tier | free |
+| Redis | Upstash free tier | free |
+| Qdrant | Qdrant Cloud free tier (1 GB) | free |
+| Ollama | ⚠️ no free option that runs the model | — |
+
+**The Ollama problem.** `qwen2.5-coder:0.5b` needs ~2 GB RAM and a
+half-decent CPU. No free tier supports that. Two workarounds:
+
+1. **Keep Ollama on your local machine** and tunnel it
+   (`ngrok http 11434`). The cloud-hosted backend hits the ngrok
+   URL for inference. Implies your PC must be online during demos.
+2. **Swap Ollama for the OpenAI API** (~5 USD/mo for demo traffic).
+   Defeats the "100% local" pitch — bad idea for the PFE narrative.
+
+### 8.5 Recommendation for the defense
+
+Do **Level 0** during the defense (your laptop projected, you flip
+between two browser windows to demonstrate collaboration). Have
+**Level 2** ready as a safety net by writing the ngrok commands
+into a small `scripts/demo-ngrok.ps1` so you can stand it up in two
+minutes if the projector fails. Skip **Level 3** until after you
+graduate.
+
+---
+
+## 9. How to keep this file fresh
 
 - Whenever you ship a feature, add it to section 2 with the commit
   hash.
