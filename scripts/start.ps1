@@ -28,12 +28,26 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $jdkPath     = "C:\Users\pc\.jdks\openjdk-23.0.1"
 
+. (Join-Path $PSScriptRoot '_lib.ps1')
+
 function Write-Step($msg)    { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)      { Write-Host "    $msg" -ForegroundColor Green }
 function Write-Warn($msg)    { Write-Host "    $msg" -ForegroundColor Yellow }
 function Write-Err($msg)     { Write-Host "    $msg" -ForegroundColor Red }
 
 Set-Location $projectRoot
+
+# -----------------------------------------------------------------------------
+# 0. Free the dev ports if anything is still holding them.
+# -----------------------------------------------------------------------------
+# Without this we crash later with "Port 8080 was already in use" whenever a
+# previous mvn / java / vite process leaked — typically when the previous
+# launcher window was closed without running stop.ps1, or when an external
+# tool started its own backend (preview_start, an IDE) and forgot to clean
+# up. The helper kills the whole listening process tree.
+Write-Step "Releasing dev ports if held by stale processes"
+[void](Stop-PortListener -Port 8080 -Label 'backend port 8080')
+[void](Stop-PortListener -Port 5173 -Label 'frontend port 5173')
 
 # -----------------------------------------------------------------------------
 # 1. .env
