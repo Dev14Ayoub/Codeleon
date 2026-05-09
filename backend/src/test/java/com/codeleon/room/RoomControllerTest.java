@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,6 +56,86 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$[0].currentUserRole").value("OWNER"))
                 .andExpect(jsonPath("$[0].fileCount").value(0))
                 .andExpect(jsonPath("$[0].memberCount").value(1));
+    }
+
+    @Test
+    void pinIsIdempotentAndUnpinIsNoOpWhenMissing() throws Exception {
+        String token = register("room.pin@example.com");
+        String roomId = createRoom(token, "Pinned room", "PRIVATE").get("id").asText();
+
+        // First pin -> 204, listing has pinned=true.
+        mockMvc.perform(post("/rooms/" + roomId + "/pin")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].pinned").value(true));
+
+        // Pin again -> still 204, no duplicate row.
+        mockMvc.perform(post("/rooms/" + roomId + "/pin")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        // Unpin -> 204 and listing flips back.
+        mockMvc.perform(delete("/rooms/" + roomId + "/pin")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].pinned").value(false));
+
+        // Unpin again -> still 204, idempotent on the way out too.
+        mockMvc.perform(delete("/rooms/" + roomId + "/pin")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void archiveIsOwnerOnlyAndHidesRoomFromDefaultListing() throws Exception {
+        String ownerToken = register("room.archive.owner@example.com");
+        String guestToken = register("room.archive.guest@example.com");
+        JsonNode room = createRoom(ownerToken, "Archived room", "PRIVATE");
+        String roomId = room.get("id").asText();
+        String inviteCode = room.get("inviteCode").asText();
+
+        // Guest joins so the room shows up in their listing too.
+        mockMvc.perform(post("/rooms/join/" + inviteCode)
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isOk());
+
+        // Guest cannot archive — only the owner can.
+        mockMvc.perform(post("/rooms/" + roomId + "/archive")
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
+
+        // Owner archives -> response reflects archived=true.
+        mockMvc.perform(post("/rooms/" + roomId + "/archive")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.archived").value(true));
+
+        // Default listing now hides the room for both owner and guest.
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        // ?archived=true brings it back.
+        mockMvc.perform(get("/rooms?archived=true").header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].archived").value(true));
+
+        // Owner unarchives -> default listing shows it again.
+        mockMvc.perform(delete("/rooms/" + roomId + "/archive")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.archived").value(false));
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
     }
 
     @Test

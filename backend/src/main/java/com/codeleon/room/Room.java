@@ -65,6 +65,15 @@ public class Room {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * Set when the owner archives the room. Archived rooms are hidden from
+     * the dashboard's default listing but otherwise functional — kept as
+     * a soft-delete so an archive/unarchive toggle is reversible without
+     * losing files, members, or invite history.
+     */
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

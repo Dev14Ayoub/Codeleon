@@ -26,6 +26,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, exception.getMessage(), null);
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException exception) {
+        return build(HttpStatus.FORBIDDEN, exception.getMessage(), null);
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials() {
         return build(HttpStatus.UNAUTHORIZED, "Invalid email or password", null);

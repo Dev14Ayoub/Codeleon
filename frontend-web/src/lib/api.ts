@@ -31,6 +31,8 @@ export interface Room {
   currentUserRole: RoomMemberRole | null;
   fileCount: number;
   memberCount: number;
+  pinned: boolean;
+  archived: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,8 +85,10 @@ export async function fetchOAuthProviders() {
   return data;
 }
 
-export async function fetchMyRooms() {
-  const { data } = await api.get<Room[]>("/rooms");
+export async function fetchMyRooms(includeArchived: boolean = false) {
+  const { data } = await api.get<Room[]>("/rooms", {
+    params: includeArchived ? { archived: true } : undefined,
+  });
   return data;
 }
 
@@ -109,6 +113,24 @@ export async function createRoom(payload: {
 
 export async function joinRoom(inviteCode: string) {
   const { data } = await api.post<Room>(`/rooms/join/${inviteCode}`);
+  return data;
+}
+
+export async function pinRoom(roomId: string) {
+  await api.post(`/rooms/${roomId}/pin`);
+}
+
+export async function unpinRoom(roomId: string) {
+  await api.delete(`/rooms/${roomId}/pin`);
+}
+
+export async function archiveRoom(roomId: string) {
+  const { data } = await api.post<Room>(`/rooms/${roomId}/archive`);
+  return data;
+}
+
+export async function unarchiveRoom(roomId: string) {
+  const { data } = await api.delete<Room>(`/rooms/${roomId}/archive`);
   return data;
 }
 
