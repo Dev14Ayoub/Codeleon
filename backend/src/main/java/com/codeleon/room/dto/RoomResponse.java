@@ -15,6 +15,8 @@ public record RoomResponse(
         UUID ownerId,
         String ownerName,
         RoomMemberRole currentUserRole,
+        long fileCount,
+        long memberCount,
         Instant createdAt,
         Instant updatedAt
 ) {

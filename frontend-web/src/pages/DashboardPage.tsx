@@ -1,11 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { DoorOpen, Globe2, Lock, LogOut, Plus, Radio, Users } from "lucide-react";
-import { useEffect } from "react";
+import { ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, Lock, LogOut, Plus, Radio, Search, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/brand/Logo";
+import { ProjectCard } from "@/components/projects/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
@@ -13,12 +14,18 @@ import { createRoom, fetchCurrentUser, fetchMyRooms, fetchPublicRooms, joinRoom,
 import { CreateRoomValues, JoinRoomValues, createRoomSchema, joinRoomSchema } from "@/lib/validators";
 import { useAuthStore } from "@/stores/auth-store";
 
+type SortKey = "recent" | "alphabetical" | "files";
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const logout = useAuthStore((state) => state.logout);
   const storedUser = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
+
   const createForm = useForm<CreateRoomValues>({
     resolver: zodResolver(createRoomSchema),
     defaultValues: {
@@ -77,6 +84,24 @@ export function DashboardPage() {
     navigate("/");
   }
 
+  const myRooms = myRoomsQuery.data ?? [];
+  const publicRooms = publicRoomsQuery.data ?? [];
+
+  const myRoomsView = useMemo(
+    () => filterAndSort(myRooms, searchQuery, sortKey),
+    [myRooms, searchQuery, sortKey],
+  );
+  const publicRoomsView = useMemo(
+    () => filterAndSort(publicRooms, searchQuery, sortKey),
+    [publicRooms, searchQuery, sortKey],
+  );
+
+  const totalFiles = useMemo(() => myRooms.reduce((acc, r) => acc + r.fileCount, 0), [myRooms]);
+  const totalCollaborators = useMemo(
+    () => myRooms.reduce((acc, r) => acc + Math.max(0, r.memberCount - 1), 0),
+    [myRooms],
+  );
+
   return (
     <main className="min-h-screen bg-background">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-zinc-800 bg-surface/80 p-4 lg:block">
@@ -85,13 +110,13 @@ export function DashboardPage() {
           <span className="font-semibold text-zinc-50">Codeleon</span>
         </Link>
         <nav className="mt-8 space-y-1 text-sm text-zinc-400">
-          <a className="flex items-center gap-3 rounded-md bg-surfaceRaised px-3 py-2 text-zinc-100" href="#rooms">
+          <a className="flex items-center gap-3 rounded-md bg-surfaceRaised px-3 py-2 text-zinc-100" href="#projects">
             <Users className="h-4 w-4" />
-            Rooms
+            My projects
           </a>
           <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#public">
             <Radio className="h-4 w-4" />
-            Public rooms
+            Public projects
           </a>
         </nav>
       </aside>
@@ -109,11 +134,31 @@ export function DashboardPage() {
         </header>
 
         <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 lg:px-8">
-          <section id="rooms" className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
+            <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
+            <StatTile icon={<Users className="h-4 w-4 text-cyan" />} label="Collaborators" value={totalCollaborators} />
+          </div>
+
+          <section id="projects" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-50">My rooms</h2>
-                <p className="text-sm text-zinc-500">Your collaborative workspaces will appear here.</p>
+                <h2 className="text-lg font-semibold text-zinc-50">My projects</h2>
+                <p className="text-sm text-zinc-500">Your collaborative workspaces.</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <Input
+                    aria-label="Search projects"
+                    className="h-10 w-56 pl-9"
+                    placeholder="Search projects..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <SortMenu sortKey={sortKey} onChange={setSortKey} />
               </div>
             </div>
 
@@ -129,7 +174,7 @@ export function DashboardPage() {
               >
                 <div className="flex items-center gap-2">
                   <Plus className="h-4 w-4 text-cyan" />
-                  <h3 className="font-medium text-zinc-100">Create room</h3>
+                  <h3 className="font-medium text-zinc-100">Create project</h3>
                 </div>
 
                 <div className="space-y-2">
@@ -165,7 +210,7 @@ export function DashboardPage() {
 
                 <Button disabled={createRoomMutation.isPending} type="submit">
                   <Plus className="h-4 w-4" />
-                  {createRoomMutation.isPending ? "Creating..." : "Create room"}
+                  {createRoomMutation.isPending ? "Creating..." : "Create project"}
                 </Button>
               </form>
 
@@ -190,20 +235,28 @@ export function DashboardPage() {
 
                 <Button disabled={joinRoomMutation.isPending} type="submit" variant="secondary">
                   <DoorOpen className="h-4 w-4" />
-                  {joinRoomMutation.isPending ? "Joining..." : "Join room"}
+                  {joinRoomMutation.isPending ? "Joining..." : "Join project"}
                 </Button>
               </form>
             </div>
 
-            <RoomGrid emptyText="No rooms yet" isLoading={myRoomsQuery.isLoading} rooms={myRoomsQuery.data ?? []} />
+            <ProjectGrid
+              emptyText={searchQuery ? "No projects match your search" : "No projects yet"}
+              isLoading={myRoomsQuery.isLoading}
+              rooms={myRoomsView}
+            />
           </section>
 
           <section id="public" className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-50">Public rooms</h2>
-              <p className="text-sm text-zinc-500">Discover public programming sessions once rooms are enabled.</p>
+              <h2 className="text-lg font-semibold text-zinc-50">Public projects</h2>
+              <p className="text-sm text-zinc-500">Discover public programming sessions.</p>
             </div>
-            <RoomGrid emptyText="No public rooms yet" isLoading={publicRoomsQuery.isLoading} rooms={publicRoomsQuery.data ?? []} />
+            <ProjectGrid
+              emptyText={searchQuery ? "No public projects match your search" : "No public projects yet"}
+              isLoading={publicRoomsQuery.isLoading}
+              rooms={publicRoomsView}
+            />
           </section>
         </div>
       </section>
@@ -211,37 +264,87 @@ export function DashboardPage() {
   );
 }
 
-function RoomGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoading: boolean; rooms: Room[] }) {
-  if (isLoading) {
-    return <div className="rounded-lg border border-zinc-800 bg-surface/50 p-8 text-center text-sm text-zinc-500">Loading rooms...</div>;
-  }
+function filterAndSort(rooms: Room[], query: string, sortKey: SortKey): Room[] {
+  const trimmed = query.trim().toLowerCase();
+  const filtered = trimmed
+    ? rooms.filter((room) => {
+        const haystack = `${room.name} ${room.description ?? ""} ${room.ownerName}`.toLowerCase();
+        return haystack.includes(trimmed);
+      })
+    : rooms;
 
+  const sorted = [...filtered];
+  switch (sortKey) {
+    case "alphabetical":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case "files":
+      sorted.sort((a, b) => b.fileCount - a.fileCount);
+      break;
+    case "recent":
+    default:
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      break;
+  }
+  return sorted;
+}
+
+function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-surface px-5 py-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
+        {icon}
+        {label}
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-zinc-50">{value}</p>
+    </div>
+  );
+}
+
+function SortMenu({ sortKey, onChange }: { sortKey: SortKey; onChange: (key: SortKey) => void }) {
+  const options: { key: SortKey; label: string; icon: React.ReactNode }[] = [
+    { key: "recent", label: "Recent", icon: <Clock className="h-3.5 w-3.5" /> },
+    { key: "alphabetical", label: "A-Z", icon: <ArrowDownAZ className="h-3.5 w-3.5" /> },
+    { key: "files", label: "Most files", icon: <FileCode2 className="h-3.5 w-3.5" /> },
+  ];
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-zinc-800 bg-surface p-1">
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => onChange(opt.key)}
+          className={
+            opt.key === sortKey
+              ? "inline-flex items-center gap-1.5 rounded-sm bg-surfaceRaised px-2.5 py-1 text-xs font-medium text-zinc-100"
+              : "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-surfaceRaised hover:text-zinc-200"
+          }
+          aria-pressed={opt.key === sortKey}
+        >
+          {opt.icon}
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoading: boolean; rooms: Room[] }) {
+  if (isLoading) {
+    return <div className="rounded-lg border border-zinc-800 bg-surface/50 p-8 text-center text-sm text-zinc-500">Loading projects...</div>;
+  }
   if (rooms.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-zinc-800 bg-surface/50 p-8 text-center">
         <p className="font-medium text-zinc-200">{emptyText}</p>
-        <p className="mt-2 text-sm text-zinc-500">Create or join a room to start collaborating.</p>
+        <p className="mt-2 text-sm text-zinc-500">Create or join a project to start collaborating.</p>
       </div>
     );
   }
-
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {rooms.map((room) => (
-        <Link key={room.id} to={`/rooms/${room.id}`} className="rounded-lg border border-zinc-800 bg-surface p-5 transition hover:border-signature/60 hover:bg-surfaceRaised">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-medium text-zinc-100">{room.name}</p>
-              <p className="mt-1 text-sm text-zinc-500">Owner: {room.ownerName}</p>
-            </div>
-            <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">{room.visibility.toLowerCase()}</span>
-          </div>
-          {room.description && <p className="mt-4 text-sm leading-6 text-zinc-400">{room.description}</p>}
-          <div className="mt-5 flex items-center justify-between gap-3 border-t border-zinc-800 pt-4">
-            <span className="font-mono text-xs text-zinc-500">{room.inviteCode}</span>
-            <span className="text-xs font-medium text-cyan">{room.currentUserRole ?? "guest"}</span>
-          </div>
-        </Link>
+        <ProjectCard key={room.id} room={room} />
       ))}
     </div>
   );

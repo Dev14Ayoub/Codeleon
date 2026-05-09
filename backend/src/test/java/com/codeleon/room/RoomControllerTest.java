@@ -44,13 +44,43 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$.name").value("Algorithms Lab"))
                 .andExpect(jsonPath("$.visibility").value("PRIVATE"))
                 .andExpect(jsonPath("$.currentUserRole").value("OWNER"))
-                .andExpect(jsonPath("$.inviteCode").isString());
+                .andExpect(jsonPath("$.inviteCode").isString())
+                .andExpect(jsonPath("$.fileCount").value(0))
+                .andExpect(jsonPath("$.memberCount").value(1));
 
         mockMvc.perform(get("/rooms")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Algorithms Lab"))
-                .andExpect(jsonPath("$[0].currentUserRole").value("OWNER"));
+                .andExpect(jsonPath("$[0].currentUserRole").value("OWNER"))
+                .andExpect(jsonPath("$[0].fileCount").value(0))
+                .andExpect(jsonPath("$[0].memberCount").value(1));
+    }
+
+    @Test
+    void roomResponseReflectsFileAndMemberCounts() throws Exception {
+        String ownerToken = register("room.counts.owner@example.com");
+        String guestToken = register("room.counts.guest@example.com");
+
+        JsonNode room = createRoom(ownerToken, "Counted", "PRIVATE");
+        String roomId = room.get("id").asText();
+        String inviteCode = room.get("inviteCode").asText();
+
+        mockMvc.perform(post("/rooms/" + roomId + "/files")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("path", "App.java"))))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/rooms/join/" + inviteCode)
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fileCount").value(1))
+                .andExpect(jsonPath("$.memberCount").value(2));
     }
 
     @Test

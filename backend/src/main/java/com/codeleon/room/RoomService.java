@@ -22,6 +22,7 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
+    private final RoomFileRepository roomFileRepository;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -95,6 +96,8 @@ public class RoomService {
     }
 
     private RoomResponse toResponse(Room room, RoomMemberRole currentUserRole) {
+        long fileCount = roomFileRepository.countByRoom(room);
+        long memberCount = roomMemberRepository.countByRoom(room);
         return new RoomResponse(
                 room.getId(),
                 room.getName(),
@@ -104,6 +107,8 @@ public class RoomService {
                 room.getOwner().getId(),
                 room.getOwner().getFullName(),
                 currentUserRole,
+                fileCount,
+                memberCount,
                 room.getCreatedAt(),
                 room.getUpdatedAt()
         );
