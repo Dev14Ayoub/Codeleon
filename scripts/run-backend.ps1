@@ -13,6 +13,17 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot '_lib.ps1')
+
+# -----------------------------------------------------------------------------
+# 0. Free port 8080 if anything is still on it. Spring Boot otherwise dies
+#    after a 20 s startup with "Port 8080 was already in use", which is the
+#    most common dev failure mode (previous run leaked, or another tool
+#    spawned its own backend). Doing this in run-backend.ps1 covers every
+#    entry point: start.ps1, IDE run config, .claude/launch.json, or a
+#    developer who runs this script directly.
+# -----------------------------------------------------------------------------
+[void](Stop-PortListener -Port 8080 -Label 'backend port 8080')
 
 # -----------------------------------------------------------------------------
 # 1. Load .env (if present) into this process's environment.
