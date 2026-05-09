@@ -29,6 +29,8 @@ export interface Room {
   ownerId: string;
   ownerName: string;
   currentUserRole: RoomMemberRole | null;
+  fileCount: number;
+  memberCount: number;
   createdAt: string;
   updatedAt: string;
 }
