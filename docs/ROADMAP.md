@@ -343,6 +343,7 @@ serve your demo story best.
 | 19 | **Audit log** in the admin panel | Already mentioned — a row per admin action with who/when/what. Easy ops sell. | 3h |
 | 20 | **System health page** for non-admins | `/status` page showing Postgres / Redis / Qdrant / Ollama up/down. Doubles as a "uptime" panel for the defense. | 2h |
 | 21 | **Embedded terminal (bash MVP)** | xterm.js panel + WebSocket PTY proxy that pipes a sandboxed bash inside the room's runner container. Materialises the room's `RoomFile` rows into a tmpfs so `python main.py` actually works. **Bash only**: PowerShell adds another container image and Windows `cmd` is a different Docker engine entirely (host isolation), so it is intentionally out of scope. **Stretch goal — only attempted after the memoire is done.** | 8h |
+| 22 | **Template content seeding (Pass B)** | The Inc 3 template feature ships file *structure* only — every template file lands on disk with the right name and language, but the editor opens empty. Filling them in requires either a Java Y.Doc encoder (heavy dep) or a `seed_content TEXT` column on `room_files` that the WebSocket handler injects into the corresponding Y.Text on the first connect and then clears. Pick the second approach: V6 migration adds the column, `RoomService.createRoom` populates it from the template JSON's new `content` field, `CollabWebSocketHandler` writes the seed into Y.Text once and nulls the column. After this every template gives the user a real running starting point instead of empty files. | 2h |
 
 ---
 

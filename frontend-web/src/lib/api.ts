@@ -106,8 +106,22 @@ export async function createRoom(payload: {
   name: string;
   description?: string;
   visibility: RoomVisibility;
+  templateId?: string;
 }) {
   const { data } = await api.post<Room>("/rooms", payload);
+  return data;
+}
+
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  description: string;
+  language: string;
+  fileCount: number;
+}
+
+export async function fetchTemplates() {
+  const { data } = await api.get<ProjectTemplate[]>("/templates");
   return data;
 }
 

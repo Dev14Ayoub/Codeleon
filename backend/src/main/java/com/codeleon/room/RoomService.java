@@ -7,6 +7,8 @@ import com.codeleon.room.dto.CreateRoomRequest;
 import com.codeleon.room.dto.RoomResponse;
 import com.codeleon.room.enums.RoomMemberRole;
 import com.codeleon.room.enums.RoomVisibility;
+import com.codeleon.room.template.Template;
+import com.codeleon.room.template.TemplateService;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class RoomService {
     private final RoomMemberRepository roomMemberRepository;
     private final RoomFileRepository roomFileRepository;
     private final RoomPinRepository roomPinRepository;
+    private final TemplateService templateService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -46,6 +49,25 @@ public class RoomService {
                 .user(owner)
                 .role(RoomMemberRole.OWNER)
                 .build());
+
+        // If the caller picked a template from the catalogue, materialise
+        // its files now so the dashboard's file count is accurate and the
+        // user lands in a populated workspace instead of an empty one.
+        String templateId = request.templateId();
+        if (templateId != null && !templateId.isBlank()) {
+            Template template = templateService.require(templateId.trim());
+            for (Template.TemplateFile file : template.files()) {
+                String path = RoomFileService.normalizePath(file.path());
+                if (roomFileRepository.existsByRoomAndPath(savedRoom, path)) {
+                    continue;
+                }
+                roomFileRepository.save(RoomFile.builder()
+                        .room(savedRoom)
+                        .path(path)
+                        .language(RoomFileService.detectLanguage(path))
+                        .build());
+            }
+        }
 
         return toResponse(savedRoom, RoomMemberRole.OWNER, false);
     }

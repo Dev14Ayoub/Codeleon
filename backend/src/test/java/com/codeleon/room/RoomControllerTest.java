@@ -139,6 +139,64 @@ class RoomControllerTest {
     }
 
     @Test
+    void listsBundledTemplates() throws Exception {
+        String token = register("templates.list@example.com");
+        mockMvc.perform(get("/templates").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                // 4 templates ship in classpath:templates/ — empty-python,
+                // empty-java, hello-react, algorithms-py. If the count
+                // drifts because a template was added or removed, update
+                // the assertion intentionally rather than auto-pass it.
+                .andExpect(jsonPath("$.length()").value(4))
+                .andExpect(jsonPath("$[?(@.id == 'empty-python')].name").value("Empty Python"))
+                .andExpect(jsonPath("$[?(@.id == 'algorithms-py')].fileCount").value(3));
+    }
+
+    @Test
+    void createRoomFromTemplateMaterialisesFiles() throws Exception {
+        String token = register("templates.create@example.com");
+
+        String response = mockMvc.perform(post("/rooms")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Algorithms studio",
+                                "visibility", "PRIVATE",
+                                "templateId", "algorithms-py"
+                        ))))
+                .andExpect(status().isCreated())
+                // algorithms-py declares 3 files; the count surfaced on
+                // the room response confirms they all landed in the DB.
+                .andExpect(jsonPath("$.fileCount").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String roomId = objectMapper.readTree(response).get("id").asText();
+        mockMvc.perform(get("/rooms/" + roomId + "/files")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[?(@.path == 'binary_search.py')].language").value("python"))
+                .andExpect(jsonPath("$[?(@.path == 'fibonacci.py')].language").value("python"))
+                .andExpect(jsonPath("$[?(@.path == 'bfs.py')].language").value("python"));
+    }
+
+    @Test
+    void unknownTemplateIdReturns404() throws Exception {
+        String token = register("templates.bad@example.com");
+        mockMvc.perform(post("/rooms")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Bogus",
+                                "visibility", "PRIVATE",
+                                "templateId", "no-such-template"
+                        ))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void roomResponseReflectsFileAndMemberCounts() throws Exception {
         String ownerToken = register("room.counts.owner@example.com");
         String guestToken = register("room.counts.guest@example.com");

@@ -18,6 +18,7 @@ export const createRoomSchema = z.object({
   name: z.string().min(2, "Room name must contain at least 2 characters").max(120),
   description: z.string().max(500).optional(),
   visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  templateId: z.string().optional(),
 });
 
 export const joinRoomSchema = z.object({
