@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { Archive, ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, LayoutGrid, Lock, LogOut, Pin, Plus, Radio, Search, Users } from "lucide-react";
+import { Archive, ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, LayoutGrid, Lock, LogOut, Pin, Plus, Radio, Search, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
@@ -10,7 +10,7 @@ import { ProjectCard } from "@/components/projects/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
-import { createRoom, fetchCurrentUser, fetchMyRooms, fetchPublicRooms, joinRoom, type Room } from "@/lib/api";
+import { createRoom, fetchCurrentUser, fetchMyRooms, fetchPublicRooms, fetchTemplates, joinRoom, type ProjectTemplate, type Room } from "@/lib/api";
 import { CreateRoomValues, JoinRoomValues, createRoomSchema, joinRoomSchema } from "@/lib/validators";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -34,8 +34,10 @@ export function DashboardPage() {
       name: "",
       description: "",
       visibility: "PRIVATE",
+      templateId: "",
     },
   });
+  const selectedTemplateId = createForm.watch("templateId");
   const joinForm = useForm<JoinRoomValues>({
     resolver: zodResolver(joinRoomSchema),
     defaultValues: {
@@ -69,10 +71,18 @@ export function DashboardPage() {
     queryFn: fetchPublicRooms,
   });
 
+  // Templates are shipped data, not user data, so we cache them aggressively
+  // (1h staleTime). The dropdown rarely needs an authoritative refresh.
+  const templatesQuery = useQuery({
+    queryKey: ["templates"],
+    queryFn: fetchTemplates,
+    staleTime: 60 * 60 * 1000,
+  });
+
   const createRoomMutation = useMutation({
     mutationFn: createRoom,
     onSuccess: () => {
-      createForm.reset({ name: "", description: "", visibility: "PRIVATE" });
+      createForm.reset({ name: "", description: "", visibility: "PRIVATE", templateId: "" });
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
     },
   });
@@ -178,6 +188,7 @@ export function DashboardPage() {
                   createRoomMutation.mutate({
                     ...values,
                     description: values.description?.trim() || undefined,
+                    templateId: values.templateId?.trim() || undefined,
                   }),
                 )}
               >
@@ -201,6 +212,13 @@ export function DashboardPage() {
                   <Input id="room-description" placeholder="Optional short context" {...createForm.register("description")} />
                   <FieldError message={createForm.formState.errors.description?.message} />
                 </div>
+
+                <TemplatePicker
+                  templates={templatesQuery.data ?? []}
+                  isLoading={templatesQuery.isLoading}
+                  selectedId={selectedTemplateId ?? ""}
+                  onChange={(id) => createForm.setValue("templateId", id, { shouldDirty: true })}
+                />
 
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex cursor-pointer items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-300">
@@ -405,6 +423,87 @@ function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoa
         <ProjectCard key={room.id} room={room} />
       ))}
     </div>
+  );
+}
+
+/**
+ * Horizontal list of template cards shown inside the Create-project form.
+ * Picking a card sets the form's templateId; picking "Empty" clears it so
+ * the room is created with the legacy default-file behaviour. Kept inside
+ * the form (rather than as a separate dropdown menu) so users land on a
+ * populated workspace without a second click.
+ */
+function TemplatePicker({
+  templates,
+  isLoading,
+  selectedId,
+  onChange,
+}: {
+  templates: ProjectTemplate[];
+  isLoading: boolean;
+  selectedId: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+        <Sparkles className="h-4 w-4 text-cyan" />
+        Start from a template
+        <span className="text-xs font-normal text-zinc-500">(optional)</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <TemplateChip
+          selected={!selectedId}
+          onClick={() => onChange("")}
+          title="Empty"
+          subtitle="Single blank file"
+        />
+        {isLoading && (
+          <div className="flex h-[58px] w-40 shrink-0 animate-pulse rounded-md border border-zinc-800 bg-zinc-900" />
+        )}
+        {templates.map((t) => (
+          <TemplateChip
+            key={t.id}
+            selected={selectedId === t.id}
+            onClick={() => onChange(t.id)}
+            title={t.name}
+            subtitle={`${t.language} · ${t.fileCount} ${t.fileCount === 1 ? "file" : "files"}`}
+            tooltip={t.description}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TemplateChip({
+  selected,
+  onClick,
+  title,
+  subtitle,
+  tooltip,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+  tooltip?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      className={
+        selected
+          ? "flex w-40 shrink-0 flex-col items-start gap-0.5 rounded-md border border-signature bg-signature/10 px-3 py-2 text-left ring-2 ring-signature/30"
+          : "flex w-40 shrink-0 flex-col items-start gap-0.5 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
+      }
+      aria-pressed={selected}
+    >
+      <span className={selected ? "text-sm font-medium text-zinc-50" : "text-sm font-medium text-zinc-200"}>{title}</span>
+      <span className="text-xs text-zinc-500">{subtitle}</span>
+    </button>
   );
 }
 

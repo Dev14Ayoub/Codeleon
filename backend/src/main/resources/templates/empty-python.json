@@ -1,0 +1,9 @@
+{
+  "id": "empty-python",
+  "name": "Empty Python",
+  "description": "A blank Python project with a single main.py file ready to run.",
+  "language": "Python",
+  "files": [
+    { "path": "main.py" }
+  ]
+}

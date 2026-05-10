@@ -1,0 +1,11 @@
+{
+  "id": "algorithms-py",
+  "name": "Algorithms playground",
+  "description": "Three classic algorithm files in Python: binary search, Fibonacci, and BFS.",
+  "language": "Python",
+  "files": [
+    { "path": "binary_search.py" },
+    { "path": "fibonacci.py" },
+    { "path": "bfs.py" }
+  ]
+}

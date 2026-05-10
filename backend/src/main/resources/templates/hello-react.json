@@ -1,0 +1,10 @@
+{
+  "id": "hello-react",
+  "name": "Hello React",
+  "description": "A React skeleton with App.jsx and index.css, ready to wire up.",
+  "language": "JavaScript",
+  "files": [
+    { "path": "App.jsx" },
+    { "path": "index.css" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "empty-java",
+  "name": "Empty Java",
+  "description": "A blank Java project with a single Main.java entry point.",
+  "language": "Java",
+  "files": [
+    { "path": "Main.java" }
+  ]
+}

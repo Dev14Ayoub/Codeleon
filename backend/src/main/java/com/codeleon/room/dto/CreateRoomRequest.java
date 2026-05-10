@@ -14,6 +14,16 @@ public record CreateRoomRequest(
         String description,
 
         @NotNull
-        RoomVisibility visibility
+        RoomVisibility visibility,
+
+        /**
+         * Optional template id from the catalogue (see classpath:templates/).
+         * When present, the new room is created with the template's files
+         * already materialised so the user lands in a populated workspace.
+         * When null or blank the existing behaviour applies — the room
+         * starts empty and {@code RoomFileService.loadOrInitRoomSnapshot}
+         * auto-creates a single default {@code main} file on first open.
+         */
+        String templateId
 ) {
 }
