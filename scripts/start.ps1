@@ -1,28 +1,34 @@
 # =============================================================================
 # Codeleon — one-shot dev launcher (Windows PowerShell 5.1+ compatible)
 # =============================================================================
-# Brings up the full stack:
+# Brings up the FULL stack with no flags:
 #   1. Ensures .env exists (copies from .env.example if needed)
-#   2. Starts Docker containers (postgres + redis, and qdrant + ollama if -Ai)
-#   3. Waits for them to report healthy
-#   4. Opens a new PowerShell window for the backend (Spring Boot)
-#   5. Opens a new PowerShell window for the frontend (Vite)
-#   6. Opens the browser to http://localhost:5173 once Vite is ready
+#   2. Frees ports 8080 and 5173 if leftover processes hold them
+#   3. Starts Docker containers (postgres + redis + qdrant + ollama)
+#   4. Waits for them to report healthy
+#   5. Opens a new PowerShell window for the backend (Spring Boot)
+#   6. Opens a new PowerShell window for the frontend (Vite)
+#   7. Opens the browser to http://localhost:5173 once Vite is ready
 #
 # Usage:
-#   .\scripts\start.ps1            # core stack only (no AI services)
-#   .\scripts\start.ps1 -Ai        # also start qdrant + ollama, AI_ENABLED=true
+#   .\scripts\start.ps1            # ← THE button: full stack + AI services
+#   .\scripts\start.ps1 -NoAi      # opt out of qdrant + ollama (rare)
 #   .\scripts\start.ps1 -SkipDocker # skip docker (use when you only restart app)
+#
+# AI services are on by default because the PFE demo needs them. If you
+# really only want postgres + redis + backend + frontend, pass -NoAi.
 #
 # To stop everything: .\scripts\stop.ps1
 # =============================================================================
 
 [CmdletBinding()]
 param(
-    [switch]$Ai,
+    [switch]$NoAi,
     [switch]$SkipDocker,
     [switch]$NoBrowser
 )
+# AI services are on by default — opt out with -NoAi.
+$Ai = -not $NoAi
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
