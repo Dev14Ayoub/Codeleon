@@ -13,17 +13,29 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot '_lib.ps1')
 
 # -----------------------------------------------------------------------------
-# 0. Free port 8080 if anything is still on it. Spring Boot otherwise dies
-#    after a 20 s startup with "Port 8080 was already in use", which is the
-#    most common dev failure mode (previous run leaked, or another tool
-#    spawned its own backend). Doing this in run-backend.ps1 covers every
-#    entry point: start.ps1, IDE run config, .claude/launch.json, or a
-#    developer who runs this script directly.
+# 0. Bail out fast if port 8080 is already taken.
+#
+# An earlier version of this file used Stop-PortListener to kill whatever
+# was on 8080 — useful for orphan cleanup but disastrous when the caller
+# already launched a legitimate backend (start.ps1 spawns one in a separate
+# window, then run-backend.ps1 in the original shell would murder it).
+# Detect-and-fail is the safer contract: orphan cleanup is the job of
+# stop.ps1 and start.ps1, not of the inner wrapper.
 # -----------------------------------------------------------------------------
-[void](Stop-PortListener -Port 8080 -Label 'backend port 8080')
+$listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+if ($listener) {
+    $holderPids = ($listener | Select-Object -ExpandProperty OwningProcess -Unique) -join ', '
+    Write-Host ''
+    Write-Host 'ERROR: port 8080 is already in use (pids ' -ForegroundColor Red -NoNewline
+    Write-Host $holderPids -ForegroundColor Red -NoNewline
+    Write-Host ').' -ForegroundColor Red
+    Write-Host 'Another backend is probably running. Either keep using it, or run' -ForegroundColor Yellow
+    Write-Host '    .\scripts\stop.ps1' -ForegroundColor Yellow
+    Write-Host 'first to free the port, then re-run this script.' -ForegroundColor Yellow
+    exit 1
+}
 
 # -----------------------------------------------------------------------------
 # 1. Load .env (if present) into this process's environment.
