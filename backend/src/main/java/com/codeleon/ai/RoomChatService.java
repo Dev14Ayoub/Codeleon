@@ -23,10 +23,13 @@ public class RoomChatService {
     private static final Logger log = LoggerFactory.getLogger(RoomChatService.class);
 
     private static final String SYSTEM_PROMPT_PREFIX = """
-            You are Codeleon, a coding assistant for a collaborative editor.
-            Answer the user's question using the code excerpts below as context.
-            If the excerpts do not contain enough information, say so plainly.
-            Quote specific lines when relevant. Be concise — this is an editor sidebar.
+            You are Codeleon, a coding assistant inside a collaborative code editor.
+            Use the context below: the file the user currently has open, the error
+            from their last run (if any), and retrieved excerpts from the project.
+            When the user has a bug or an error, give a concrete fix — show the
+            corrected code, not just an explanation. Quote specific lines when
+            relevant. If the context is not enough, say so plainly. Be concise —
+            this is an editor sidebar, not a documentation page.
             """;
 
     private final OllamaClient ollama;
@@ -50,7 +53,7 @@ public class RoomChatService {
 
             // 4. Assemble messages: system + history + user
             List<OllamaClient.ChatMessage> messages = new ArrayList<>();
-            messages.add(OllamaClient.ChatMessage.system(buildSystemPrompt(hits)));
+            messages.add(OllamaClient.ChatMessage.system(buildSystemPrompt(hits, request)));
             messages.addAll(request.historyOrEmpty());
             messages.add(OllamaClient.ChatMessage.user(request.query()));
 
@@ -91,13 +94,40 @@ public class RoomChatService {
         }
     }
 
-    static String buildSystemPrompt(List<QdrantClient.ScoredPoint> hits) {
-        if (hits.isEmpty()) {
-            return SYSTEM_PROMPT_PREFIX
-                    + "\n(No code excerpts were found for this room. Tell the user the room appears empty.)";
-        }
+    /**
+     * Builds the system prompt from three context layers, most-specific
+     * first: the file the user currently has open, the error from their
+     * last run, then the RAG excerpts retrieved from the wider project.
+     * The direct layers (active file, run error) matter most because the
+     * RAG index can be stale or miss unsaved edits — they are what let
+     * the assistant answer "why is THIS broken" instead of guessing.
+     */
+    static String buildSystemPrompt(List<QdrantClient.ScoredPoint> hits, ChatRequest request) {
         StringBuilder sb = new StringBuilder(SYSTEM_PROMPT_PREFIX);
-        sb.append("\n");
+
+        if (request.hasActiveFile()) {
+            sb.append("\n\n--- currently open file (").append(request.activeFilePath()).append(") ---\n")
+                    .append(cap(request.activeFileContent(), ChatRequest.MAX_ACTIVE_FILE_CHARS))
+                    .append("\n--- end currently open file ---\n");
+        }
+
+        if (request.hasRunError()) {
+            sb.append("\n--- error from the user's last run ---\n")
+                    .append(cap(request.lastRunStderr(), ChatRequest.MAX_RUN_STDERR_CHARS))
+                    .append("\n--- end error ---\n");
+        }
+
+        if (hits.isEmpty()) {
+            if (!request.hasActiveFile()) {
+                // Nothing indexed and no open file — there is genuinely
+                // no code context to work from.
+                sb.append("\n(No project excerpts were found and no file is open. "
+                        + "Tell the user the room appears empty.)");
+            }
+            return sb.toString();
+        }
+
+        sb.append("\n--- retrieved project excerpts ---\n");
         for (int i = 0; i < hits.size(); i++) {
             QdrantClient.ScoredPoint h = hits.get(i);
             String path = String.valueOf(h.payload().getOrDefault("path", "unknown"));
@@ -128,5 +158,17 @@ public class RoomChatService {
     private static String truncate(String s, int max) {
         if (s.length() <= max) return s;
         return s.substring(0, max) + "...";
+    }
+
+    /**
+     * Caps a context block to a char budget. Unlike {@link #truncate}
+     * (used for short UI previews) this keeps the head of the content —
+     * the start of a file or a stack trace is the part the model needs —
+     * and appends an explicit marker so the model knows it is partial.
+     */
+    private static String cap(String s, int max) {
+        if (s == null) return "";
+        if (s.length() <= max) return s;
+        return s.substring(0, max) + "\n... [truncated, " + (s.length() - max) + " more chars]";
     }
 }

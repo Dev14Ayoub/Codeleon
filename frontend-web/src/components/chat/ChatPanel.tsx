@@ -7,11 +7,15 @@ import { cn } from "@/lib/utils";
 
 interface ChatPanelProps {
   roomId: string;
-  /** Returns the current editor text (used by the "Index" button). */
+  /** Returns the current editor text — used by "Index" and sent as live context. */
   getEditorText: () => string;
+  /** Path of the file the user currently has open, attached to each chat turn. */
+  activeFilePath: string | null;
+  /** stderr of the most recent Run, if any — lets the assistant debug the actual error. */
+  lastRunStderr: string | null;
 }
 
-export function ChatPanel({ roomId, getEditorText }: ChatPanelProps) {
+export function ChatPanel({ roomId, getEditorText, activeFilePath, lastRunStderr }: ChatPanelProps) {
   const chat = useRoomChat(roomId);
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -29,7 +33,15 @@ export function ChatPanel({ roomId, getEditorText }: ChatPanelProps) {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.trim() || chat.streaming) return;
-    void chat.send(draft);
+    // Attach the live editor context: the open file + its content, and
+    // the last run's error. This is what the RAG index can't give us —
+    // it lets the assistant answer about unsaved/unindexed code.
+    const editorText = getEditorText();
+    void chat.send(draft, {
+      activeFilePath: activeFilePath ?? undefined,
+      activeFileContent: editorText.trim() ? editorText : undefined,
+      lastRunStderr: lastRunStderr ?? undefined,
+    });
     setDraft("");
   };
 
@@ -106,7 +118,8 @@ export function ChatPanel({ roomId, getEditorText }: ChatPanelProps) {
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Sparkles className="h-6 w-6 text-zinc-600" />
             <p className="mt-2 text-xs text-zinc-500">
-              Index your code, then ask the assistant about it.
+              Ask about your open file or your last run&apos;s error — the
+              assistant sees both. Index the project for wider context.
             </p>
           </div>
         )}
@@ -163,7 +176,7 @@ export function ChatPanel({ roomId, getEditorText }: ChatPanelProps) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onTextareaKey}
-          placeholder="Ask about the indexed code..."
+          placeholder="Ask about your code, or paste an error..."
           rows={3}
           disabled={chat.streaming}
           className={cn(

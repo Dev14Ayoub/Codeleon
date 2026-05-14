@@ -23,13 +23,25 @@ export interface ChatDoneStats {
   contextChunks: number;
 }
 
+/**
+ * "Live" context the editor can attach to a chat turn — the file the
+ * user currently has open and the error from their last run. The RAG
+ * index cannot provide these (it can be stale or miss unsaved edits),
+ * so the frontend ships them directly with each question.
+ */
+export interface ChatSendContext {
+  activeFilePath?: string;
+  activeFileContent?: string;
+  lastRunStderr?: string;
+}
+
 interface UseRoomChatResult {
   messages: ChatMessage[];
   context: ChatContextChunk[];
   streaming: boolean;
   error: string | null;
   lastStats: ChatDoneStats | null;
-  send: (query: string) => Promise<void>;
+  send: (query: string, sendContext?: ChatSendContext) => Promise<void>;
   clear: () => void;
   cancel: () => void;
 }
@@ -65,7 +77,7 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
   }, []);
 
   const send = useCallback(
-    async (query: string) => {
+    async (query: string, sendContext?: ChatSendContext) => {
       if (!roomId || !query.trim() || streaming) return;
       setError(null);
       setContext([]);
@@ -94,7 +106,15 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
             Authorization: token ? `Bearer ${token}` : "",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ query: trimmed, history }),
+          body: JSON.stringify({
+            query: trimmed,
+            history,
+            // Backend caps these (255 / 16000 / 4000 chars); we send them
+            // raw and let it truncate rather than guessing limits here.
+            activeFilePath: sendContext?.activeFilePath || undefined,
+            activeFileContent: sendContext?.activeFileContent || undefined,
+            lastRunStderr: sendContext?.lastRunStderr || undefined,
+          }),
           signal: ctrl.signal,
         });
 

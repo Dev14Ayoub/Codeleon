@@ -516,7 +516,12 @@ export function RoomPage() {
             </section>
 
             <section className="flex min-h-0 flex-col p-4">
-              <ChatPanel roomId={roomId} getEditorText={getEditorText} />
+              <ChatPanel
+                roomId={roomId}
+                getEditorText={getEditorText}
+                activeFilePath={activePath}
+                lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+              />
             </section>
           </aside>
         )}

@@ -11,7 +11,6 @@ import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -19,6 +18,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RoomChatServiceTest {
+
+    /** Query-only request — the common case before AI-1's direct context. */
+    private static ChatRequest queryOnly(String query) {
+        return new ChatRequest(query, null, null, null, null, null);
+    }
 
     @Test
     void buildSystemPromptInjectsExcerpts() {
@@ -35,7 +39,7 @@ class RoomChatServiceTest {
                 ))
         );
 
-        String prompt = RoomChatService.buildSystemPrompt(hits);
+        String prompt = RoomChatService.buildSystemPrompt(hits, queryOnly("how does fibonacci work?"));
 
         assertThat(prompt).contains("excerpt 1");
         assertThat(prompt).contains("path=main");
@@ -47,8 +51,32 @@ class RoomChatServiceTest {
 
     @Test
     void buildSystemPromptHandlesEmptyContext() {
-        String prompt = RoomChatService.buildSystemPrompt(List.of());
-        assertThat(prompt).contains("No code excerpts");
+        String prompt = RoomChatService.buildSystemPrompt(List.of(), queryOnly("anything?"));
+        assertThat(prompt).contains("the room appears empty");
+    }
+
+    @Test
+    void buildSystemPromptInjectsActiveFileAndRunError() {
+        // No RAG hits at all — the assistant should still get real context
+        // from the open file and the last run's error.
+        ChatRequest request = new ChatRequest(
+                "why does this crash?",
+                null,
+                null,
+                "main.py",
+                "print(undefined_var)",
+                "NameError: name 'undefined_var' is not defined"
+        );
+
+        String prompt = RoomChatService.buildSystemPrompt(List.of(), request);
+
+        assertThat(prompt).contains("currently open file (main.py)");
+        assertThat(prompt).contains("print(undefined_var)");
+        assertThat(prompt).contains("error from the user's last run");
+        assertThat(prompt).contains("NameError");
+        // With a real open file present, we must NOT fall back to the
+        // "room appears empty" message even though there are no RAG hits.
+        assertThat(prompt).doesNotContain("the room appears empty");
     }
 
     @Test
@@ -96,9 +124,7 @@ class RoomChatServiceTest {
         });
 
         RoomChatService service = new RoomChatService(ollama, streamer, qdrant);
-        ChatRequest request = new ChatRequest("how does fibonacci work?", null, null);
-
-        service.streamChat(roomId, request, emitter);
+        service.streamChat(roomId, queryOnly("how does fibonacci work?"), emitter);
 
         // Verify the emitter received: 1 context + 2 token + 1 done = 4 events
         ArgumentCaptor<SseEmitter.SseEventBuilder> events =
@@ -121,7 +147,7 @@ class RoomChatServiceTest {
         when(ollama.embed(any())).thenThrow(new IllegalStateException("Ollama unreachable"));
 
         RoomChatService service = new RoomChatService(ollama, streamer, qdrant);
-        service.streamChat(roomId, new ChatRequest("hi", null, null), emitter);
+        service.streamChat(roomId, queryOnly("hi"), emitter);
 
         verify(emitter, atLeastOnce()).send(any(SseEmitter.SseEventBuilder.class));
         verify(emitter).completeWithError(any());
