@@ -74,6 +74,16 @@ public class Room {
     @Column(name = "archived_at")
     private Instant archivedAt;
 
+    /**
+     * Denormalised pointer to the last user who emitted a room_event here.
+     * Kept on the room row so the dashboard listing can show "Last edited
+     * by X" without a per-card join into room_events; refreshed by
+     * {@code RoomEventService.emit} alongside every event insert.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "last_edited_by_id")
+    private User lastEditedBy;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/brand/Logo";
+import { ActivityFeed } from "@/components/projects/ActivityFeed";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
@@ -151,7 +152,9 @@ export function DashboardPage() {
           </Button>
         </header>
 
-        <div className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 space-y-8">
           <div className="grid gap-3 sm:grid-cols-3">
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
@@ -285,6 +288,14 @@ export function DashboardPage() {
               rooms={publicRoomsView}
             />
           </section>
+            </div>
+
+            <aside className="hidden xl:block">
+              <div className="sticky top-8">
+                <ActivityFeed currentUserId={user?.id} />
+              </div>
+            </aside>
+          </div>
         </div>
       </section>
     </main>

@@ -7,6 +7,8 @@ import com.codeleon.room.dto.CreateRoomRequest;
 import com.codeleon.room.dto.RoomResponse;
 import com.codeleon.room.enums.RoomMemberRole;
 import com.codeleon.room.enums.RoomVisibility;
+import com.codeleon.room.event.RoomEventService;
+import com.codeleon.room.event.RoomEventType;
 import com.codeleon.room.template.Template;
 import com.codeleon.room.template.TemplateService;
 import com.codeleon.user.User;
@@ -31,6 +33,7 @@ public class RoomService {
     private final RoomFileRepository roomFileRepository;
     private final RoomPinRepository roomPinRepository;
     private final TemplateService templateService;
+    private final RoomEventService roomEventService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -127,6 +130,10 @@ public class RoomService {
                             .user(user)
                             .role(RoomMemberRole.EDITOR)
                             .build());
+                    // Only emit on a genuinely new membership — re-opening
+                    // an invite link you already used should be a no-op in
+                    // the feed, not a fresh "joined" line every time.
+                    roomEventService.emit(room.getId(), user, RoomEventType.MEMBER_JOINED);
                     return toResponse(room, member.getRole(), pinned);
                 });
     }
@@ -198,6 +205,7 @@ public class RoomService {
     private RoomResponse toResponse(Room room, RoomMemberRole currentUserRole, boolean pinned) {
         long fileCount = roomFileRepository.countByRoom(room);
         long memberCount = roomMemberRepository.countByRoom(room);
+        User lastEditedBy = room.getLastEditedBy();
         return new RoomResponse(
                 room.getId(),
                 room.getName(),
@@ -211,6 +219,8 @@ public class RoomService {
                 memberCount,
                 pinned,
                 room.getArchivedAt() != null,
+                lastEditedBy != null ? lastEditedBy.getId() : null,
+                lastEditedBy != null ? lastEditedBy.getFullName() : null,
                 room.getCreatedAt(),
                 room.getUpdatedAt()
         );

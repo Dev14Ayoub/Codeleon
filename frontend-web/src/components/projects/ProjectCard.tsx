@@ -127,6 +127,12 @@ export function ProjectCard({ room }: ProjectCardProps) {
         <span>Updated {formatRelativeDate(room.updatedAt)}</span>
       </div>
 
+      {room.lastEditedByName && (
+        <p className="mt-2 text-xs text-zinc-600">
+          Last edited by <span className="text-zinc-400">{room.lastEditedByName}</span>
+        </p>
+      )}
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-zinc-800 pt-4">
         <button
           type="button"
