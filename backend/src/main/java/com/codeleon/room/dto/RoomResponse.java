@@ -19,6 +19,11 @@ public record RoomResponse(
         long memberCount,
         boolean pinned,
         boolean archived,
+        // Denormalised from rooms.last_edited_by_id — null until the room
+        // has seen its first activity event. Flat id+name pair to stay
+        // consistent with ownerId/ownerName above.
+        UUID lastEditedById,
+        String lastEditedByName,
         Instant createdAt,
         Instant updatedAt
 ) {

@@ -4,6 +4,8 @@ import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.enums.RoomMemberRole;
 import com.codeleon.room.enums.RoomVisibility;
+import com.codeleon.room.event.RoomEventService;
+import com.codeleon.room.event.RoomEventType;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -23,6 +26,7 @@ public class RoomFileService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final RoomFileRepository roomFileRepository;
+    private final RoomEventService roomEventService;
 
     // ---------------------------------------------------------------------
     // Snapshots — now scoped to the entire Room (one Y.Doc per room, with
@@ -70,11 +74,13 @@ public class RoomFileService {
         if (roomFileRepository.existsByRoomAndPath(room, trimmed)) {
             throw new BadRequestException("A file named '" + trimmed + "' already exists in this room");
         }
-        return roomFileRepository.save(RoomFile.builder()
+        RoomFile saved = roomFileRepository.save(RoomFile.builder()
                 .room(room)
                 .path(trimmed)
                 .language(detectLanguage(trimmed))
                 .build());
+        roomEventService.emit(roomId, user, RoomEventType.FILE_CREATED, Map.of("path", trimmed));
+        return saved;
     }
 
     @Transactional
@@ -89,9 +95,13 @@ public class RoomFileService {
         if (roomFileRepository.existsByRoomAndPath(room, trimmed)) {
             throw new BadRequestException("A file named '" + trimmed + "' already exists in this room");
         }
+        String oldPath = file.getPath();
         file.setPath(trimmed);
         file.setLanguage(detectLanguage(trimmed));
-        return roomFileRepository.save(file);
+        RoomFile saved = roomFileRepository.save(file);
+        roomEventService.emit(roomId, user, RoomEventType.FILE_RENAMED,
+                Map.of("from", oldPath, "to", trimmed));
+        return saved;
     }
 
     @Transactional
@@ -106,6 +116,7 @@ public class RoomFileService {
             throw new BadRequestException("Cannot delete the only remaining file in this room");
         }
         roomFileRepository.delete(file);
+        roomEventService.emit(roomId, user, RoomEventType.FILE_DELETED, Map.of("path", file.getPath()));
         // Note: the Y.Text("path") inside the room's Y.Doc is left orphaned.
         // It does not show up in the file list anymore, and is not exposed by
         // any API. A future migration can prune Y.Doc keys at idle time.

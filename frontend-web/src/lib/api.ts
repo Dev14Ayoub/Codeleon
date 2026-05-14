@@ -33,8 +33,29 @@ export interface Room {
   memberCount: number;
   pinned: boolean;
   archived: boolean;
+  lastEditedById: string | null;
+  lastEditedByName: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type RoomEventType =
+  | "FILE_CREATED"
+  | "FILE_RENAMED"
+  | "FILE_DELETED"
+  | "MEMBER_JOINED"
+  | "CODE_RAN"
+  | "AI_ASKED";
+
+export interface RoomEvent {
+  id: string;
+  roomId: string;
+  roomName: string;
+  userId: string | null;
+  userName: string | null;
+  type: RoomEventType;
+  payload: Record<string, string>;
+  createdAt: string;
 }
 
 export const api = axios.create({
@@ -122,6 +143,18 @@ export interface ProjectTemplate {
 
 export async function fetchTemplates() {
   const { data } = await api.get<ProjectTemplate[]>("/templates");
+  return data;
+}
+
+/**
+ * Cross-room activity feed for the dashboard sidebar. Pass `since`
+ * (an ISO timestamp) to fetch only events newer than what the client
+ * already holds — used by the 30s poll to avoid re-pulling the page.
+ */
+export async function fetchActivity(since?: string) {
+  const { data } = await api.get<RoomEvent[]>("/events", {
+    params: since ? { since } : undefined,
+  });
   return data;
 }
 

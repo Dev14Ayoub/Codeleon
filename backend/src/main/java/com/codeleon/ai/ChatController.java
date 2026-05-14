@@ -3,6 +3,8 @@ package com.codeleon.ai;
 import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.RoomFileService;
+import com.codeleon.room.event.RoomEventService;
+import com.codeleon.room.event.RoomEventType;
 import com.codeleon.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ public class ChatController {
 
     private final RoomChatService chatService;
     private final RoomFileService roomFileService;
+    private final RoomEventService roomEventService;
     private final AiProperties aiProperties;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -44,6 +47,11 @@ public class ChatController {
         if (!roomFileService.canRead(roomId, user)) {
             throw new NotFoundException("Room not found");
         }
+
+        // Record the prompt in the activity feed before the answer streams
+        // back. We log the event at request time (not on completion) so a
+        // long or aborted stream still shows "asked the AI" in the feed.
+        roomEventService.emit(roomId, user, RoomEventType.AI_ASKED);
 
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         CompletableFuture.runAsync(() -> chatService.streamChat(roomId, request, emitter), executor);
