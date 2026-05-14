@@ -98,6 +98,13 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
+      // The `done` SSE event is the authoritative "answer complete" signal.
+      // Once we've seen it, the reply is fully rendered — any exception
+      // afterwards is just the connection being torn down (Chrome's fetch
+      // ReadableStream throws "network error" on SSE close even when the
+      // stream finished cleanly). We must NOT surface that as a chat error.
+      let receivedDone = false;
+
       try {
         const res = await fetch(`${API_BASE_URL}/rooms/${roomId}/chat`, {
           method: "POST",
@@ -141,7 +148,9 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
         // flush trailing event without terminating \n\n (rare)
         if (buffer.trim().length > 0) handleSseEvent(buffer);
       } catch (ex) {
-        if (!ctrl.signal.aborted) {
+        // Ignore errors once the answer is complete (see receivedDone above)
+        // or when the user cancelled — neither is a real failure.
+        if (!ctrl.signal.aborted && !receivedDone) {
           const msg = ex instanceof Error ? ex.message : String(ex);
           setError(msg);
         }
@@ -182,6 +191,10 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
             // ignore malformed context
           }
         } else if (eventName === "done") {
+          // Mark the turn as successfully completed BEFORE parsing stats,
+          // so even a malformed done payload still suppresses the spurious
+          // post-stream "network error".
+          receivedDone = true;
           try {
             setLastStats(JSON.parse(data) as ChatDoneStats);
           } catch {
