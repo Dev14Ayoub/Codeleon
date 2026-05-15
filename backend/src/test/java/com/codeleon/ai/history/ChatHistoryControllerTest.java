@@ -96,13 +96,112 @@ class ChatHistoryControllerTest {
                 .andExpect(jsonPath("$[0].content").value("guest question"))
                 .andExpect(jsonPath("$[1].content").value("guest reply"));
 
-        // And the owner endpoint, at this AI-3a stage, also returns ONLY the
-        // owner's two messages — the owner-review override lands in AI-3b.
+        // /chat/history with no userId returns the caller's own thread,
+        // even for the owner — the AI-3b owner-override is opt-in via the
+        // ?userId param, not implicit on the default endpoint.
         mockMvc.perform(get("/rooms/" + roomId + "/chat/history")
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].content").value("owner secret question"));
+    }
+
+    @Test
+    void ownerCanReadAnotherMembersThreadViaUserIdParam() throws Exception {
+        String ownerToken = register("history.review.owner@example.com", "Review Owner");
+        String guestToken = register("history.review.guest@example.com", "Review Guest");
+
+        JsonNode room = createRoom(ownerToken, "Review Room");
+        UUID roomId = UUID.fromString(room.get("id").asText());
+        String inviteCode = room.get("inviteCode").asText();
+
+        mockMvc.perform(post("/rooms/join/" + inviteCode)
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isOk());
+
+        User guest = loadUser("history.review.guest@example.com");
+        historyService.record(roomId, guest, RoomChatRole.USER, "i wrote a bug");
+        historyService.record(roomId, guest, RoomChatRole.ASSISTANT, "here is the fix");
+
+        // Owner fetches the guest's thread by id — gets the guest's two
+        // messages, with the guest tagged as the author.
+        mockMvc.perform(get("/rooms/" + roomId + "/chat/history?userId=" + guest.getId())
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].content").value("i wrote a bug"))
+                .andExpect(jsonPath("$[0].userName").value("Review Guest"))
+                .andExpect(jsonPath("$[1].content").value("here is the fix"));
+    }
+
+    @Test
+    void nonOwnerCannotReadAnotherMembersThread() throws Exception {
+        String ownerToken = register("history.guard.owner@example.com", "Guard Owner");
+        String aliceToken = register("history.guard.alice@example.com", "Alice");
+        String bobToken = register("history.guard.bob@example.com", "Bob");
+
+        JsonNode room = createRoom(ownerToken, "Guard Room");
+        UUID roomId = UUID.fromString(room.get("id").asText());
+        String inviteCode = room.get("inviteCode").asText();
+
+        for (String t : new String[]{aliceToken, bobToken}) {
+            mockMvc.perform(post("/rooms/join/" + inviteCode)
+                            .header("Authorization", "Bearer " + t))
+                    .andExpect(status().isOk());
+        }
+
+        User bob = loadUser("history.guard.bob@example.com");
+        historyService.record(roomId, bob, RoomChatRole.USER, "bob writes");
+
+        // Alice tries to peek at Bob's thread — must be 403. The owner can
+        // also see it (covered above) but a co-member cannot.
+        mockMvc.perform(get("/rooms/" + roomId + "/chat/history?userId=" + bob.getId())
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ownerCanListAllThreadsInRoom() throws Exception {
+        String ownerToken = register("history.threads.owner@example.com", "Threads Owner");
+        String aliceToken = register("history.threads.alice@example.com", "Alice T");
+        String bobToken = register("history.threads.bob@example.com", "Bob T");
+
+        JsonNode room = createRoom(ownerToken, "Threads Room");
+        UUID roomId = UUID.fromString(room.get("id").asText());
+        String inviteCode = room.get("inviteCode").asText();
+        for (String t : new String[]{aliceToken, bobToken}) {
+            mockMvc.perform(post("/rooms/join/" + inviteCode)
+                            .header("Authorization", "Bearer " + t))
+                    .andExpect(status().isOk());
+        }
+
+        User alice = loadUser("history.threads.alice@example.com");
+        User bob = loadUser("history.threads.bob@example.com");
+        historyService.record(roomId, alice, RoomChatRole.USER, "alice msg 1");
+        historyService.record(roomId, alice, RoomChatRole.ASSISTANT, "alice reply 1");
+        historyService.record(roomId, bob, RoomChatRole.USER, "bob msg 1");
+
+        mockMvc.perform(get("/rooms/" + roomId + "/chat/threads")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void nonOwnerCannotListThreads() throws Exception {
+        String ownerToken = register("history.threads.guard.owner@example.com", "TG Owner");
+        String guestToken = register("history.threads.guard.guest@example.com", "TG Guest");
+
+        JsonNode room = createRoom(ownerToken, "Threads Guard Room");
+        UUID roomId = UUID.fromString(room.get("id").asText());
+        String inviteCode = room.get("inviteCode").asText();
+        mockMvc.perform(post("/rooms/join/" + inviteCode)
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/rooms/" + roomId + "/chat/threads")
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
     }
 
     @Test
