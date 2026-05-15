@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Codeleon — Présentation PFE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090B;
+    --surface: #18181B;
+    --raised: #27272A;
+    --border: #27272A;
+    --text: #FAFAFA;
+    --muted: #A1A1AA;
+    --dim: #71717A;
+    --faint: #52525B;
+    --signature: #6366F1;
+    --cyan: #06B6D4;
+    --success: #10B981;
+    --amber: #F59E0B;
+    --rose: #F43F5E;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 400; font-size: 11pt; line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  @page { size: A4; margin: 0; }
+
+  .page {
+    width: 210mm; height: 297mm;
+    padding: 24mm 22mm;
+    page-break-after: always;
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: avoid; }
+  .page-number {
+    position: absolute; bottom: 10mm; right: 22mm;
+    font-family: 'Geist Mono', monospace; font-size: 8pt;
+    color: var(--faint); letter-spacing: 0.05em;
+  }
+  .page-label {
+    position: absolute; bottom: 10mm; left: 22mm;
+    font-family: 'Geist Mono', monospace; font-size: 8pt;
+    color: var(--cyan); letter-spacing: 0.18em; text-transform: uppercase;
+  }
+
+  /* Typography */
+  h1, h2, h3, h4 { font-family: 'Geist', sans-serif; letter-spacing: -0.01em; margin: 0; color: var(--text); }
+  h1 { font-size: 48pt; font-weight: 600; line-height: 1.05; }
+  h2 { font-size: 20pt; font-weight: 600; margin: 0 0 6mm 0; }
+  h3 { font-size: 13pt; font-weight: 600; margin: 6mm 0 2mm 0; }
+  h4 { font-size: 10pt; font-weight: 500; color: var(--muted); margin: 4mm 0 1mm 0; text-transform: uppercase; letter-spacing: 0.1em; font-family: 'Geist Mono', monospace; }
+  p { margin: 0 0 3.5mm 0; color: var(--muted); }
+  p.lead { color: var(--text); font-size: 12pt; line-height: 1.55; }
+  strong { color: var(--text); font-weight: 600; }
+  em { font-style: normal; color: var(--cyan); }
+  code { font-family: 'Geist Mono', monospace; font-size: 0.86em; background: var(--raised); color: var(--text); padding: 0.5mm 1.4mm; border-radius: 1.5mm; }
+  pre { font-family: 'Geist Mono', monospace; font-size: 8.5pt; background: #050507; border: 0.3mm solid var(--border); padding: 4mm 5mm; border-radius: 2mm; color: var(--muted); white-space: pre; overflow: hidden; line-height: 1.5; }
+  pre .kw { color: var(--signature); }
+  pre .str { color: var(--cyan); }
+  pre .com { color: var(--faint); }
+  ul, ol { margin: 0 0 4mm 0; padding-left: 5mm; color: var(--muted); }
+  li { margin-bottom: 1.5mm; }
+
+  /* Cover */
+  .cover { display: flex; flex-direction: column; justify-content: space-between; padding: 26mm 22mm; }
+  .cover-mark { display: flex; align-items: center; gap: 4mm; }
+  .cover-mark .logo { width: 14mm; height: 14mm; border-radius: 3mm; background: linear-gradient(135deg, var(--signature) 0%, var(--cyan) 100%); display: flex; align-items: center; justify-content: center; }
+  .cover-mark .logo svg { width: 8.5mm; height: 8.5mm; }
+  .cover-mark .name { font-family: 'Geist Mono', monospace; font-size: 10pt; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+  .cover-title { display: flex; flex-direction: column; gap: 8mm; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6mm; padding-top: 8mm; border-top: 0.3mm solid var(--border); }
+  .cover-meta .field { display: flex; flex-direction: column; gap: 1mm; }
+  .cover-meta .label { font-family: 'Geist Mono', monospace; font-size: 7.5pt; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); }
+  .cover-meta .value { font-size: 10.5pt; color: var(--text); font-weight: 500; }
+  .stat-strip { display: flex; gap: 10mm; padding-top: 6mm; }
+  .stat-strip .stat { display: flex; flex-direction: column; gap: 0.5mm; }
+  .stat-strip .num { font-family: 'Geist Mono', monospace; font-size: 22pt; font-weight: 500; color: var(--cyan); letter-spacing: -0.02em; line-height: 1; }
+  .stat-strip .cap { font-family: 'Geist Mono', monospace; font-size: 7.5pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+
+  /* Section header */
+  .section-head { display: flex; align-items: baseline; gap: 5mm; margin-bottom: 8mm; padding-bottom: 4mm; border-bottom: 0.3mm solid var(--border); }
+  .section-num { font-family: 'Geist Mono', monospace; font-size: 8pt; letter-spacing: 0.2em; color: var(--cyan); }
+
+  /* Grid utilities */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; }
+
+  /* Cards / panels */
+  .panel { background: var(--surface); border: 0.3mm solid var(--border); border-radius: 2.5mm; padding: 5mm 6mm; }
+  .panel-head { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 3mm; }
+  .panel-head .dot { width: 2mm; height: 2mm; border-radius: 50%; background: var(--cyan); }
+  .panel-title { font-family: 'Geist Mono', monospace; font-size: 8pt; letter-spacing: 0.15em; color: var(--cyan); text-transform: uppercase; }
+
+  /* Stat tile (in-body) */
+  .tile { background: var(--surface); border: 0.3mm solid var(--border); border-radius: 2.5mm; padding: 5mm 6mm; }
+  .tile .num { font-family: 'Geist Mono', monospace; font-size: 24pt; color: var(--cyan); font-weight: 500; line-height: 1; margin-bottom: 2mm; }
+  .tile .label { font-family: 'Geist Mono', monospace; font-size: 7.5pt; color: var(--dim); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 2mm; }
+  .tile .desc { font-size: 9pt; color: var(--muted); line-height: 1.4; }
+
+  /* Definitions */
+  .defs dt { font-family: 'Geist Mono', monospace; font-size: 8.5pt; color: var(--cyan); margin-top: 3mm; letter-spacing: 0.05em; }
+  .defs dd { margin: 0.5mm 0 0 0; font-size: 10pt; color: var(--muted); }
+
+  /* Stack table */
+  .stack { width: 100%; border-collapse: collapse; }
+  .stack td { padding: 2.2mm 3mm; vertical-align: top; border-bottom: 0.2mm solid var(--border); font-size: 9.5pt; }
+  .stack td:first-child { color: var(--cyan); font-family: 'Geist Mono', monospace; font-size: 8.5pt; letter-spacing: 0.05em; width: 28mm; }
+  .stack td:nth-child(2) { color: var(--text); font-weight: 500; width: 38mm; }
+  .stack td:last-child { color: var(--muted); }
+
+  /* Screenshot wrapper */
+  .shot { background: var(--surface); border: 0.3mm solid var(--border); border-radius: 2.5mm; padding: 2mm; overflow: hidden; position: relative; }
+  .shot img { width: 100%; display: block; border-radius: 1.5mm; }
+  .shot-cap { font-family: 'Geist Mono', monospace; font-size: 7.5pt; color: var(--cyan); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 2mm; }
+
+  /* Problem cards */
+  .problem { background: var(--surface); border: 0.3mm solid var(--border); border-radius: 2mm; padding: 4mm 5mm; margin-bottom: 3.5mm; position: relative; padding-left: 7mm; }
+  .problem::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 1.2mm; border-radius: 2mm 0 0 2mm; background: var(--signature); }
+  .problem h4 { color: var(--text); font-family: 'Geist', sans-serif; text-transform: none; font-size: 10pt; letter-spacing: -0.005em; margin: 0 0 1.5mm 0; }
+  .problem .ctx { font-size: 9pt; color: var(--muted); margin-bottom: 1.5mm; }
+  .problem .fix { font-size: 9pt; color: var(--text); }
+  .problem .fix::before { content: '→ '; color: var(--cyan); font-weight: 500; }
+
+  /* Commits annexe */
+  .commits { width: 100%; border-collapse: collapse; }
+  .commits td { padding: 1.8mm 2mm; font-size: 8.5pt; vertical-align: top; border-bottom: 0.2mm solid var(--border); }
+  .commits td.sha { font-family: 'Geist Mono', monospace; color: var(--cyan); width: 22mm; letter-spacing: 0.02em; }
+  .commits td.msg { color: var(--text); }
+  .commits td.tag { font-family: 'Geist Mono', monospace; color: var(--dim); font-size: 7.5pt; width: 18mm; text-align: right; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* Misc */
+  .pull-quote { font-size: 14pt; line-height: 1.45; color: var(--text); font-weight: 300; padding: 6mm 0; border-left: 1mm solid var(--cyan); padding-left: 6mm; margin: 6mm 0; }
+  .pull-quote cite { display: block; margin-top: 3mm; font-size: 9pt; font-style: normal; color: var(--dim); letter-spacing: 0.05em; }
+  .tag { display: inline-block; font-family: 'Geist Mono', monospace; font-size: 7.5pt; letter-spacing: 0.12em; text-transform: uppercase; padding: 1mm 2mm; border-radius: 1.5mm; border: 0.3mm solid var(--border); color: var(--muted); margin-right: 1mm; }
+  .tag.cyan { color: var(--cyan); border-color: rgba(6, 182, 212, 0.4); background: rgba(6, 182, 212, 0.08); }
+  .tag.sig { color: var(--signature); border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.08); }
+  .tag.amber { color: var(--amber); border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); }
+  .tag.success { color: var(--success); border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08); }
+
+  hr { border: none; height: 0.3mm; background: var(--border); margin: 6mm 0; }
+</style>
+</head>
+<body>
+
+<!-- ===================== PAGE 1 — COVER ===================== -->
+<section class="page cover">
+  <div class="cover-mark">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </div>
+    <span class="name">Codeleon</span>
+  </div>
+
+  <div class="cover-title">
+    <p style="font-family: 'Geist Mono', monospace; font-size: 9pt; letter-spacing: 0.2em; color: var(--cyan); margin: 0; text-transform: uppercase;">Projet de Fin d'Études · Licence Professionnelle</p>
+    <h1>Codeleon.<br/><span style="color: var(--muted); font-weight: 300;">Plateforme collaborative<br/>de programmation, IA locale.</span></h1>
+    <p style="font-size: 12pt; max-width: 130mm; color: var(--muted); margin: 0;">
+      Un espace de travail dans le navigateur où des équipes éditent le même code en temps réel, exécutent dans un sandbox isolé, et conversent avec un assistant IA local qui voit leur projet.
+    </p>
+  </div>
+
+  <div>
+    <div class="stat-strip">
+      <div class="stat"><div class="num">17</div><div class="cap">Commits — sprint final</div></div>
+      <div class="stat"><div class="num">85<span style="color: var(--dim); font-size: 13pt;">/85</span></div><div class="cap">Tests backend verts</div></div>
+      <div class="stat"><div class="num">25+</div><div class="cap">Langages à l'édition</div></div>
+      <div class="stat"><div class="num">4</div><div class="cap">Services Docker</div></div>
+    </div>
+    <div class="cover-meta" style="margin-top: 8mm;">
+      <div class="field"><div class="label">Étudiant</div><div class="value">Ayoub Bznitar</div></div>
+      <div class="field"><div class="label">Filière</div><div class="value">Licence Pro</div></div>
+      <div class="field"><div class="label">Lieu</div><div class="value">Fès, Maroc</div></div>
+      <div class="field"><div class="label">Date</div><div class="value">Mai 2026</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PAGE 2 — RÉSUMÉ EXÉCUTIF ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">01</span>
+    <h2>Résumé exécutif</h2>
+  </div>
+
+  <p class="lead">
+    <strong>Codeleon</strong> est une plateforme collaborative de programmation accessible depuis un simple navigateur. Plusieurs utilisateurs entrent dans la même <em>room</em>, éditent simultanément les fichiers d'un projet via un éditeur <em>Monaco</em> (le moteur de VS Code), exécutent leur code Python dans un <em>sandbox Docker</em> isolé, et discutent avec un <em>assistant IA local</em> qui lit leurs fichiers et leurs erreurs d'exécution.
+  </p>
+
+  <p>
+    Le projet est entièrement <strong>auto-hébergé</strong> : pas d'appel à une API cloud, pas de modèle propriétaire. Le pipeline d'IA tourne sur la machine via <code>Ollama</code> avec un modèle <code>qwen2.5-coder:1.5b</code> quantifié, et le moteur de recherche vectoriel <code>Qdrant</code> indexe les fichiers du projet pour la <em>Retrieval-Augmented Generation</em>. Cette contrainte — locale, CPU-only, 8 Go de RAM — a guidé chaque décision technique.
+  </p>
+
+  <p>
+    La sprint final a livré <strong>17 commits</strong> répartis sur sept axes : enrichissement du tableau de bord (cartes, recherche, tri, filtre, épinglage, archivage, templates, flux d'activité), refonte de l'assistant IA (contexte direct, indexation automatique du projet, mémoire des conversations par utilisateur avec relecture par l'owner), durcissement des scripts de développement, et nombreux correctifs UX. La suite de tests backend est <strong>verte à 85/85</strong> ; le front-end passe le typecheck TypeScript strict et le build Vite sans avertissement.
+  </p>
+
+  <div class="three-col" style="margin-top: 10mm;">
+    <div class="tile">
+      <div class="num">25+</div>
+      <div class="label">Langages</div>
+      <div class="desc">Java, Python, JS/TS, C/C++, Go, Rust, Kotlin, Swift, SQL, et plus — coloration syntaxique et collaboration temps réel.</div>
+    </div>
+    <div class="tile">
+      <div class="num">4</div>
+      <div class="label">Templates</div>
+      <div class="desc">Empty Python · Empty Java · Hello React · Algorithms playground. Création de projet en un clic.</div>
+    </div>
+    <div class="tile">
+      <div class="num">7</div>
+      <div class="label">Migrations DB</div>
+      <div class="desc">Schéma versionné avec Flyway : auth, rooms, files, pins, events, chat history.</div>
+    </div>
+  </div>
+
+  <div class="pull-quote">
+    "Le pipeline RAG sur petites <em>rooms</em> apportait peu : la mesure a dicté un raffinement vers l'injection directe du fichier ouvert et de la sortie d'erreur. L'IA est passée d'aveugle à utile sans rien jeter."
+    <cite>— Décision technique majeure du sprint</cite>
+  </div>
+
+  <span class="page-label">Résumé</span>
+  <span class="page-number">02 / 16</span>
+</section>
+
+<!-- ===================== PAGE 3 — VISION & CONTEXTE ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">02</span>
+    <h2>Vision &amp; contexte</h2>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <h3 style="margin-top: 0;">Le problème</h3>
+      <p>
+        Démarrer un projet de code à plusieurs reste lourd. Chaque étudiant doit installer un JDK ou un Python, configurer un IDE (Eclipse, IntelliJ, VS Code), cloner un dépôt, gérer Git, résoudre des conflits, et finir par dire <em>« ça marche chez moi »</em>. Pour un cours d'algorithmique ou un TP de programmation, ce préliminaire coûte plus que l'exercice lui-même.
+      </p>
+      <p>
+        Les éditeurs cloud existants — Replit, CodeSandbox, Glitch — résolvent ce problème mais sont propriétaires, à abonnement, et envoient le code de l'étudiant à des serveurs distants. Pour un établissement universitaire ou un atelier, c'est rédhibitoire.
+      </p>
+
+      <h3>La proposition</h3>
+      <p>
+        Codeleon est une plateforme <em>auto-hébergeable</em>, <em>collaborative</em>, qui démarre en une commande et tient sur le portable de l'enseignant. Un étudiant ouvre un onglet, rejoint une <em>room</em> par code d'invitation, et écrit du code à plusieurs sans installer quoi que ce soit. L'exécution est sandboxée. Un assistant IA local répond aux questions sur le code du projet, sans qu'aucune ligne ne quitte la machine.
+      </p>
+    </div>
+
+    <div>
+      <h3 style="margin-top: 0;">Cas d'usage visés</h3>
+      <dl class="defs">
+        <dt>Atelier de programmation</dt>
+        <dd>Un enseignant ouvre une room par sujet, les étudiants y entrent, le code se déroule en direct.</dd>
+        <dt>Étude de TP en binôme</dt>
+        <dd>Deux étudiants éditent le même fichier en temps réel, exécutent, ajustent. Sans Git.</dd>
+        <dt>Démonstration en cours</dt>
+        <dd>L'enseignant code, projette, et la même session est consultable par les étudiants.</dd>
+        <dt>Apprentissage assisté</dt>
+        <dd>L'IA explique une erreur, propose une correction. Toujours en lecture du projet ouvert.</dd>
+      </dl>
+
+      <div class="panel" style="margin-top: 6mm;">
+        <div class="panel-head"><span class="dot"></span><span class="panel-title">Contrainte fondatrice</span></div>
+        <p style="margin: 0; color: var(--text); font-size: 9.5pt; line-height: 1.55;">
+          La machine de référence : Intel i5-8350U, 8 Go de RAM, <strong>sans GPU</strong>. Tout le pipeline IA — embeddings, modèle de chat, base vectorielle — doit y tourner sans dégrader l'expérience.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <span class="page-label">Vision</span>
+  <span class="page-number">03 / 16</span>
+</section>
+
+<!-- ===================== PAGE 4 — ARCHITECTURE ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">03</span>
+    <h2>Architecture technique</h2>
+  </div>
+
+  <p style="margin-bottom: 6mm;">
+    Trois couches isolées et orchestrées localement par Docker Compose. Le frontend n'accède jamais directement aux containers de données ; seul le backend joue le rôle de garde-frontière. L'<em>Ollama runtime</em> et le moteur d'exécution de code vivent dans des containers séparés, sans connexion réseau pour le runner — un container ne peut donc ni sortir, ni atteindre la base.
+  </p>
+
+  <div style="background: var(--surface); border: 0.3mm solid var(--border); border-radius: 2.5mm; padding: 8mm 6mm;">
+    <svg viewBox="0 0 700 360" width="100%" style="display: block;">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#06B6D4"/>
+        </marker>
+      </defs>
+      <style>
+        .nbox { fill: #18181B; stroke: #6366F1; stroke-width: 0.8; }
+        .nbox-cyan { fill: #18181B; stroke: #06B6D4; stroke-width: 0.8; }
+        .ntitle { font-family: 'Geist', sans-serif; font-size: 11px; font-weight: 600; fill: #FAFAFA; }
+        .nsub { font-family: 'Geist Mono', monospace; font-size: 8px; fill: #71717A; letter-spacing: 0.06em; text-transform: uppercase; }
+        .ndesc { font-family: 'Geist', sans-serif; font-size: 9px; fill: #A1A1AA; }
+        .nlabel { font-family: 'Geist Mono', monospace; font-size: 7.5px; fill: #06B6D4; letter-spacing: 0.1em; text-transform: uppercase; }
+        .edge { stroke: #06B6D4; stroke-width: 0.7; fill: none; }
+        .edge-dash { stroke: #6366F1; stroke-width: 0.7; fill: none; stroke-dasharray: 3 3; }
+      </style>
+
+      <!-- Layer labels -->
+      <text x="20" y="22" class="nlabel">Browser</text>
+      <text x="20" y="142" class="nlabel">Application server</text>
+      <text x="20" y="262" class="nlabel">Containers (Docker)</text>
+
+      <!-- Browser layer -->
+      <rect x="20" y="30" width="660" height="60" rx="4" class="nbox-cyan"/>
+      <text x="35" y="50" class="ntitle">Frontend — React 18 + Vite + Monaco</text>
+      <text x="35" y="64" class="ndesc">TypeScript · TailwindCSS · React Query · Y.js collaboration · Editor binding</text>
+      <text x="35" y="78" class="nsub">port 5173 (dev)</text>
+
+      <!-- Backend layer -->
+      <rect x="20" y="150" width="660" height="70" rx="4" class="nbox-cyan"/>
+      <text x="35" y="172" class="ntitle">Backend — Spring Boot 3.2 (Java 23)</text>
+      <text x="35" y="188" class="ndesc">REST · JWT auth (password + OAuth GitHub/Google) · WebSocket Y.js bridge · Flyway</text>
+      <text x="35" y="202" class="ndesc">Code runner orchestrator · RAG service · Activity feed · Admin guards</text>
+      <text x="35" y="214" class="nsub">port 8080 · context-path /api/v1</text>
+
+      <!-- Data layer -->
+      <rect x="20" y="270" width="155" height="70" rx="4" class="nbox"/>
+      <text x="35" y="290" class="ntitle">PostgreSQL 16</text>
+      <text x="35" y="304" class="ndesc">Utilisateurs, rooms, fichiers,</text>
+      <text x="35" y="316" class="ndesc">pins, événements, chat history.</text>
+      <text x="35" y="330" class="nsub">port 5433</text>
+
+      <rect x="190" y="270" width="155" height="70" rx="4" class="nbox"/>
+      <text x="205" y="290" class="ntitle">Redis 7</text>
+      <text x="205" y="304" class="ndesc">Sessions transitoires,</text>
+      <text x="205" y="316" class="ndesc">refresh tokens.</text>
+      <text x="205" y="330" class="nsub">port 6379</text>
+
+      <rect x="360" y="270" width="155" height="70" rx="4" class="nbox"/>
+      <text x="375" y="290" class="ntitle">Qdrant</text>
+      <text x="375" y="304" class="ndesc">Base vectorielle pour</text>
+      <text x="375" y="316" class="ndesc">le RAG (768 dims).</text>
+      <text x="375" y="330" class="nsub">port 6333</text>
+
+      <rect x="530" y="270" width="150" height="70" rx="4" class="nbox"/>
+      <text x="545" y="290" class="ntitle">Ollama</text>
+      <text x="545" y="304" class="ndesc">Modèle qwen2.5-coder:1.5b</text>
+      <text x="545" y="316" class="ndesc">+ nomic-embed-text.</text>
+      <text x="545" y="330" class="nsub">port 11434</text>
+
+      <!-- Sandbox runner (right side, separate) -->
+      <rect x="540" y="92" width="140" height="50" rx="4" class="nbox" style="stroke-dasharray: 3 2;"/>
+      <text x="555" y="111" class="ntitle">Python sandbox</text>
+      <text x="555" y="124" class="ndesc">--network=none · ephemeral</text>
+      <text x="555" y="136" class="ndesc">8s timeout · cgroup limits</text>
+
+      <!-- Edges -->
+      <path d="M 350 92 L 350 150" class="edge" marker-end="url(#ar)"/>
+      <path d="M 95 222 L 95 270" class="edge" marker-end="url(#ar)"/>
+      <path d="M 270 222 L 270 270" class="edge" marker-end="url(#ar)"/>
+      <path d="M 440 222 L 440 270" class="edge" marker-end="url(#ar)"/>
+      <path d="M 600 222 L 600 270" class="edge" marker-end="url(#ar)"/>
+      <path d="M 610 150 C 610 130, 610 130, 610 142" class="edge-dash" marker-end="url(#ar)"/>
+    </svg>
+  </div>
+
+  <div class="three-col" style="margin-top: 6mm;">
+    <div>
+      <h4>Trafic principal</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Le navigateur dialogue avec Spring Boot en REST + WebSocket. Le WebSocket porte le protocole Y.js pour la synchronisation en temps réel des fichiers.</p>
+    </div>
+    <div>
+      <h4>Sandbox d'exécution</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Chaque <em>Run</em> spawn un container Python éphémère, sans réseau, avec timeout dur. Aucun état n'est persisté entre runs.</p>
+    </div>
+    <div>
+      <h4>Pipeline RAG</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Indexation automatique des fichiers du projet (chunking + embeddings nomic-embed-text) avant chaque question, recherche top-K dans Qdrant, prompt grounded streamé via SSE.</p>
+    </div>
+  </div>
+
+  <span class="page-label">Architecture</span>
+  <span class="page-number">04 / 16</span>
+</section>
+
+<!-- ===================== PAGE 5 — STACK DÉTAILLÉE ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">04</span>
+    <h2>Pile technique</h2>
+  </div>
+
+  <h3 style="margin-top: 0;">Composants principaux</h3>
+  <table class="stack">
+    <tr><td>FRONTEND</td><td>React 18 + Vite</td><td>TypeScript strict, Tailwind CSS, design system zinc / signature indigo / cyan.</td></tr>
+    <tr><td></td><td>Monaco Editor</td><td>Le moteur d'édition de VS Code. 25+ langages avec coloration et autocomplétion de base.</td></tr>
+    <tr><td></td><td>Y.js + y-monaco</td><td>CRDT pour l'édition collaborative temps réel sans conflit.</td></tr>
+    <tr><td></td><td>React Query · Zustand</td><td>État serveur (cache, invalidation) et état d'auth client.</td></tr>
+    <tr><td>BACKEND</td><td>Spring Boot 3.2.5</td><td>REST controllers, sécurité, WebSocket, sur Java 23.</td></tr>
+    <tr><td></td><td>JWT (jjwt) + OAuth2</td><td>Auth par mot de passe et social login (GitHub, Google). Rôle ADMIN pour le dashboard d'administration.</td></tr>
+    <tr><td></td><td>Flyway</td><td>Migrations de schéma versionnées (V1 → V7).</td></tr>
+    <tr><td></td><td>Hibernate / JPA</td><td>ORM pour 8 entités persistantes.</td></tr>
+    <tr><td>DATA</td><td>PostgreSQL 16</td><td>Source de vérité pour utilisateurs, rooms, fichiers, pins, événements, chat history.</td></tr>
+    <tr><td></td><td>Redis 7</td><td>Refresh tokens et sessions transitoires.</td></tr>
+    <tr><td>IA</td><td>Ollama (CPU)</td><td>Runtime de modèles locaux. Chat : <code>qwen2.5-coder:1.5b</code>, embeddings : <code>nomic-embed-text</code> (768 dims).</td></tr>
+    <tr><td></td><td>Qdrant</td><td>Base vectorielle. Une collection unique <code>codeleon-room-files</code>, partitionnée par <code>roomId</code> + <code>path</code>.</td></tr>
+    <tr><td>EXÉCUTION</td><td>Docker (runner)</td><td><code>python:3.12-slim</code> dans un container éphémère, <code>--network=none</code>, mémoire et CPU plafonnés, timeout 8 s.</td></tr>
+    <tr><td>OUTILLAGE</td><td>Maven</td><td>Build, tests JUnit 5, plugin Spring Boot.</td></tr>
+    <tr><td></td><td>Scripts PowerShell</td><td>Orchestration du stack en une commande, durcis contre les ports orphelins.</td></tr>
+  </table>
+
+  <div class="two-col" style="margin-top: 8mm;">
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Choix sécurité du runner</span></div>
+      <p style="font-size: 9pt; line-height: 1.5; margin: 0;">
+        Le code d'un utilisateur ne peut pas <strong>(a)</strong> atteindre le réseau, <strong>(b)</strong> consommer plus que sa part de mémoire/CPU, ni <strong>(c)</strong> survivre au-delà de 8 s. Trois lignes de défense indépendantes : <code>--network=none</code>, cgroups Docker, <code>process.waitFor(timeout)</code>.
+      </p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Choix collaboration temps réel</span></div>
+      <p style="font-size: 9pt; line-height: 1.5; margin: 0;">
+        Y.js (CRDT) résout les écritures simultanées <strong>sans serveur central</strong> et sans conflit, garantissant la convergence éventuelle quel que soit l'ordre d'arrivée des messages. Le backend ne fait que relayer les <em>updates</em> et persister un snapshot.
+      </p>
+    </div>
+  </div>
+
+  <span class="page-label">Stack</span>
+  <span class="page-number">05 / 16</span>
+</section>
+
+<!-- ===================== PAGE 6 — DASHBOARD ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">05</span>
+    <h2>Tableau de bord — projet utilisateur</h2>
+  </div>
+
+  <p>
+    L'écran d'accueil après authentification. Quatre incréments successifs l'ont enrichi : cartes projet avec compteurs réels, recherche et tri côté client, épinglage et archivage par utilisateur, création depuis des templates, et flux d'activité en barre latérale qui se rafraîchit toutes les 30 secondes.
+  </p>
+
+  <div class="shot" style="margin-top: 5mm;">
+    <div class="shot-cap" style="position: absolute; top: 2mm; left: 4mm; background: rgba(9,9,11,0.7); padding: 1mm 2mm; border-radius: 1mm;">Capture · /dashboard</div>
+    <img src="assets/dashboard_full.png" alt="Dashboard de Codeleon"/>
+  </div>
+
+  <span class="page-label">Dashboard</span>
+  <span class="page-number">06 / 16</span>
+</section>
+
+<!-- ===================== PAGE 7 — DASHBOARD DÉTAIL ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">05</span>
+    <h2>Tableau de bord — détail des incréments</h2>
+  </div>
+
+  <div class="three-col">
+    <div class="tile">
+      <div class="num">Inc 1</div>
+      <div class="label">Cartes enrichies</div>
+      <div class="desc">Les cartes exposent <code>fileCount</code>, <code>memberCount</code>, badge de visibilité, date relative ("Updated 2 hours ago"), bouton de copie de l'invite. Recherche temps réel, tri Recent / A-Z / Most files. <code>RoomResponse</code> dénormalise les compteurs depuis les repos existants.</div>
+    </div>
+    <div class="tile">
+      <div class="num">Inc 2</div>
+      <div class="label">Pin &amp; Archive</div>
+      <div class="desc">Table <code>room_pins (user_id, room_id)</code> avec PK composite — épinglage <strong>par utilisateur</strong>. Colonne <code>archived_at</code> sur <code>rooms</code> — soft-delete propre à la room, owner-only. Filtre toolbar All / Pinned / Archived ; les épinglés remontent toujours en tête.</div>
+    </div>
+    <div class="tile">
+      <div class="num">Inc 3</div>
+      <div class="label">Templates</div>
+      <div class="desc">Catalogue JSON dans <code>classpath:templates/*.json</code>, chargé une fois au démarrage. Endpoint <code>GET /templates</code> pour le sélecteur, <code>POST /rooms</code> accepte un <code>templateId</code> optionnel qui matérialise les fichiers de structure côté backend.</div>
+    </div>
+    <div class="tile">
+      <div class="num">Inc 4</div>
+      <div class="label">Activity feed + lastEditedBy</div>
+      <div class="desc">Table <code>room_events</code> append-only. Six points d'émission : créer/renommer/supprimer un fichier, rejoindre une room, exécuter du code, poser une question à l'IA. La colonne <code>rooms.last_edited_by_id</code> est dénormalisée pour O(1) sur le listing.</div>
+    </div>
+    <div class="tile">
+      <div class="num">7</div>
+      <div class="label">Endpoints REST</div>
+      <div class="desc">Pour le dashboard seul : <code>GET /rooms?archived</code>, <code>GET /rooms/public</code>, <code>POST /rooms</code>, <code>POST/DELETE /rooms/:id/pin</code>, <code>POST/DELETE /rooms/:id/archive</code>, <code>GET /events</code>, <code>GET /templates</code>.</div>
+    </div>
+    <div class="tile">
+      <div class="num">12</div>
+      <div class="label">Tests JUnit dédiés</div>
+      <div class="desc">Couvrant les comptes corrects, l'épinglage idempotent, l'archive owner-only, le tri par ordre, le rejet du userId étranger en review chat, etc. Chaque incrément a livré ses propres tests.</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 10mm;">Le détail qui compte : <em>lastEditedBy</em> dénormalisé</h3>
+  <p>
+    Afficher « Dernière édition par X » sur chaque carte aurait demandé une jointure sur <code>room_events</code> à chaque appel de listing — coûteux quand l'utilisateur a vingt projets. La solution est <strong>une colonne en plus</strong> sur <code>rooms</code>, mise à jour dans la même transaction que l'<em>emit</em> d'événement. Le listing reste O(1) par carte, la donnée reste consistante.
+  </p>
+
+  <span class="page-label">Dashboard</span>
+  <span class="page-number">07 / 16</span>
+</section>
+
+<!-- ===================== PAGE 8 — ÉDITEUR ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">06</span>
+    <h2>Éditeur collaboratif</h2>
+  </div>
+
+  <p>
+    La <em>room</em> est le cœur de Codeleon. Trois panneaux : le file explorer à gauche, l'éditeur Monaco au centre, l'assistant IA à droite. Plusieurs utilisateurs voient le même curseur et la même sélection ; Y.js fusionne leurs édits en temps réel sans conflit, et le sandbox Docker exécute du Python à la demande.
+  </p>
+
+  <div class="shot" style="margin-top: 5mm;">
+    <div class="shot-cap" style="position: absolute; top: 2mm; left: 4mm; background: rgba(9,9,11,0.7); padding: 1mm 2mm; border-radius: 1mm; z-index: 1;">Capture · /rooms/:id</div>
+    <img src="assets/room_main.png" alt="Éditeur de Codeleon"/>
+  </div>
+
+  <div class="three-col" style="margin-top: 6mm;">
+    <div>
+      <h4>Multi-fichiers</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Onglets ouverts au-dessus de l'éditeur. Le file explorer permet de créer, renommer, supprimer. Chaque fichier détient un <code>Y.Text</code> séparé dans le <code>Y.Doc</code> de la room.</p>
+    </div>
+    <div>
+      <h4>Import GitHub</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Coller une URL GitHub publique importe les fichiers texte du repository directement dans la room. Le RAG indexe ensuite l'ensemble — <em>là</em> le retrieval gagne son rôle.</p>
+    </div>
+    <div>
+      <h4>Sandbox Python</h4>
+      <p style="font-size: 9pt; line-height: 1.45;">Bouton <code>Run</code> en haut à droite. Le code part vers un container Docker éphémère qui le pipe à <code>python -</code>, capture stdout/stderr, et retourne en moins de 8 s.</p>
+    </div>
+  </div>
+
+  <span class="page-label">Éditeur</span>
+  <span class="page-number">08 / 16</span>
+</section>
+
+<!-- ===================== PAGE 9 — IA : HISTOIRE ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">07</span>
+    <h2>L'IA locale — bâtir, mesurer, raffiner</h2>
+  </div>
+
+  <p class="lead">
+    L'assistant est la fonction signature du projet et l'illustration la plus claire d'une méthodologie d'ingénierie disciplinée : on a construit, mesuré une faiblesse, et raffiné — sans rien jeter du travail initial.
+  </p>
+
+  <h3>Phase 1 — Construction du pipeline RAG</h3>
+  <p>
+    Première itération : un pipeline RAG complet auto-hébergé. Le service <code>RoomFileIndexer</code> découpe le texte d'un fichier en chunks de 500 caractères (overlap 50), demande à Ollama un embedding 768-dim de chaque chunk via <code>nomic-embed-text</code>, et persiste dans Qdrant avec un payload <code>{roomId, path, chunkIndex, text}</code>. À la question, on embed la requête, on cherche les top-K, on assemble un prompt grounded, on stream la réponse via SSE.
+  </p>
+  <p>
+    Cette première version fonctionne — c'est de l'ingénierie réelle, locale, sans dépendance cloud. Mais en l'utilisant, trois faiblesses apparaissent rapidement.
+  </p>
+
+  <h3>Phase 2 — Observation des limites</h3>
+  <div style="margin-top: 4mm;">
+    <div class="problem">
+      <h4>1. L'indexation est manuelle et coûteuse</h4>
+      <p class="ctx">Un bouton <em>Index</em> n'indexe que l'onglet actif et hardcode <code>path: "main"</code>. Toute édition non re-indexée laisse l'IA travailler sur une version périmée.</p>
+    </div>
+    <div class="problem">
+      <h4>2. L'IA est aveugle à la sortie d'exécution</h4>
+      <p class="ctx">Le RAG ne voit jamais le <code>stderr</code> du dernier <em>Run</em>. La question naturelle d'un débutant — « pourquoi ça plante ? » — est précisément celle à laquelle l'IA peut le moins bien répondre.</p>
+    </div>
+    <div class="problem">
+      <h4>3. RAG est une technique de <em>scaling</em>, appliquée à du non-scale</h4>
+      <p class="ctx">Une room contient 1 à 5 petits fichiers. Faire de la recherche vectorielle pour trouver « les 4 bons chunks parmi 10 » résout un problème qui n'existe pas à cette échelle.</p>
+    </div>
+  </div>
+
+  <span class="page-label">IA · histoire</span>
+  <span class="page-number">09 / 16</span>
+</section>
+
+<!-- ===================== PAGE 10 — IA : RAFFINEMENT ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">07</span>
+    <h2>L'IA locale — quatre itérations de raffinement</h2>
+  </div>
+
+  <p>
+    Au lieu de jeter le RAG, on l'a <strong>recentré</strong> et augmenté. Le pipeline existant garde son rôle de couche de retrieval pour les gros projets importés depuis GitHub. Par-dessus, on a ajouté du <em>contexte direct</em>, automatisé l'indexation, et persisté les conversations. Quatre commits, livrés un par un.
+  </p>
+
+  <div class="problem">
+    <h4>AI-0 — Mise à niveau du modèle</h4>
+    <p class="ctx">Le modèle par défaut était <code>qwen2.5-coder:0.5b</code>, à la limite de la cohérence pour du raisonnement de code. Passage à <code>qwen2.5-coder:1.5b</code> (toujours quantifié, ~1.2 Go RAM résident — viable sur 8 Go). <code>OLLAMA_KEEP_ALIVE</code> passe de <code>0</code> à <code>5m</code> pour éviter le cold-load à chaque question ; <code>MAX_LOADED_MODELS</code> à <code>2</code> pour que le modèle d'embedding et le modèle de chat ne s'évincent plus mutuellement.</p>
+    <p class="fix">~15 minutes, qualité des réponses code mesurablement améliorée.</p>
+  </div>
+
+  <div class="problem">
+    <h4>AI-1 — Contexte direct</h4>
+    <p class="ctx">Le <code>ChatRequest</code> porte désormais trois champs optionnels : <code>activeFilePath</code>, <code>activeFileContent</code> (tronqué côté serveur à 16 ko), <code>lastRunStderr</code> (tronqué à 4 ko). Le <em>system prompt</em> les injecte en plus des extraits RAG. Le frontend les attache à chaque question : le fichier ouvert, l'erreur du dernier Run.</p>
+    <p class="fix">Désormais l'IA répond précisément à « voici mon code, voici l'erreur — corrige-moi ». Vérifié bout en bout : <em>NameError</em> sur <code>print(undefined_var)</code> → l'IA propose le bon fix avec code corrigé.</p>
+  </div>
+
+  <div class="problem">
+    <h4>AI-2 — Indexation automatique du projet entier</h4>
+    <p class="ctx">Le bouton « Index this code » devient « Index project ». Endpoint batch <code>POST /index/all</code> qui traite N fichiers en un appel. Côté frontend, une <em>signature</em> du projet (concat path+content) est calculée ; à chaque envoi de question, si la signature a changé depuis la dernière indexation, on ré-indexe — sinon on saute, gratuit.</p>
+    <p class="fix">L'utilisateur n'a plus de bouton manuel à penser. L'IA voit toujours la dernière version. Pas de doublons (upsert par <code>(roomId, path)</code>).</p>
+  </div>
+
+  <div class="problem">
+    <h4>AI-3 — Mémoire des conversations (per-user + owner review)</h4>
+    <p class="ctx">Migration V7 : table <code>room_chat_messages</code> append-only avec deux index (room+user+date pour la lecture du membre, room+date pour la review owner). <code>RoomChatService</code> persiste la question et la réponse à chaque tour. Un invité ne voit que ses propres messages. Le propriétaire de la room dispose d'un sélecteur de membre — en lecture seule — pour relire la conversation de chacun.</p>
+    <p class="fix">Recharger la page restaure la conversation. Pour le respect de la vie privée des invités, un libellé explicite indique : « Le propriétaire de la room peut lire cette conversation. »</p>
+  </div>
+
+  <span class="page-label">IA · raffinement</span>
+  <span class="page-number">10 / 16</span>
+</section>
+
+<!-- ===================== PAGE 11 — PROBLÈMES & SOLUTIONS ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">08</span>
+    <h2>Problèmes rencontrés &amp; solutions</h2>
+  </div>
+
+  <p>
+    Une sélection des obstacles techniques notables du sprint et la décision qui les a résolus. Chacun a fait l'objet d'un commit séparé avec son message explicatif.
+  </p>
+
+  <div class="problem">
+    <h4>Le bouton Run reste silencieux après un clic</h4>
+    <p class="ctx"><strong>Cause :</strong> l'image Docker <code>python:3.12-slim</code> n'avait jamais été <em>pulled</em>. La première exécution déclenche un <em>pull</em> qui dépasse les 8 s de timeout du runner. L'utilisateur ne voit qu'un bouton qui ne réagit pas.</p>
+    <p class="fix"><code>docker pull python:3.12-slim</code> au déploiement initial. À documenter dans le README ; le runner pourrait aussi pré-charger l'image à <em>startup</em>.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Le port 8080 reste bloqué après une fermeture</h4>
+    <p class="ctx"><strong>Cause :</strong> fermer la fenêtre du backend sans passer par <code>stop.ps1</code> laisse un processus Java orphelin. Le prochain <code>start.ps1</code> crashe avec <em>« Port 8080 was already in use. »</em></p>
+    <p class="fix">Nouveau helper <code>Stop-PortListener</code> qui parcourt l'arbre <code>Win32_Process</code> et tue les enfants avant le parent, avec fallback <code>WMI Terminate</code> → <code>taskkill /F</code>. Appelé en début de <code>start.ps1</code> : les ports 8080 et 5173 sont libérés avant chaque démarrage.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Un message « network error » s'affiche après chaque réponse IA</h4>
+    <p class="ctx"><strong>Cause :</strong> le stream SSE du backend est propre — capture brute confirmée. Mais Chrome lève <code>TypeError: network error</code> sur <code>fetch.body</code> dès que la connexion SSE se ferme, même proprement, et le <em>catch</em> côté client l'affichait comme erreur.</p>
+    <p class="fix">L'event <code>done</code> est désormais traité comme le signal de succès faisant autorité. Si <code>done</code> a été reçu, toute exception ultérieure est ignorée. Une vraie panne réseau (sans <code>done</code>) lève toujours l'erreur.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Quand on scrolle dans le code, les sidebars suivent</h4>
+    <p class="ctx"><strong>Cause :</strong> <code>min-h-screen</code> sur le <code>&lt;main&gt;</code> permet à la page de grandir au-delà de la viewport. L'overflow du code fait alors scroller toute la page, file explorer compris.</p>
+    <p class="fix"><code>h-screen + overflow-hidden</code> sur le main, <code>flex-1 + min-h-0</code> sur les containers internes. Monaco devient le seul élément à pouvoir scroller verticalement ; le file explorer et le panneau AI restent fixes.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Les boutons « Sign in with Google / GitHub » disparaissent parfois</h4>
+    <p class="ctx"><strong>Cause :</strong> le composant <code>OAuthButtons</code> appelle <code>GET /auth/providers</code>. Si le backend est en cours de démarrage, l'appel échoue, <code>providers = []</code>, et le composant retourne <code>null</code>. Comportement attendu, perception d'un bug.</p>
+    <p class="fix">Comportement laissé tel quel — c'est un signal correct. Documenté dans la procédure de démo : attendre l'affichage de <code>Started CodeleonApplication</code> avant d'ouvrir le navigateur.</p>
+  </div>
+
+  <span class="page-label">Problèmes</span>
+  <span class="page-number">11 / 16</span>
+</section>
+
+<!-- ===================== PAGE 12 — PROBLÈMES (suite) ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">08</span>
+    <h2>Problèmes rencontrés — suite</h2>
+  </div>
+
+  <div class="problem">
+    <h4>Docker Desktop refuse de démarrer (machine à 8 Go)</h4>
+    <p class="ctx"><strong>Cause :</strong> le service Windows <code>com.docker.service</code> en <em>Manual</em> + <em>Stopped</em>. Pas de logs Docker côté <code>%LOCALAPPDATA%</code>.</p>
+    <p class="fix"><code>Start-Service "com.docker.service"</code>, puis <code>Set-Service -StartupType Automatic</code>. Vérifié par <code>docker info</code>. À documenter pour la reproductibilité.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Le script <code>start.ps1</code> affichait « Docker is up » alors qu'il ne l'était pas</h4>
+    <p class="ctx"><strong>Cause :</strong> PowerShell <code>try / catch</code> ne capture pas les codes de sortie des commandes natives. Le <code>docker info</code> échouait silencieusement, le script continuait, et <code>docker compose up</code> crachait son erreur sur l'utilisateur.</p>
+    <p class="fix">Vérification explicite de <code>$LASTEXITCODE</code> après chaque appel natif, avec message d'erreur orienté action (« redémarre WSL », « lance Docker Desktop manuellement »).</p>
+  </div>
+
+  <div class="problem">
+    <h4>Le bouton « Invite » copiait sans rétroaction</h4>
+    <p class="ctx"><strong>Cause :</strong> <code>navigator.clipboard.writeText</code> réussissait silencieusement, sans changement visuel. L'utilisateur cliquait à nouveau, persuadé que rien ne s'était passé.</p>
+    <p class="fix">État local <code>copied</code> qui flip à <code>true</code> pendant 1,8 s : icône <em>Copy</em> → <em>Check</em> vert, libellé « Invite » → « Copied! ». Fallback <code>textarea + document.execCommand</code> si l'API <em>Clipboard</em> n'est pas disponible.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Le RAG indexait un seul fichier avec un chemin codé en dur</h4>
+    <p class="ctx"><strong>Cause :</strong> le bouton initial appelait <code>indexRoom(roomId, { path: "main", text: getEditorText() })</code>. Il ne voyait que l'onglet ouvert et écrasait toujours la même clé.</p>
+    <p class="fix">Endpoint batch <code>POST /index/all</code> traitant N fichiers en un appel. Frontend lit chaque <code>Y.Text</code> du <code>Y.Doc</code> client (y compris les fichiers sans onglet ouvert) et envoie l'ensemble. Auto-indexation avant chaque question chat avec une <em>signature</em> du projet pour éviter le ré-embed inutile.</p>
+  </div>
+
+  <div class="problem">
+    <h4>Templates Maven / Spring Boot — décision de scope</h4>
+    <p class="ctx"><strong>Demande :</strong> proposer des templates Maven et Spring Boot dans le sélecteur de projet. <strong>Analyse :</strong> Maven nécessite l'accès réseau pour les dépendances (incompatible avec <code>--network=none</code>), un dossier projet matérialisé sur disque (les fichiers vivent dans le Y.Doc), et un build de 30 s+. Spring Boot est un serveur — il ne termine jamais — incompatible avec le modèle <em>run-capture-exit</em>.</p>
+    <p class="fix">Refusé dans le périmètre du PFE. Documenté dans le ROADMAP comme évolution post-soutenance avec l'architecture qu'il faudrait (proxy réseau allowlisté, matérialisation tmpfs, processus long-running). Le mémoire le présente comme <em>limite assumée</em>.</p>
+  </div>
+
+  <span class="page-label">Problèmes</span>
+  <span class="page-number">12 / 16</span>
+</section>
+
+<!-- ===================== PAGE 13 — QUALITÉ ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">09</span>
+    <h2>Qualité &amp; discipline d'ingénierie</h2>
+  </div>
+
+  <div class="three-col">
+    <div class="tile">
+      <div class="num">85<span style="color: var(--dim); font-size: 14pt;">/85</span></div>
+      <div class="label">Tests JUnit verts</div>
+      <div class="desc">Suite intégrale couvrant auth, OAuth, rooms, files, runner, RAG (mocked), AI history, admin. Aucun skip, aucun pending.</div>
+    </div>
+    <div class="tile">
+      <div class="num">7</div>
+      <div class="label">Migrations Flyway</div>
+      <div class="desc">V1 init · V2 room files · V3 multi-files · V4 OAuth · V5 pins+archive · V6 events · V7 chat history.</div>
+    </div>
+    <div class="tile">
+      <div class="num">8</div>
+      <div class="label">Tables persistantes</div>
+      <div class="desc">users, refresh_tokens, rooms, room_members, room_files, room_pins, room_events, room_chat_messages.</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 10mm;">Pratiques en place</h3>
+  <ul style="font-size: 10pt;">
+    <li><strong>Conventional Commits.</strong> Tous les messages suivent le format <code>type(scope): summary</code> avec un corps détaillé. Le git log devient une chronologie lisible des décisions.</li>
+    <li><strong>Migrations versionnées.</strong> Aucune modification de schéma hors Flyway. La base évolue de façon reproductible entre les machines.</li>
+    <li><strong>TypeScript strict.</strong> Le front compile sans <code>any</code> implicite, sans avertissement. <code>npx tsc --noEmit</code> passe sur chaque commit.</li>
+    <li><strong>Scripts robustes.</strong> <code>start.ps1</code> et <code>stop.ps1</code> libèrent les ports avant et après, détectent l'absence de Docker, et échouent vite avec un message utile.</li>
+    <li><strong>Tests de privacy explicite.</strong> Le test <em>nonOwnerCannotReadAnotherMembersThread</em> vérifie qu'un membre invité reçoit un <code>403</code> en tentant de lire la conversation d'un pair. Le contrat de vie privée est testé.</li>
+    <li><strong>Persistence failure-swallowing aux frontières.</strong> Un échec d'écriture du flux d'activité ou de la mémoire de chat ne fait jamais échouer l'action utilisateur principale.</li>
+  </ul>
+
+  <div class="panel" style="margin-top: 8mm;">
+    <div class="panel-head"><span class="dot"></span><span class="panel-title">Extensibilité — runner</span></div>
+    <p style="margin: 0; font-size: 9.5pt; line-height: 1.55;">
+      Le moteur d'exécution est conçu comme une <em>dispatch table</em> : ajouter un langage = ajouter un <code>case</code> + une image Docker + une commande. Cette structure rend Java single-file (Java 11+), C, C++ atteignables en quelques heures chacun, sans toucher au reste du système.
+    </p>
+  </div>
+
+  <span class="page-label">Qualité</span>
+  <span class="page-number">13 / 16</span>
+</section>
+
+<!-- ===================== PAGE 14 — LIMITES & ROADMAP ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">10</span>
+    <h2>Limites assumées &amp; feuille de route</h2>
+  </div>
+
+  <p>
+    L'honnêteté de scope est elle-même une décision d'ingénierie. Voici ce que Codeleon <strong>ne fait pas aujourd'hui</strong>, et pourquoi cela ne sera pas livré avant la soutenance.
+  </p>
+
+  <h3>Limites présentes par décision</h3>
+  <div class="two-col" style="gap: 5mm;">
+    <div>
+      <div class="problem">
+        <h4>Exécution Python uniquement</h4>
+        <p class="ctx">Le runner accepte un seul langage à l'exécution. L'éditeur supporte 25+ langages mais le bouton <em>Run</em> ne marche qu'en Python.</p>
+        <p class="fix">Le runner est une <em>dispatch table</em> — ajouter Java, C, C++ est mécanique mais hors scope du PFE.</p>
+      </div>
+      <div class="problem">
+        <h4>Pas de Maven / Gradle / Spring Boot</h4>
+        <p class="ctx">Incompatible avec <code>--network=none</code> (Maven a besoin du réseau pour les dépendances) et avec le modèle d'exécution court (Spring Boot est un serveur).</p>
+        <p class="fix">Documenté comme évolution post-PFE avec l'architecture requise (proxy allowlisté, matérialisation tmpfs).</p>
+      </div>
+    </div>
+    <div>
+      <div class="problem">
+        <h4>Pas de terminal embarqué</h4>
+        <p class="ctx">Pas d'<em>xterm.js</em> branché à un PTY bash dans la room. ~8 h de travail estimé pour la version Bash MVP.</p>
+        <p class="fix">Stretch goal post-mémoire : le runner Docker existant peut être réutilisé. PowerShell et <code>cmd</code> Windows resteraient hors scope.</p>
+      </div>
+      <div class="problem">
+        <h4>Templates "structure only"</h4>
+        <p class="ctx">Un template crée les fichiers avec leur nom et leur langage, mais le contenu reste vide. Pour pré-remplir, il faudrait soit un encodeur Y.Doc Java, soit une colonne <code>seed_content</code> appliquée à la première connexion WebSocket.</p>
+        <p class="fix">Documenté Pass B (~2 h), post-mémoire si le temps le permet.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Prochaines étapes</h3>
+  <ul style="font-size: 10pt;">
+    <li><strong>Semaines à venir.</strong> Rédaction du mémoire — l'architecture, les décisions techniques, la méthodologie <em>build → measure → refine</em> appliquée à l'IA, les limites assumées.</li>
+    <li><strong>Soutenance.</strong> Démonstration en live de la collaboration temps réel, du sandbox, et du dialogue avec l'assistant local. Le PDF du jour fournit le support écrit.</li>
+    <li><strong>Post-soutenance.</strong> Selon disponibilité : runner Java single-file, terminal Bash embarqué, contenu pré-rempli des templates.</li>
+  </ul>
+
+  <span class="page-label">Roadmap</span>
+  <span class="page-number">14 / 16</span>
+</section>
+
+<!-- ===================== PAGE 15 — DÉMO ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">11</span>
+    <h2>Scénario de démonstration</h2>
+  </div>
+
+  <p>
+    Une démo de 5 à 7 minutes qui couvre le cœur du produit, dans un ordre conçu pour faire émerger chaque feature naturellement.
+  </p>
+
+  <div class="three-col" style="margin-top: 5mm; gap: 4mm;">
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 1 · Démarrage</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Une commande PowerShell : <code>.\scripts\start.ps1</code>. Docker se lève, backend et frontend s'ouvrent en deux fenêtres, le navigateur s'ouvre sur la page d'accueil.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 2 · Authentification</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Login. Optionnellement, OAuth via GitHub ou Google si le compte est lié.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 3 · Création depuis template</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">« Algorithms playground » → la room est créée avec <code>fibonacci.py</code>, <code>binary_search.py</code>, <code>bfs.py</code> prêts.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 4 · Édition + exécution</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Coller une implémentation de Fibonacci dans <code>fibonacci.py</code>, cliquer Run, observer la sortie dans le panneau Output.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 5 · Collaboration</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Copier l'<em>invite code</em>, l'ouvrir dans un second navigateur (fenêtre privée), éditer simultanément. Les curseurs et les modifications convergent en temps réel.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 6 · Assistant IA</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Introduire un <em>bug</em> volontaire (variable non définie). Run → erreur. Poser au chat : <em>« pourquoi ça plante ? »</em>. L'IA répond avec le diagnostic et le code corrigé.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 7 · Mémoire des conversations</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Recharger la page de la room — la conversation est restaurée. En tant qu'owner, sélecteur de membre dans le panneau chat → lecture seule de la conversation de l'invité.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Étape 8 · Activité</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Retour au tableau de bord — la barre latérale d'activité montre les événements récents : code exécuté, question à l'IA, fichier créé.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span><span class="panel-title">Plan B (si problème réseau)</span></div>
+      <p style="font-size: 9pt; line-height: 1.45;">Stack 100 % locale — aucune dépendance externe pour la démo. Une seule machine, une seule commande.</p>
+    </div>
+  </div>
+
+  <span class="page-label">Démo</span>
+  <span class="page-number">15 / 16</span>
+</section>
+
+<!-- ===================== PAGE 16 — ANNEXE COMMITS ===================== -->
+<section class="page">
+  <div class="section-head">
+    <span class="section-num">12</span>
+    <h2>Annexe — chronologie du sprint final</h2>
+  </div>
+
+  <p style="margin-bottom: 6mm;">
+    Les 17 commits de la dernière sprint, du plus ancien au plus récent. Chaque entrée a fait l'objet d'un message <em>Conventional Commit</em> avec un corps explicatif.
+  </p>
+
+  <table class="commits">
+    <tr><td class="sha">abcd683</td><td class="msg">feat(dashboard): enrich room cards with file and member counts</td><td class="tag">Inc 1</td></tr>
+    <tr><td class="sha">6ffdc08</td><td class="msg">fix(room): give the invite button visible feedback when copying</td><td class="tag">UX</td></tr>
+    <tr><td class="sha">b997f96</td><td class="msg">fix(scripts): make start.ps1 actually fail when Docker is down</td><td class="tag">DevOps</td></tr>
+    <tr><td class="sha">92a9bf8</td><td class="msg">fix(room): keep editor scroll inside Monaco, not the whole page</td><td class="tag">UX</td></tr>
+    <tr><td class="sha">a40c350</td><td class="msg">docs(roadmap): record embedded terminal as a post-memoire stretch goal</td><td class="tag">Docs</td></tr>
+    <tr><td class="sha">390e22e</td><td class="msg">feat(dashboard): pin and archive projects</td><td class="tag">Inc 2</td></tr>
+    <tr><td class="sha">c5ab3ac</td><td class="msg">fix(security): return 401 JSON instead of the OAuth2 login HTML page</td><td class="tag">Security</td></tr>
+    <tr><td class="sha">83700e3</td><td class="msg">fix(scripts): make start and stop bullet-proof against port-stuck orphans</td><td class="tag">DevOps</td></tr>
+    <tr><td class="sha">e2d0661</td><td class="msg">fix(scripts): run-backend.ps1 detects port conflict instead of nuking it</td><td class="tag">DevOps</td></tr>
+    <tr><td class="sha">8057d16</td><td class="msg">chore(scripts): make start.ps1 launch the full stack with no flags</td><td class="tag">DevOps</td></tr>
+    <tr><td class="sha">2d7c354</td><td class="msg">feat(dashboard): create projects from a template catalogue</td><td class="tag">Inc 3</td></tr>
+    <tr><td class="sha">0f5f448</td><td class="msg">feat(dashboard): activity feed + last-edited-by on project cards</td><td class="tag">Inc 4</td></tr>
+    <tr><td class="sha">d982162</td><td class="msg">feat(ai): give the assistant the open file + last run error as context</td><td class="tag">AI 0+1</td></tr>
+    <tr><td class="sha">f21a1a5</td><td class="msg">fix(ai-chat): stop showing a spurious "network error" after each answer</td><td class="tag">AI fix</td></tr>
+    <tr><td class="sha">cc6911f</td><td class="msg">feat(ai): index the whole project automatically before each chat</td><td class="tag">AI 2</td></tr>
+    <tr><td class="sha">ef8319d</td><td class="msg">feat(ai): persist AI chat history per user, per room</td><td class="tag">AI 3a</td></tr>
+    <tr><td class="sha">2c19e5c</td><td class="msg">feat(ai): room owner can review any member's chat read-only</td><td class="tag">AI 3b</td></tr>
+  </table>
+
+  <div style="margin-top: 10mm; padding-top: 6mm; border-top: 0.3mm solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <p style="font-family: 'Geist Mono', monospace; font-size: 7.5pt; letter-spacing: 0.18em; color: var(--cyan); text-transform: uppercase; margin: 0;">Référentiel</p>
+      <p style="margin: 1mm 0 0 0; font-size: 9.5pt; color: var(--text); font-family: 'Geist Mono', monospace;">github.com/Dev14Ayoub/Codeleon</p>
+    </div>
+    <div style="text-align: right;">
+      <p style="font-family: 'Geist Mono', monospace; font-size: 7.5pt; letter-spacing: 0.18em; color: var(--cyan); text-transform: uppercase; margin: 0;">Branche</p>
+      <p style="margin: 1mm 0 0 0; font-size: 9.5pt; color: var(--text); font-family: 'Geist Mono', monospace;">main · @ 2c19e5c</p>
+    </div>
+  </div>
+
+  <span class="page-label">Annexe</span>
+  <span class="page-number">16 / 16</span>
+</section>
+
+</body>
+</html>
