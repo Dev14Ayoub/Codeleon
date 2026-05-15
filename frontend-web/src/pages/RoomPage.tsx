@@ -544,6 +544,7 @@ export function RoomPage() {
                 getAllFiles={getAllFiles}
                 activeFilePath={activePath}
                 lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+                isOwner={room?.currentUserRole === "OWNER"}
               />
             </section>
           </aside>

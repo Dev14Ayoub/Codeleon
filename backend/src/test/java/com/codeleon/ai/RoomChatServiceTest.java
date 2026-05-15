@@ -123,8 +123,11 @@ class RoomChatServiceTest {
             return "Fibonacci is recursive.";
         });
 
-        RoomChatService service = new RoomChatService(ollama, streamer, qdrant);
-        service.streamChat(roomId, queryOnly("how does fibonacci work?"), emitter);
+        RoomChatService service = new RoomChatService(ollama, streamer, qdrant, null);
+        // null user: this test focuses on the streaming pipeline; the
+        // 3-arg test constructor disables history persistence so the
+        // user reference is irrelevant here.
+        service.streamChat(roomId, null, queryOnly("how does fibonacci work?"), emitter);
 
         // Verify the emitter received: 1 context + 2 token + 1 done = 4 events
         ArgumentCaptor<SseEmitter.SseEventBuilder> events =
@@ -146,8 +149,8 @@ class RoomChatServiceTest {
         UUID roomId = UUID.randomUUID();
         when(ollama.embed(any())).thenThrow(new IllegalStateException("Ollama unreachable"));
 
-        RoomChatService service = new RoomChatService(ollama, streamer, qdrant);
-        service.streamChat(roomId, queryOnly("hi"), emitter);
+        RoomChatService service = new RoomChatService(ollama, streamer, qdrant, null);
+        service.streamChat(roomId, null, queryOnly("hi"), emitter);
 
         verify(emitter, atLeastOnce()).send(any(SseEmitter.SseEventBuilder.class));
         verify(emitter).completeWithError(any());

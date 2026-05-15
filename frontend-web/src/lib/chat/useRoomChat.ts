@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { API_BASE_URL, fetchChatHistory } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
 export type ChatRole = "user" | "assistant";
@@ -39,6 +39,13 @@ interface UseRoomChatResult {
   messages: ChatMessage[];
   context: ChatContextChunk[];
   streaming: boolean;
+  /**
+   * True while we're hydrating the caller's persisted conversation
+   * for this room on mount. The Send button stays disabled during
+   * this brief window so a fast typist can't post a turn that gets
+   * stomped on by the loaded history arriving a beat later.
+   */
+  loadingHistory: boolean;
   error: string | null;
   lastStats: ChatDoneStats | null;
   send: (query: string, sendContext?: ChatSendContext) => Promise<void>;
@@ -59,9 +66,44 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [context, setContext] = useState<ChatContextChunk[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastStats, setLastStats] = useState<ChatDoneStats | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Hydrate the caller's persisted thread on mount and whenever the
+  // room changes. A network failure is silent (empty history is the
+  // same UX as an offline backend at this stage); the user can still
+  // ask new questions and they'll persist on success.
+  useEffect(() => {
+    if (!roomId) return;
+    let cancelled = false;
+    setLoadingHistory(true);
+    setMessages([]);
+    setContext([]);
+    setError(null);
+    setLastStats(null);
+    fetchChatHistory(roomId)
+      .then((entries) => {
+        if (cancelled) return;
+        setMessages(
+          entries.map((entry) => ({
+            role: entry.role === "USER" ? "user" : "assistant",
+            content: entry.content,
+          })),
+        );
+      })
+      .catch(() => {
+        // Empty history is the natural fallback — no need to surface
+        // a network error here.
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
 
   const clear = useCallback(() => {
     setMessages([]);
@@ -224,5 +266,5 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
     [roomId, messages, streaming],
   );
 
-  return { messages, context, streaming, error, lastStats, send, clear, cancel };
+  return { messages, context, streaming, loadingHistory, error, lastStats, send, clear, cancel };
 }

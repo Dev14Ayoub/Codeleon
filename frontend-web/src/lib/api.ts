@@ -291,6 +291,27 @@ export async function indexRoomAll(roomId: string, files: IndexFile[]) {
   return data;
 }
 
+export type ChatHistoryRole = "USER" | "ASSISTANT";
+
+export interface ChatHistoryEntry {
+  id: string;
+  userId: string | null;
+  userName: string | null;
+  role: ChatHistoryRole;
+  content: string;
+  createdAt: string;
+}
+
+/**
+ * Returns the caller's persisted AI chat in this room (oldest first).
+ * Invited members only ever see their own thread; the owner sees the
+ * same shape today and gains a multi-member review path in AI-3b.
+ */
+export async function fetchChatHistory(roomId: string) {
+  const { data } = await api.get<ChatHistoryEntry[]>(`/rooms/${roomId}/chat/history`);
+  return data;
+}
+
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
