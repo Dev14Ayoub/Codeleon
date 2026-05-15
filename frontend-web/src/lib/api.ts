@@ -274,6 +274,23 @@ export async function indexRoom(
   return data;
 }
 
+export interface IndexFile {
+  path: string;
+  text: string;
+}
+
+/**
+ * Indexes every file in the room in one call. The caller gathers each
+ * file's current text (including files with no open tab — the Y.Doc has
+ * them all client-side) so RAG retrieval covers the whole project, not
+ * just whatever tab happened to be open. Idempotent: re-indexing a path
+ * replaces its chunks rather than duplicating them.
+ */
+export async function indexRoomAll(roomId: string, files: IndexFile[]) {
+  const { data } = await api.post<IndexResult>(`/rooms/${roomId}/index/all`, { files });
+  return data;
+}
+
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
