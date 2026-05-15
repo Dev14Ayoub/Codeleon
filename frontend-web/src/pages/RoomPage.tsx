@@ -26,8 +26,10 @@ import { MenuBar } from "@/components/layout/MenuBar";
 import {
   createRoomFile,
   fetchRoom,
+  listRoomFiles,
   runCode,
   type GithubImportResponse,
+  type IndexFile,
   type RunResult,
 } from "@/lib/api";
 import { languageFromPath } from "@/lib/files/file-language";
@@ -40,6 +42,14 @@ export function RoomPage() {
   const roomQuery = useQuery({
     queryKey: ["rooms", roomId],
     queryFn: () => fetchRoom(roomId ?? ""),
+    enabled: Boolean(roomId),
+  });
+
+  // The full file list (not just open tabs) so the chat panel can index
+  // the whole project. Content for each path is pulled from the Y.Doc.
+  const roomFilesQuery = useQuery({
+    queryKey: ["rooms", roomId, "files"],
+    queryFn: () => listRoomFiles(roomId ?? ""),
     enabled: Boolean(roomId),
   });
 
@@ -318,6 +328,18 @@ export function RoomPage() {
 
   const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
 
+  // Snapshot every file's current content for whole-project indexing.
+  // Content is read from the Y.Doc — the Y.Monaco binding keeps each
+  // Y.Text in sync with its editor in real time, so even files with no
+  // open tab carry their up-to-date text here. Empty files are skipped:
+  // there is nothing to embed and they would only add noise to the index.
+  const getAllFiles = useCallback((): IndexFile[] => {
+    const files = roomFilesQuery.data ?? [];
+    return files
+      .map((file) => ({ path: file.path, text: collab.ydoc.getText(file.path).toString() }))
+      .filter((file) => file.text.trim().length > 0);
+  }, [roomFilesQuery.data, collab.ydoc]);
+
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
       <header className="flex min-h-16 items-center justify-between border-b border-zinc-800 bg-background/95 px-4 backdrop-blur">
@@ -519,6 +541,7 @@ export function RoomPage() {
               <ChatPanel
                 roomId={roomId}
                 getEditorText={getEditorText}
+                getAllFiles={getAllFiles}
                 activeFilePath={activePath}
                 lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               />

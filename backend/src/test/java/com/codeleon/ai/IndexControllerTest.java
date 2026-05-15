@@ -84,6 +84,70 @@ class IndexControllerTest {
         verify(indexer, never()).index(any(), any(), any());
     }
 
+    @Test
+    void indexAllIndexesEveryFileAndSumsTheResult() throws Exception {
+        String token = register("indexer.all.owner@example.com");
+        JsonNode room = createRoom(token, "Batch Indexer Room");
+        String roomId = room.get("id").asText();
+
+        // Each file reports its own chunk count + duration; the endpoint
+        // must call the indexer once per file and return the totals.
+        when(indexer.index(any(), eq("main.py"), eq("print('hi')")))
+                .thenReturn(new IndexResult(2, 30L));
+        when(indexer.index(any(), eq("utils.py"), eq("def helper(): return 1")))
+                .thenReturn(new IndexResult(1, 12L));
+
+        mockMvc.perform(post("/rooms/" + roomId + "/index/all")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "files", java.util.List.of(
+                                        Map.of("path", "main.py", "text", "print('hi')"),
+                                        Map.of("path", "utils.py", "text", "def helper(): return 1")
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chunks").value(3))
+                .andExpect(jsonPath("$.durationMs").value(42));
+
+        verify(indexer).index(any(), eq("main.py"), eq("print('hi')"));
+        verify(indexer).index(any(), eq("utils.py"), eq("def helper(): return 1"));
+    }
+
+    @Test
+    void indexAllRejectsNonMember() throws Exception {
+        String ownerToken = register("indexer.all.owner.private@example.com");
+        String outsiderToken = register("indexer.all.outsider@example.com");
+        JsonNode room = createRoom(ownerToken, "Private Batch Room");
+        String roomId = room.get("id").asText();
+
+        mockMvc.perform(post("/rooms/" + roomId + "/index/all")
+                        .header("Authorization", "Bearer " + outsiderToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "files", java.util.List.of(Map.of("path", "main.py", "text", "x"))
+                        ))))
+                .andExpect(status().isNotFound());
+
+        verify(indexer, never()).index(any(), any(), any());
+    }
+
+    @Test
+    void indexAllRejectsAnEmptyFileList() throws Exception {
+        String token = register("indexer.all.empty@example.com");
+        JsonNode room = createRoom(token, "Empty Batch Room");
+        String roomId = room.get("id").asText();
+
+        // @NotEmpty on IndexAllRequest.files — bean validation, 400.
+        mockMvc.perform(post("/rooms/" + roomId + "/index/all")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("files", java.util.List.of()))))
+                .andExpect(status().isBadRequest());
+
+        verify(indexer, never()).index(any(), any(), any());
+    }
+
     private String register(String email) throws Exception {
         String response = mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
