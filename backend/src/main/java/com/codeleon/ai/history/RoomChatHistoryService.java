@@ -1,10 +1,12 @@
 package com.codeleon.ai.history;
 
+import com.codeleon.common.exception.ForbiddenException;
 import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.Room;
 import com.codeleon.room.RoomFileService;
 import com.codeleon.room.RoomRepository;
 import com.codeleon.user.User;
+import com.codeleon.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,7 @@ public class RoomChatHistoryService {
     private final RoomRepository roomRepository;
     private final RoomChatMessageRepository repository;
     private final RoomFileService roomFileService;
+    private final UserRepository userRepository;
 
     /**
      * Persists one turn of a conversation. {@code user} is the asker for
@@ -61,19 +64,59 @@ public class RoomChatHistoryService {
 
     /**
      * Returns the caller's own conversation in this room, chronological.
-     * The owner-side review path that lists other members' threads
-     * lands in a follow-up commit (AI-3b).
+     * For the owner-side review of another member's thread, see
+     * {@link #listForUser}.
      */
     @Transactional(readOnly = true)
     public List<ChatHistoryMessage> listForCaller(UUID roomId, User caller) {
+        Room room = mustRead(roomId, caller);
+        return repository.findByRoomAndUserOrderByCreatedAtAsc(room, caller)
+                .stream()
+                .map(ChatHistoryMessage::of)
+                .toList();
+    }
+
+    /**
+     * Returns the conversation owned by {@code targetUserId} in this
+     * room. Privacy contract: the caller may only read their own
+     * thread unless they are the room owner, in which case they may
+     * read any member's thread. Any other combination is a 403.
+     */
+    @Transactional(readOnly = true)
+    public List<ChatHistoryMessage> listForUser(UUID roomId, User caller, UUID targetUserId) {
+        Room room = mustRead(roomId, caller);
+        boolean isOwner = room.getOwner().getId().equals(caller.getId());
+        boolean self = caller.getId().equals(targetUserId);
+        if (!self && !isOwner) {
+            throw new ForbiddenException("Only the room owner can read another member's chat");
+        }
+        User target = self ? caller : userRepository.findById(targetUserId)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+        return repository.findByRoomAndUserOrderByCreatedAtAsc(room, target)
+                .stream()
+                .map(ChatHistoryMessage::of)
+                .toList();
+    }
+
+    /**
+     * Lists the members who have written in this room — used by the
+     * owner's "review someone's chat" picker. Owner-only.
+     */
+    @Transactional(readOnly = true)
+    public List<ChatThreadSummary> listThreads(UUID roomId, User caller) {
+        Room room = mustRead(roomId, caller);
+        if (!room.getOwner().getId().equals(caller.getId())) {
+            throw new ForbiddenException("Only the room owner can browse member chats");
+        }
+        return repository.findThreadsByRoom(room);
+    }
+
+    private Room mustRead(UUID roomId, User caller) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new NotFoundException("Room not found"));
         if (!roomFileService.canRead(roomId, caller)) {
             throw new NotFoundException("Room not found");
         }
-        return repository.findByRoomAndUserOrderByCreatedAtAsc(room, caller)
-                .stream()
-                .map(ChatHistoryMessage::of)
-                .toList();
+        return room;
     }
 }

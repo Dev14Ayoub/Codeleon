@@ -303,12 +303,32 @@ export interface ChatHistoryEntry {
 }
 
 /**
- * Returns the caller's persisted AI chat in this room (oldest first).
- * Invited members only ever see their own thread; the owner sees the
- * same shape today and gains a multi-member review path in AI-3b.
+ * Returns a persisted AI chat in this room (oldest first).
+ *
+ * When called with no userId the caller gets their own thread — the
+ * common case. The room owner can additionally pass another member's
+ * userId to read that member's thread; non-owners passing a foreign
+ * userId get a 403 from the backend.
  */
-export async function fetchChatHistory(roomId: string) {
-  const { data } = await api.get<ChatHistoryEntry[]>(`/rooms/${roomId}/chat/history`);
+export async function fetchChatHistory(roomId: string, userId?: string) {
+  const { data } = await api.get<ChatHistoryEntry[]>(`/rooms/${roomId}/chat/history`, {
+    params: userId ? { userId } : undefined,
+  });
+  return data;
+}
+
+export interface ChatThreadSummary {
+  userId: string;
+  userName: string;
+  messageCount: number;
+}
+
+/**
+ * Lists every member who has written in this room — used by the owner's
+ * chat-review picker. Owner-only on the backend; non-owners get a 403.
+ */
+export async function fetchChatThreads(roomId: string) {
+  const { data } = await api.get<ChatThreadSummary[]>(`/rooms/${roomId}/chat/threads`);
   return data;
 }
 
