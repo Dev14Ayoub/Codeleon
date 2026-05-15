@@ -54,7 +54,7 @@ public class ChatController {
         roomEventService.emit(roomId, user, RoomEventType.AI_ASKED);
 
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
-        CompletableFuture.runAsync(() -> chatService.streamChat(roomId, request, emitter), executor);
+        CompletableFuture.runAsync(() -> chatService.streamChat(roomId, user, request, emitter), executor);
         return emitter;
     }
 }

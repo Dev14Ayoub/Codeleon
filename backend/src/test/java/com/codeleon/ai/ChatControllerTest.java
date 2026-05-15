@@ -61,10 +61,11 @@ class ChatControllerTest {
         // we don't drain the async dispatch (which would re-enter Spring
         // Security filters without the JWT in a way that returns 403).
         doAnswer((Answer<Void>) invocation -> {
-            SseEmitter emitter = invocation.getArgument(2);
+            // streamChat(roomId, user, request, emitter) — emitter at index 3
+            SseEmitter emitter = invocation.getArgument(3);
             emitter.complete();
             return null;
-        }).when(chatService).streamChat(any(), any(), any());
+        }).when(chatService).streamChat(any(), any(), any(), any());
 
         // Asserting asyncStarted() is enough: it proves auth passed, the AI
         // flag check passed, and the controller returned an SseEmitter which

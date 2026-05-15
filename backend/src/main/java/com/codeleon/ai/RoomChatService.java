@@ -1,5 +1,8 @@
 package com.codeleon.ai;
 
+import com.codeleon.ai.history.RoomChatHistoryService;
+import com.codeleon.ai.history.RoomChatRole;
+import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +38,22 @@ public class RoomChatService {
     private final OllamaClient ollama;
     private final OllamaStreamer streamer;
     private final QdrantClient qdrant;
+    /**
+     * Nullable so unit tests that mock only the streaming pipeline can
+     * pass {@code null} via the constructor. Production wiring always
+     * supplies a real instance through {@code @RequiredArgsConstructor}.
+     * When null, persistence is skipped silently.
+     */
+    private final RoomChatHistoryService history;
 
-    public void streamChat(UUID roomId, ChatRequest request, SseEmitter emitter) {
+    public void streamChat(UUID roomId, User user, ChatRequest request, SseEmitter emitter) {
         long startedAt = System.currentTimeMillis();
+        // 0. Persist the user's question right away so the conversation
+        // thread is durable even if the stream fails before any reply.
+        // Failure-swallowing — see RoomChatHistoryService.record.
+        if (history != null) {
+            history.record(roomId, user, RoomChatRole.USER, request.query());
+        }
         try {
             // 1. Embed the query
             float[] queryVector = ollama.embed(request.query());
@@ -73,6 +89,13 @@ public class RoomChatService {
             long durationMs = System.currentTimeMillis() - startedAt;
             log.info("Chat for room {} replied with {} tokens ({} chars) in {} ms",
                     roomId, tokenCount[0], full.length(), durationMs);
+
+            // Persist the assistant's full reply alongside the user's
+            // question saved at step 0. Done before `done` so a client
+            // refresh right after the event sees a consistent thread.
+            if (history != null) {
+                history.record(roomId, user, RoomChatRole.ASSISTANT, full);
+            }
 
             emitter.send(SseEmitter.event().name("done").data(Map.of(
                     "tokens", tokenCount[0],
