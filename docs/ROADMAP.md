@@ -1,7 +1,7 @@
 # Codeleon — Roadmap
 
-> Living document. Last refreshed: **2026-05-08** (session day 8).
-> 39 commits on `main`, 64 backend tests green, 0 known regressions.
+> Living document. Last refreshed: **2026-05-19**.
+> Backend verified with 85 tests green; frontend production build verified.
 
 This file is the single source of truth for **what Codeleon is, what is
 already shipped, and what is still planned** — both for the PFE
@@ -34,7 +34,7 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | Monorepo bootstrap | `9ea55b4` |
 | Auth (JWT + refresh tokens) | `9ea55b4` |
 | Rooms (CRUD, members, invite codes) | `475067a` |
-| Room editor page (Monaco) | `c7eac9b` |
+| Room editor page (initial Monaco implementation) | `c7eac9b` |
 
 ### 2.2 Real-time collaboration
 | Area | Commit |
@@ -63,7 +63,7 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 |---|---|
 | Backend V3 migration + multi-file CRUD | `964f75b` |
 | File explorer + right-click context menu | `fda2ccc` |
-| Editor tabs + per-file Monaco models | `236cd65` |
+| Editor tabs + per-file editor state | `236cd65` |
 | Menubar (File / Edit / View / Run / Help) | `69f2376` |
 | Local folder import (`webkitdirectory`) | `98b1351` |
 | GitHub repo import (ZIP → unzip → bulk create) | `1c3cb2c` |
@@ -98,14 +98,37 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | `.env` loader for backend | `815c91e` |
 | Postgres port remap (5433) | `f0ca6ef` |
 
+### 2.10 Project dashboard
+| Area | Commit |
+|---|---|
+| Project cards with file/member counts | `abcd683` |
+| Pin and archive projects | `390e22e` |
+| Template catalogue for project creation | `2d7c354` |
+| Activity feed and last-edited-by metadata | `0f5f448` |
+
+### 2.11 AI polish and chat history
+| Area | Commit |
+|---|---|
+| Active file + last run error sent as chat context | `d982162` |
+| Automatic whole-project indexing before chat | `cc6911f` |
+| Persist AI chat history per user, per room | `ef8319d` |
+| Owner read-only review of member chats | `2c19e5c` |
+
+### 2.12 PFE presentation package
+| Area | Commit |
+|---|---|
+| 16-page supervisor presentation PDF | `29ff75a` |
+
 ---
 
 ## 3. Pending PFE deliverables (the original 4-week plan)
 
 ### Week 3 — Polish & remaining backend bits (~10h)
-- [ ] `docs/api.md` — full endpoint reference with curl examples + payload schemas
+- [x] `docs/api.md` baseline endpoint reference
+- [ ] Add more curl examples and payload schemas to `docs/api.md` as needed
 - [ ] Seed SQL — 3 demo users + 2 demo rooms with realistic content
-- [ ] Profile edit page + `PATCH /users/me` (frontend wiring)
+- [x] `PATCH /users/me` backend endpoint
+- [ ] Profile edit page/frontend wiring for `PATCH /users/me`
 - [ ] `LICENSE` (MIT) at the repo root
 - [ ] `CONTRIBUTING.md`
 
@@ -118,10 +141,16 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 
 ---
 
-## 4. New feature: user project dashboard
+## 4. User project dashboard
 
-The current `/dashboard` shows a flat list of rooms and a "create
-room" form. The user wants a richer **project dashboard** that
+**Status on 2026-05-19: shipped.** The dashboard now uses project
+cards, search/sort/filter controls, template-based project creation,
+pin/archive actions, an activity feed, and last-edited-by metadata.
+The backend pieces are covered by Flyway migrations `V5__pin_and_archive.sql`
+and `V6__room_events.sql`; the frontend uses `ProjectCard.tsx` and
+`ActivityFeed.tsx`.
+
+Earlier plan context: the user wanted a richer **project dashboard** that
 reflects how developers actually think about their work: as
 projects, with metadata, status indicators, and quick actions.
 
@@ -212,7 +241,7 @@ the template files into the freshly-created Y.Doc.
 
 ## 5. New feature: VS-Code-style editor
 
-The Monaco editor is already there with multi-file tabs, syntax
+The CodeMirror editor is already there with multi-file tabs, syntax
 highlighting, and a menubar. The next layer is to bring the
 ergonomics closer to a real IDE.
 
@@ -246,7 +275,7 @@ optionally sync to the backend later.
 ```
 
 Effort: ~3h frontend (Radix Dialog + Zustand-persisted settings
-store + apply each setting to Monaco's options or the chat call).
+store + apply each setting to CodeMirror's options or the chat call).
 
 ### 5.2 Add folder (nested file tree)
 
@@ -268,7 +297,7 @@ Effort: ~5h frontend, no backend change.
 
 ### 5.3 Command palette (Ctrl+Shift+P)
 
-Monaco ships with a built-in command palette. We just need to:
+CodeMirror does not ship a full IDE command palette. We need to:
 
 - Stop intercepting Ctrl+Shift+P.
 - Optionally augment it with **Codeleon-specific commands**
@@ -279,7 +308,7 @@ Effort: ~1h.
 
 ### 5.4 Search across files (Ctrl+Shift+F)
 
-Monaco's find is per-file. To search across all files in a project:
+CodeMirror's find is per-file. To search across all files in a project:
 
 - New `GET /rooms/{id}/search?q=...` endpoint that scans every
   `Y.Text` in the Y.Doc on the backend (or relies on a denormalized
@@ -330,12 +359,12 @@ serve your demo story best.
 | 6 | **Activity heatmap** on the user profile | GitHub-style green-square contribution calendar driven by `room_events`. | 3h |
 | 7 | **Refresh-token auto-rotation in axios** | Currently when the access token expires the user has to log out + log in. A response interceptor that catches 401 and silently refreshes would polish the UX. | 2h |
 | 8 | **Per-file run history** | Every Run click logs to a `run_history` table; the OutputPanel gains a dropdown to revisit prior runs. | 3h |
-| 9 | **Comments on lines** (a la GitHub PR review) | A `room_comments (file_id, line, user_id, body)` table + decorations on Monaco lines. | 5h |
+| 9 | **Comments on lines** (a la GitHub PR review) | A `room_comments (file_id, line, user_id, body)` table + CodeMirror line decorations. | 5h |
 | 10 | **Notifications panel** | Inbox-style: someone joined, AI answered, run finished. Backed by a `notifications` table + WebSocket push. | 5h |
 | 11 | **Public invite code QR** | Click "Share" → shows a QR for the invite link. 30 lines of code with `qrcode.react`. | 1h |
 | 12 | **Session presence map** | Sidebar shows who is currently in the room + which file each person is editing right now. Reuses Yjs awareness. | 2h |
 | 13 | **Room export as ZIP** | Server-side zip of every Y.Text in the Y.Doc + RoomFile metadata. | 2h |
-| 14 | **AI chat history persistence** | Currently chats are session-only. Persisting them per-room lets the user revisit past Q&A. | 4h |
+| 14 | **AI chat history persistence** | Shipped in `ef8319d` and extended in `2c19e5c`: chats persist per user/room, and room owners can review member threads read-only. | Done |
 | 15 | **Multi-account on the same browser** | Switch between Codeleon accounts without logging out (like GitHub). Useful for the demo (`as admin`, `as collaborator`). | 5h |
 | 16 | **CLI / API token** | A user can mint an API token from their profile and use it via curl, demonstrating the underlying API. | 3h |
 | 17 | **Slack-style command bar** for the chat (`/run`, `/index`, `/clear`) | Adds slash commands to the AI chat panel for quick power-user actions. | 2h |
@@ -343,22 +372,20 @@ serve your demo story best.
 | 19 | **Audit log** in the admin panel | Already mentioned — a row per admin action with who/when/what. Easy ops sell. | 3h |
 | 20 | **System health page** for non-admins | `/status` page showing Postgres / Redis / Qdrant / Ollama up/down. Doubles as a "uptime" panel for the defense. | 2h |
 | 21 | **Embedded terminal (bash MVP)** | xterm.js panel + WebSocket PTY proxy that pipes a sandboxed bash inside the room's runner container. Materialises the room's `RoomFile` rows into a tmpfs so `python main.py` actually works. **Bash only**: PowerShell adds another container image and Windows `cmd` is a different Docker engine entirely (host isolation), so it is intentionally out of scope. **Stretch goal — only attempted after the memoire is done.** | 8h |
-| 22 | **Template content seeding (Pass B)** | The Inc 3 template feature ships file *structure* only — every template file lands on disk with the right name and language, but the editor opens empty. Filling them in requires either a Java Y.Doc encoder (heavy dep) or a `seed_content TEXT` column on `room_files` that the WebSocket handler injects into the corresponding Y.Text on the first connect and then clears. Pick the second approach: V6 migration adds the column, `RoomService.createRoom` populates it from the template JSON's new `content` field, `CollabWebSocketHandler` writes the seed into Y.Text once and nulls the column. After this every template gives the user a real running starting point instead of empty files. | 2h |
+| 22 | **Template content seeding (Pass B)** | The template feature ships file *structure* only — every template file lands with the right name and language, but the editor opens empty. Filling them in would require either a Java Y.Doc encoder or a future migration adding a `seed_content` column that the WebSocket handler applies once on first connect. | 2h |
 
 ---
 
 ## 7. Recommended priority for the remaining PFE timeline
 
-You currently have ~3.5 weeks of calendar time left and the bulk of
-the code work is done. The PFE jury cares about the document and
-the live demo, in that order. With that in mind:
+The bulk of the code work is now done and verified. The PFE jury cares
+about the document and the live demo, in that order. With that in mind:
 
-### Week 3 (this week, May 12-18) — Polish & docs [~10h]
-1. `docs/api.md` (with curl examples)
-2. `LICENSE` (MIT) and `CONTRIBUTING.md`
-3. Profile edit page (small, shippable in 2h)
-4. `User project dashboard` — sections 4.4 and 4.5 (cards + templates,
-   the visual upgrade is the most jury-impressive non-feature)
+### Final polish
+1. `LICENSE` (MIT) and `CONTRIBUTING.md`
+2. Demo seed data: 3 users + 2 realistic rooms
+3. Profile edit frontend wiring for `PATCH /users/me`
+4. README screenshots from the real app
 
 ### Week 4 (May 19-25) — Memoire + slides [~20h]
 1. `docs/memoire/` outline + chapter-by-chapter rédaction

@@ -31,6 +31,7 @@ import {
   runCode,
   type GithubImportResponse,
   type IndexFile,
+  type RoomFile,
   type RunResult,
 } from "@/lib/api";
 import { prepareLocalImport } from "@/lib/files/local-import";
@@ -142,6 +143,9 @@ export function RoomPage() {
   const onEditorReadyChange = useCallback((ready: boolean) => {
     setEditorReady(ready);
   }, []);
+  const refetchRoomFilesForIndex = useCallback(() => {
+    void roomFilesQuery.refetch();
+  }, [roomFilesQuery]);
 
   const beginSidebarResize = useCallback(
     (side: "left" | "right") => (event: PointerEvent<HTMLDivElement>) => {
@@ -273,13 +277,14 @@ export function RoomPage() {
           // Re-fetch the file list so the new files actually show up,
           // then open the first one as a tab.
           await fileExplorerRef.current?.refresh();
+          await roomFilesQuery.refetch();
           openFile(report.prepared[0].path);
         }
       } finally {
         setImporting(false);
       }
     },
-    [roomId, importing, collab.ydoc, openFile],
+    [roomId, importing, collab.ydoc, openFile, roomFilesQuery],
   );
 
   // Seed the Y.Doc with the contents the backend extracted from the
@@ -296,13 +301,63 @@ export function RoomPage() {
       }
       if (response.imported.length > 0) {
         await fileExplorerRef.current?.refresh();
+        await roomFilesQuery.refetch();
         openFile(response.imported[0].path);
         setImportStatus(
           `Imported ${response.imported.length} file${response.imported.length === 1 ? "" : "s"} from ${response.owner}/${response.repo}@${response.branchUsed}`,
         );
       }
     },
-    [collab.ydoc, openFile],
+    [collab.ydoc, openFile, roomFilesQuery],
+  );
+
+  const handleFileCreated = useCallback(
+    (file: RoomFile) => {
+      collab.ydoc.getText(file.path);
+      refetchRoomFilesForIndex();
+    },
+    [collab.ydoc, refetchRoomFilesForIndex],
+  );
+
+  const handleFileRenamed = useCallback(
+    (oldPath: string, file: RoomFile) => {
+      if (oldPath === file.path) {
+        refetchRoomFilesForIndex();
+        return;
+      }
+
+      const oldText = collab.ydoc.getText(oldPath);
+      const newText = collab.ydoc.getText(file.path);
+      const oldContent = oldText.toString();
+
+      collab.ydoc.transact(() => {
+        if (newText.length === 0 && oldContent.length > 0) {
+          newText.insert(0, oldContent);
+        }
+        if (oldText.length > 0) {
+          oldText.delete(0, oldText.length);
+        }
+      }, "file-rename");
+
+      setOpenPaths((paths) =>
+        paths.map((path) => (path === oldPath ? file.path : path)),
+      );
+      setActivePath((path) => (path === oldPath ? file.path : path));
+      refetchRoomFilesForIndex();
+    },
+    [collab.ydoc, refetchRoomFilesForIndex],
+  );
+
+  const handleFileDeleted = useCallback(
+    (file: RoomFile) => {
+      const yText = collab.ydoc.getText(file.path);
+      if (yText.length > 0) {
+        yText.delete(0, yText.length);
+      }
+      closeTab(file.path);
+      refetchRoomFilesForIndex();
+    },
+    [closeTab, collab.ydoc, refetchRoomFilesForIndex],
   );
 
   useEffect(() => {
@@ -423,7 +478,7 @@ export function RoomPage() {
           </Button>
           <Button
             onClick={() => runMutation.mutate()}
-            disabled={!editorReady || runMutation.isPending}
+            disabled={!activePath || !editorReady || runMutation.isPending}
           >
             {runMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -485,6 +540,9 @@ export function RoomPage() {
               activePath={activePath}
               onActivePathChange={openFile}
               canEdit={canEdit}
+              onFileCreated={handleFileCreated}
+              onFileRenamed={handleFileRenamed}
+              onFileDeleted={handleFileDeleted}
               onImportLocal={handleImportLocal}
               importing={importing}
             />
@@ -587,6 +645,9 @@ export function RoomPage() {
               activePath={activePath}
               onActivePathChange={openFile}
               canEdit={canEdit}
+              onFileCreated={handleFileCreated}
+              onFileRenamed={handleFileRenamed}
+              onFileDeleted={handleFileDeleted}
               onImportLocal={handleImportLocal}
               importing={importing}
             />

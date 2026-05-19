@@ -27,6 +27,9 @@ interface FileExplorerProps {
   activePath: string | null;
   onActivePathChange: (path: string) => void;
   canEdit: boolean;
+  onFileCreated?: (file: RoomFile) => void;
+  onFileRenamed?: (oldPath: string, file: RoomFile) => void;
+  onFileDeleted?: (file: RoomFile) => void;
   /** Called when the user picks a folder to import from disk. */
   onImportLocal?: (files: FileList) => void;
   /** Indicates an in-flight bulk import; disables the upload button. */
@@ -46,7 +49,17 @@ type Pending =
   | null;
 
 export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
-  { roomId, activePath, onActivePathChange, canEdit, onImportLocal, importing },
+  {
+    roomId,
+    activePath,
+    onActivePathChange,
+    canEdit,
+    onFileCreated,
+    onFileRenamed,
+    onFileDeleted,
+    onImportLocal,
+    importing,
+  },
   ref,
 ) {
   const { files, loading, error, create, rename, remove, refresh } = useRoomFiles(roomId);
@@ -90,17 +103,30 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
   const handleCreate = async (path: string) => {
     const file = await create(path);
     setPending(null);
-    if (file) onActivePathChange(file.path);
+    if (file) {
+      onFileCreated?.(file);
+      onActivePathChange(file.path);
+    }
   };
 
   const handleRename = async (fileId: string, newPath: string) => {
+    const oldPath =
+      pending?.kind === "rename" && pending.fileId === fileId
+        ? pending.currentPath
+        : newPath;
     const file = await rename(fileId, newPath);
     setPending(null);
-    if (file) onActivePathChange(file.path);
+    if (file) {
+      onFileRenamed?.(oldPath, file);
+      onActivePathChange(file.path);
+    }
   };
 
   const handleDelete = async (file: RoomFile) => {
     const ok = await remove(file.id);
+    if (ok) {
+      onFileDeleted?.(file);
+    }
     if (ok && file.path === activePath) {
       const next = files.find((f) => f.id !== file.id);
       if (next) onActivePathChange(next.path);

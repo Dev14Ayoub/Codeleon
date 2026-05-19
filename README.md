@@ -4,10 +4,10 @@
 > multi-cursor editing, sandboxed code execution, and a local
 > retrieval-augmented AI assistant.
 
-[![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)](#running-the-tests)
+[![Tests](https://img.shields.io/badge/tests-85%20passing-brightgreen)](#running-the-tests)
 [![Backend](https://img.shields.io/badge/backend-Spring%20Boot%203.2-6DB33F)](backend/pom.xml)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite%205-61DAFB)](frontend-web/package.json)
-[![Editor](https://img.shields.io/badge/editor-Monaco%20%2B%20Yjs-007ACC)](frontend-web/src/lib/collab)
+[![Editor](https://img.shields.io/badge/editor-CodeMirror%206%20%2B%20Yjs-007ACC)](frontend-web/src/lib/collab)
 [![AI](https://img.shields.io/badge/AI-Ollama%20%2B%20Qdrant%20(local)-9333EA)](docker-compose.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](#license)
 
@@ -23,11 +23,12 @@ cloud, and run it in a Docker sandbox with one click.
 
 | Feature | Tech |
 |---|---|
-| **Real-time collaborative editor** with multi-cursor + presence | Yjs CRDT + y-monaco + WebSocket binary relay |
+| **Real-time collaborative editor** with multi-cursor + presence | Yjs CRDT + y-codemirror.next + WebSocket binary relay |
 | **Multi-file workspace** with VS Code-style tabs, file explorer, right-click menus, menubar | React + Radix Context Menu / Menubar / Dialog |
 | **Code execution sandbox** | Docker `python:3.12-slim`, `--network=none`, 256 MB / 0.5 CPU / 8 s timeout |
-| **Local RAG AI assistant** with streaming SSE + retrieved context drawer | Ollama (`qwen2.5-coder:0.5b` + `nomic-embed-text`) + Qdrant 1.11 |
+| **Local RAG AI assistant** with streaming SSE, auto-indexing, chat history, and retrieved context drawer | Ollama (`qwen2.5-coder:0.5b` + `nomic-embed-text`) + Qdrant 1.11 |
 | **Project import** from local folder or public GitHub repo | `webkitdirectory` picker / GitHub archive ZIP fetch + filter |
+| **Project dashboard** with cards, templates, pin/archive, activity feed, and admin view | React Query + Spring REST + Flyway events/pins |
 | **Auth** with JWT email/password **+ OAuth2 social login** (GitHub, Google) | Spring Security 6 + custom programmatic `ClientRegistrationRepository` |
 
 ---
@@ -51,7 +52,7 @@ cloud, and run it in a Docker sandbox with one click.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        Browser (localhost:5173)                  │
-│   React + Vite + Tailwind   ·   Monaco + y-monaco + Yjs          │
+│   React + Vite + Tailwind   ·   CodeMirror 6 + Yjs               │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │ REST + JWT, SSE (chat), WS (collab)
 ┌────────────────────────────────▼─────────────────────────────────┐
@@ -153,12 +154,12 @@ cd backend
 mvn test
 ```
 
-Currently **57 tests** covering auth, rooms, multi-files,
-runner, OAuth, GitHub import, RAG service, RAG chat controller,
-embeddings + chunker.
+Currently **85 backend tests** covering auth, OAuth, rooms,
+multi-files, dashboard events, admin actions, GitHub import,
+runner, RAG indexing, RAG chat, chat history, embeddings + chunker.
 
 ```
-Tests run: 57, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 85, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -192,15 +193,19 @@ Done:
 - [x] Real-time collaborative editing (Yjs, multi-cursor, snapshot persistence)
 - [x] Code runner (Python sandbox)
 - [x] RAG infrastructure (Qdrant + Ollama, file indexing, chat endpoint, ChatPanel UI)
+- [x] AI chat history per user/room + owner read-only review of member chats
 - [x] Multi-file workspace (file explorer, tabs, menubar, local + GitHub import)
+- [x] Project dashboard (cards, search/sort/filter, pin/archive, templates, activity feed)
+- [x] Admin dashboard (users, rooms, stats, role management)
+- [x] Profile update endpoint (`PATCH /users/me`)
 - [x] UML and Merise documentation
 - [x] One-shot Windows launcher
 
 Pending (PFE timeline):
 
-- [ ] Logo + favicon (chameleon mark)
-- [ ] Profile edit page + `PATCH /users/me`
+- [ ] Expand `docs/api.md` with full examples and schemas
 - [ ] Demo seed data (3 users + 2 rooms)
+- [ ] LICENSE + CONTRIBUTING.md
 - [ ] PFE memoire (~30-50 pages)
 - [ ] Defense slides + scripted demo + backup video
 
@@ -224,13 +229,13 @@ Codeleon/
 │   │   ├── room/             # Room CRUD, files, WebSocket, GitHub import
 │   │   ├── runner/           # Python Docker sandbox
 │   │   └── user/             # User entity + service (incl. findOrCreateByOAuth)
-│   └── src/main/resources/db/migration/  # V1..V4 (Flyway)
+│   └── src/main/resources/db/migration/  # V1..V7 (Flyway)
 ├── frontend-web/             # React 18 + Vite 5 + Tailwind 3 + TypeScript 5.4
 │   └── src/
-│       ├── components/       # auth/, chat/, files/, layout/, ui/
+│       ├── components/       # auth/, chat/, files/, layout/, projects/, ui/
 │       ├── lib/              # api.ts, chat/, collab/, files/
 │       └── pages/            # LandingPage, LoginPage, SignupPage,
-│                             # AuthCallbackPage, DashboardPage, RoomPage
+│                             # AuthCallbackPage, DashboardPage, RoomPage, AdminPage
 ├── docs/
 │   ├── uml/                  # component, sequence-collab, sequence-rag
 │   ├── merise/               # mcd

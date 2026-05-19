@@ -73,6 +73,12 @@ QA in a real authenticated workspace.
   - drag handles use pointer events
   - keyboard arrow resizing is supported on handles
   - compact screens use overlay sidebars instead of squeezing the editor
+- Added file lifecycle plumbing around CodeMirror/Yjs:
+  - creating a file refreshes the file list used by whole-project AI indexing
+  - renaming a file moves its Yjs text from the old path to the new path
+  - deleting a file clears its Yjs text and closes stale tabs
+  - local folder and GitHub imports refresh the file list used by indexing
+  - the header Run button is disabled when no active file is open
 - Updated current product references in:
   - `frontend-web/src/pages/LandingPage.tsx`
   - `frontend-web/src/components/layout/MenuBar.tsx`
@@ -84,6 +90,9 @@ QA in a real authenticated workspace.
 - Verified:
   - `cd D:\Codeleon\frontend-web && npm run build` passes.
   - `cd D:\Codeleon\backend && mvn test` passes: 85 tests, 0 failures.
+  - 2026-05-19 continuation: frontend `npm.cmd run build` passes.
+  - 2026-05-19 continuation: backend `mvn test` passes with JDK 23:
+    85 tests, 0 failures.
   - `rg '@monaco-editor|\bmonaco-editor\b|y-monaco|MonacoBinding' frontend-web/src frontend-web/package.json frontend-web/package-lock.json` returns no matches.
   - Vite dev server responded HTTP 200 at `http://127.0.0.1:5173/`.
 
