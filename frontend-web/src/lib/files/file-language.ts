@@ -1,14 +1,70 @@
+import { cpp } from "@codemirror/lang-cpp";
+import { css } from "@codemirror/lang-css";
+import { go } from "@codemirror/lang-go";
+import { html } from "@codemirror/lang-html";
+import { java } from "@codemirror/lang-java";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
+import { php } from "@codemirror/lang-php";
+import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import { sass } from "@codemirror/lang-sass";
+import { sql } from "@codemirror/lang-sql";
+import { vue } from "@codemirror/lang-vue";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { StreamLanguage } from "@codemirror/language";
+import type { Extension } from "@codemirror/state";
+import { c, csharp, kotlin } from "@codemirror/legacy-modes/mode/clike";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+
+export type CodeleonLanguage =
+  | "plaintext"
+  | "java"
+  | "python"
+  | "javascript"
+  | "typescript"
+  | "jsx"
+  | "tsx"
+  | "html"
+  | "css"
+  | "scss"
+  | "json"
+  | "yaml"
+  | "xml"
+  | "markdown"
+  | "shell"
+  | "sql"
+  | "go"
+  | "rust"
+  | "ruby"
+  | "php"
+  | "cpp"
+  | "c"
+  | "csharp"
+  | "kotlin"
+  | "swift"
+  | "dockerfile"
+  | "env"
+  | "vue";
+
 /**
- * Maps a file path's extension to a Monaco language ID. Mirrors the
- * backend's RoomFileService.detectLanguage so the displayed syntax
- * highlighting matches the language stored on the RoomFile entity.
- *
- * Returns "plaintext" for unknown or extension-less paths.
+ * Mirrors the backend's RoomFileService.detectLanguage while returning
+ * editor-neutral IDs that CodeMirror can map to language extensions.
  */
-export function languageFromPath(path: string): string {
-  const dot = path.lastIndexOf(".");
-  if (dot < 0 || dot === path.length - 1) return "plaintext";
-  const ext = path.substring(dot + 1).toLowerCase();
+export function languageFromPath(path: string): CodeleonLanguage {
+  const basename = path.split(/[\\/]/).pop()?.toLowerCase() ?? path.toLowerCase();
+  if (basename === "dockerfile" || basename.endsWith(".dockerfile")) return "dockerfile";
+  if (basename === ".env" || basename.startsWith(".env.")) return "env";
+
+  const dot = basename.lastIndexOf(".");
+  if (dot < 0 || dot === basename.length - 1) return "plaintext";
+  const ext = basename.substring(dot + 1);
   switch (ext) {
     case "java":
       return "java";
@@ -21,17 +77,17 @@ export function languageFromPath(path: string): string {
     case "ts":
       return "typescript";
     case "jsx":
-      // Monaco does not ship a "javascriptreact" mode; "javascript" gives the
-      // closest tokenizer (JSX literals are parsed loosely but it works).
-      return "javascript";
+      return "jsx";
     case "tsx":
-      return "typescript";
+      return "tsx";
     case "html":
     case "htm":
       return "html";
     case "css":
       return "css";
     case "scss":
+      return "scss";
+    case "sass":
       return "scss";
     case "json":
       return "json";
@@ -45,6 +101,7 @@ export function languageFromPath(path: string): string {
       return "markdown";
     case "sh":
     case "bash":
+    case "zsh":
       return "shell";
     case "sql":
       return "sql";
@@ -60,9 +117,10 @@ export function languageFromPath(path: string): string {
     case "cxx":
     case "cc":
     case "hpp":
-    case "h":
+    case "hxx":
       return "cpp";
     case "c":
+    case "h":
       return "c";
     case "cs":
       return "csharp";
@@ -71,18 +129,83 @@ export function languageFromPath(path: string): string {
       return "kotlin";
     case "swift":
       return "swift";
-    case "dockerfile":
-      return "dockerfile";
+    case "vue":
+      return "vue";
     default:
       return "plaintext";
   }
 }
 
-/**
- * Pretty name displayed next to a file row when the language is not
- * obvious from the extension. Currently unused but handy for tabs
- * later on.
- */
+export function codeMirrorLanguageFromPath(path: string): Extension {
+  return codeMirrorLanguage(languageFromPath(path));
+}
+
+export function codeMirrorLanguage(language: CodeleonLanguage): Extension {
+  switch (language) {
+    case "java":
+      return java();
+    case "python":
+      return python();
+    case "javascript":
+      return javascript();
+    case "typescript":
+      return javascript({ typescript: true });
+    case "jsx":
+      return javascript({ jsx: true });
+    case "tsx":
+      return javascript({ jsx: true, typescript: true });
+    case "html":
+      return html();
+    case "css":
+      return css();
+    case "scss":
+      return sass();
+    case "json":
+      return json();
+    case "yaml":
+      return yaml();
+    case "xml":
+      return xml();
+    case "markdown":
+      return markdown();
+    case "shell":
+      return stream(shell);
+    case "sql":
+      return sql();
+    case "go":
+      return go();
+    case "rust":
+      return rust();
+    case "ruby":
+      return stream(ruby);
+    case "php":
+      return php();
+    case "cpp":
+      return cpp();
+    case "c":
+      return stream(c);
+    case "csharp":
+      return stream(csharp);
+    case "kotlin":
+      return stream(kotlin);
+    case "swift":
+      return stream(swift);
+    case "dockerfile":
+      return stream(dockerFile);
+    case "env":
+      return stream(properties);
+    case "vue":
+      return vue();
+    case "plaintext":
+    default:
+      return [];
+  }
+}
+
+function stream(parser: Parameters<typeof StreamLanguage.define>[0]): Extension {
+  return StreamLanguage.define(parser);
+}
+
 export function languageDisplayName(language: string): string {
   switch (language) {
     case "javascript":
@@ -109,6 +232,8 @@ export function languageDisplayName(language: string): string {
       return "XML";
     case "sql":
       return "SQL";
+    case "env":
+      return ".env";
     default:
       return language.charAt(0).toUpperCase() + language.slice(1);
   }

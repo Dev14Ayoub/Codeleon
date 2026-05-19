@@ -101,7 +101,7 @@ backend/src/test/java/com/codeleon/ai/
 
 ### Done
 - Foundation (auth, JWT, rooms, members, invite codes)
-- Real-time collab (Yjs + WebSocket + Monaco binding, multi-cursors visible)
+- Real-time collab (Yjs + WebSocket + CodeMirror binding, multi-cursors visible)
 - Code runner (Python via Docker sandbox)
 - RAG infrastructure (Qdrant + Ollama under "ai" compose profile)
 - **RAG commit #1** — Ollama and Qdrant Spring clients (`1012d87`)

@@ -8,7 +8,7 @@ client → backend → data + AI + sandbox.
 flowchart TB
     subgraph Client["Client (browser, http://localhost:5173)"]
         UI["React 18 + Vite 5 + Tailwind 3<br/>Pages: Landing / Login / Signup<br/>Dashboard / Room"]
-        Editor["Monaco editor<br/>+ y-monaco binding"]
+        Editor["CodeMirror 6 editor<br/>+ y-codemirror.next binding"]
         Yjs["Yjs Y.Doc<br/>1 per room<br/>N Y.Texts (one per file path)"]
         Chat["ChatPanel<br/>SSE consumer (fetch + ReadableStream)"]
         UI --> Editor

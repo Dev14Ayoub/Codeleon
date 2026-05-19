@@ -1,6 +1,6 @@
 # Sequence — Real-time collaborative editing
 
-How a keystroke from one user lands in another user's Monaco editor.
+How a keystroke from one user lands in another user's CodeMirror editor.
 Captures the whole loop: REST snapshot bootstrap, WebSocket handshake,
 binary CRDT relay, and debounced server-side persistence.
 
@@ -8,7 +8,7 @@ binary CRDT relay, and debounced server-side persistence.
 sequenceDiagram
     autonumber
     actor UA as User A (browser)
-    participant FA as Frontend A<br/>(Monaco + y-monaco + Yjs)
+    participant FA as Frontend A<br/>(CodeMirror 6 + y-codemirror.next + Yjs)
     participant API as Backend REST API
     participant WS as CollabWebSocketHandler
     participant DB as PostgreSQL<br/>(rooms.state_update)
@@ -33,7 +33,7 @@ sequenceDiagram
     Note over WS,FB: User B is already connected, sends own awareness
 
     WS-->>FB: peer A's awareness
-    FB-->>UB: cursor/avatar of A appears in Monaco
+    FB-->>UB: cursor/avatar of A appears in CodeMirror
 
     UA->>FA: types "fib" in editor
     FA->>FA: Yjs Y.Text mutation<br/>encodeStateAsUpdate diff
@@ -41,7 +41,7 @@ sequenceDiagram
     WS->>WS: relay to every peer in room except sender
     WS-->>FB: BinaryMessage
     FB->>FB: Y.applyUpdate(ydoc, update, "remote")
-    FB-->>UB: Monaco re-renders with the new chars
+    FB-->>UB: CodeMirror re-renders with the new chars
 
     Note over FA,DB: Snapshot debounce — 3s after last edit
 
@@ -65,7 +65,7 @@ sequenceDiagram
   and stores the resolved `User` and a `canEdit` flag on the WebSocket
   session attributes. VIEWER-role peers connect successfully but the
   handler refuses to relay frames coming from them upstream.
-- **Awareness uses the same WebSocket** as CRDT updates; y-monaco
+- **Awareness uses the same WebSocket** as CRDT updates; y-codemirror.next
   encodes peer cursor positions inside the same binary protocol.
 - **Snapshot persistence is debounced** at 3000 ms in
   `useCollabRoom.ts` (`SNAPSHOT_DEBOUNCE_MS`) to avoid hammering the DB

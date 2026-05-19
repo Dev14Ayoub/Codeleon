@@ -1,4 +1,3 @@
-import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
@@ -12,13 +11,15 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { MonacoBinding } from "y-monaco";
-import type * as monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import {
+  CodeMirrorEditor,
+  type CodeMirrorEditorHandle,
+} from "@/components/editor/CodeMirrorEditor";
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
 import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
@@ -32,7 +33,6 @@ import {
   type IndexFile,
   type RunResult,
 } from "@/lib/api";
-import { languageFromPath } from "@/lib/files/file-language";
 import { prepareLocalImport } from "@/lib/files/local-import";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
 
@@ -55,18 +55,9 @@ export function RoomPage() {
 
   const collab = useCollabRoom(roomId);
 
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const monacoNsRef = useRef<Parameters<BeforeMount>[0] | null>(null);
+  const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const fileExplorerRef = useRef<FileExplorerHandle | null>(null);
-  // One Monaco model per open file path. Keeping models alive across
-  // tab switches preserves each file's cursor, scroll position, undo
-  // history and selection independently — the way VS Code does it.
-  const modelsRef = useRef<Map<string, monaco.editor.ITextModel>>(new Map());
-  // Yjs binding for the *currently active* model only. We tear it down
-  // and recreate it on every tab switch instead of holding N bindings,
-  // because y-monaco bindings tie themselves to the editor instance and
-  // would otherwise fire selection events on the wrong model.
-  const bindingRef = useRef<MonacoBinding | null>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -78,6 +69,13 @@ export function RoomPage() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(() =>
+    readStoredWidth("codeleon.leftSidebarWidth", 272, 192, 448),
+  );
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(() =>
+    readStoredWidth("codeleon.rightSidebarWidth", 320, 256, 544),
+  );
+  const [isCompactWorkspace, setIsCompactWorkspace] = useState(false);
 
   const room = roomQuery.data;
   const canEdit =
@@ -110,7 +108,7 @@ export function RoomPage() {
     setActivePath(path);
   }, []);
 
-  // Close a tab. Disposes the model + adjusts the active selection.
+  // Close a tab and adjust the active selection.
   const closeTab = useCallback((path: string) => {
     setOpenPaths((prev) => {
       const idx = prev.indexOf(path);
@@ -121,11 +119,6 @@ export function RoomPage() {
         if (next.length === 0) return null;
         return next[Math.min(idx, next.length - 1)];
       });
-      const model = modelsRef.current.get(path);
-      if (model) {
-        model.dispose();
-        modelsRef.current.delete(path);
-      }
       return next;
     });
   }, []);
@@ -136,31 +129,79 @@ export function RoomPage() {
   }, [activePath, closeTab]);
 
   const closeAllTabs = useCallback(() => {
-    modelsRef.current.forEach((m) => m.dispose());
-    modelsRef.current.clear();
     setOpenPaths([]);
     setActivePath(null);
   }, []);
 
-  const triggerEditorAction = useCallback((actionId: string) => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.focus();
-    editor.getAction(actionId)?.run();
-  }, []);
-
-  const onFind = useCallback(() => triggerEditorAction("actions.find"), [triggerEditorAction]);
-  const onReplace = useCallback(
-    () => triggerEditorAction("editor.action.startFindReplaceAction"),
-    [triggerEditorAction],
-  );
-  const onFormatDocument = useCallback(
-    () => triggerEditorAction("editor.action.formatDocument"),
-    [triggerEditorAction],
-  );
+  const onFind = useCallback(() => editorRef.current?.openFind(), []);
+  const onReplace = useCallback(() => editorRef.current?.openReplace(), []);
+  const onFormatDocument = useCallback(() => editorRef.current?.formatDocument(), []);
 
   const onNewFile = useCallback(() => fileExplorerRef.current?.openNewFileInput(), []);
   const onRunFile = useCallback(() => runMutation.mutate(), [runMutation]);
+  const onEditorReadyChange = useCallback((ready: boolean) => {
+    setEditorReady(ready);
+  }, []);
+
+  const beginSidebarResize = useCallback(
+    (side: "left" | "right") => (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const bounds = workspaceRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+
+      const previousUserSelect = document.body.style.userSelect;
+      const previousCursor = document.body.style.cursor;
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+
+      const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
+        const availableWidth = bounds.width;
+        if (side === "left") {
+          const otherWidth = showAiPanel && !isCompactWorkspace ? rightSidebarWidth : 0;
+          const maxWidth = Math.min(
+            LEFT_SIDEBAR_MAX,
+            availableWidth - otherWidth - MIN_EDITOR_WIDTH,
+          );
+          setLeftSidebarWidth(
+            clamp(moveEvent.clientX - bounds.left, LEFT_SIDEBAR_MIN, maxWidth),
+          );
+        } else {
+          const otherWidth = showFileExplorer && !isCompactWorkspace ? leftSidebarWidth : 0;
+          const maxWidth = Math.min(
+            RIGHT_SIDEBAR_MAX,
+            availableWidth - otherWidth - MIN_EDITOR_WIDTH,
+          );
+          setRightSidebarWidth(
+            clamp(bounds.right - moveEvent.clientX, RIGHT_SIDEBAR_MIN, maxWidth),
+          );
+        }
+      };
+
+      const onPointerUp = () => {
+        document.body.style.userSelect = previousUserSelect;
+        document.body.style.cursor = previousCursor;
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp, { once: true });
+    },
+    [
+      isCompactWorkspace,
+      leftSidebarWidth,
+      rightSidebarWidth,
+      showAiPanel,
+      showFileExplorer,
+    ],
+  );
+  const resizeLeftSidebarBy = useCallback((delta: number) => {
+    setLeftSidebarWidth((current) => clamp(current + delta, LEFT_SIDEBAR_MIN, LEFT_SIDEBAR_MAX));
+  }, []);
+  const resizeRightSidebarBy = useCallback((delta: number) => {
+    setRightSidebarWidth((current) => clamp(current + delta, RIGHT_SIDEBAR_MIN, RIGHT_SIDEBAR_MAX));
+  }, []);
 
   // Bulk-import a folder picked via FileExplorer's Upload button.
   // For every prepared file we (1) create the RoomFile metadata via REST
@@ -264,72 +305,46 @@ export function RoomPage() {
     [collab.ydoc, openFile],
   );
 
-  // Switch the editor to the model for `activePath`, creating it on first
-  // open. Destroys the previous Yjs binding and creates a fresh one
-  // pointing at the new model.
   useEffect(() => {
-    if (!editorReady) return;
-    const editor = editorRef.current;
-    const monacoNs = monacoNsRef.current;
-    if (!editor || !monacoNs) return;
-    if (!activePath || !collab.awareness) {
-      bindingRef.current?.destroy();
-      bindingRef.current = null;
-      return;
-    }
+    localStorage.setItem("codeleon.leftSidebarWidth", String(leftSidebarWidth));
+  }, [leftSidebarWidth]);
 
-    let model = modelsRef.current.get(activePath);
-    if (!model) {
-      model = monacoNs.editor.createModel("", languageFromPath(activePath));
-      modelsRef.current.set(activePath, model);
-    } else {
-      monacoNs.editor.setModelLanguage(model, languageFromPath(activePath));
-    }
-    editor.setModel(model);
-
-    bindingRef.current?.destroy();
-    const yText = collab.ydoc.getText(activePath);
-    bindingRef.current = new MonacoBinding(
-      yText,
-      model,
-      new Set([editor]),
-      collab.awareness,
-    );
-
-    return () => {
-      bindingRef.current?.destroy();
-      bindingRef.current = null;
-    };
-  }, [editorReady, activePath, collab.awareness, collab.ydoc]);
-
-  // Dispose every cached Monaco model when the page unmounts so we
-  // don't leak editor state between rooms.
   useEffect(() => {
-    const cache = modelsRef.current;
-    return () => {
-      cache.forEach((m) => m.dispose());
-      cache.clear();
+    localStorage.setItem("codeleon.rightSidebarWidth", String(rightSidebarWidth));
+  }, [rightSidebarWidth]);
+
+  useEffect(() => {
+    const syncWorkspaceSize = () => {
+      const width = workspaceRef.current?.clientWidth ?? window.innerWidth;
+      const compact = width < 1024;
+      setIsCompactWorkspace(compact);
+      if (compact) return;
+
+      setLeftSidebarWidth((current) => {
+        const maxWidth =
+          width -
+          (showAiPanel ? rightSidebarWidth : 0) -
+          MIN_EDITOR_WIDTH;
+        return clamp(current, LEFT_SIDEBAR_MIN, Math.min(LEFT_SIDEBAR_MAX, maxWidth));
+      });
+      setRightSidebarWidth((current) => {
+        const maxWidth =
+          width -
+          (showFileExplorer ? leftSidebarWidth : 0) -
+          MIN_EDITOR_WIDTH;
+        return clamp(current, RIGHT_SIDEBAR_MIN, Math.min(RIGHT_SIDEBAR_MAX, maxWidth));
+      });
     };
-  }, []);
 
-  if (!roomId) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  const onEditorMount: OnMount = (editor) => {
-    editorRef.current = editor;
-    setEditorReady(true);
-  };
-
-  const beforeMount: BeforeMount = (monacoNs) => {
-    monacoNsRef.current = monacoNs;
-    monacoNs.editor.defineTheme("codeleon-dark", CODELEON_DARK_THEME);
-  };
+    syncWorkspaceSize();
+    window.addEventListener("resize", syncWorkspaceSize);
+    return () => window.removeEventListener("resize", syncWorkspaceSize);
+  }, [leftSidebarWidth, rightSidebarWidth, showAiPanel, showFileExplorer]);
 
   const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
 
   // Snapshot every file's current content for whole-project indexing.
-  // Content is read from the Y.Doc — the Y.Monaco binding keeps each
+  // Content is read from the Y.Doc. The CodeMirror Yjs binding keeps each
   // Y.Text in sync with its editor in real time, so even files with no
   // open tab carry their up-to-date text here. Empty files are skipped:
   // there is nothing to embed and they would only add noise to the index.
@@ -339,6 +354,10 @@ export function RoomPage() {
       .map((file) => ({ path: file.path, text: collab.ydoc.getText(file.path).toString() }))
       .filter((file) => file.text.trim().length > 0);
   }, [roomFilesQuery.data, collab.ydoc]);
+
+  if (!roomId) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
@@ -442,19 +461,24 @@ export function RoomPage() {
       />
 
       <section
-        className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden"
+        ref={workspaceRef}
+        className="relative grid min-h-0 flex-1 grid-cols-1 overflow-hidden"
         style={{
-          gridTemplateColumns: [
-            showFileExplorer ? "17rem" : null,
+          gridTemplateColumns: isCompactWorkspace
+            ? "minmax(0, 1fr)"
+            : [
+            showFileExplorer ? `${leftSidebarWidth}px` : null,
+            showFileExplorer ? "4px" : null,
             "minmax(0, 1fr)",
-            showAiPanel ? "20rem" : null,
+            showAiPanel ? "4px" : null,
+            showAiPanel ? `${rightSidebarWidth}px` : null,
           ]
             .filter(Boolean)
             .join(" "),
         }}
       >
-        {showFileExplorer && (
-          <aside className="hidden min-h-0 flex-col gap-2 overflow-y-auto border-r border-zinc-800 bg-surface/70 p-4 lg:flex">
+        {showFileExplorer && !isCompactWorkspace && (
+          <aside className="flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-zinc-800 bg-surface/70 p-4">
             <FileExplorer
               ref={fileExplorerRef}
               roomId={roomId}
@@ -472,6 +496,14 @@ export function RoomPage() {
           </aside>
         )}
 
+        {showFileExplorer && !isCompactWorkspace && (
+          <ResizeHandle
+            label="Resize file explorer"
+            onPointerDown={beginSidebarResize("left")}
+            onKeyboardResize={resizeLeftSidebarBy}
+          />
+        )}
+
         <section className="flex min-h-0 flex-col overflow-hidden bg-zinc-950">
           <div className="flex items-center justify-between border-b border-zinc-800 bg-surface pr-4">
             <div className="flex-1 min-w-0">
@@ -487,24 +519,13 @@ export function RoomPage() {
             </span>
           </div>
           <div className="flex-1 min-h-0">
-            <Editor
-              beforeMount={beforeMount}
-              onMount={onEditorMount}
-              defaultLanguage="plaintext"
-              defaultValue=""
-              height="100%"
-              theme="codeleon-dark"
-              options={{
-                fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, monospace",
-                fontSize: 14,
-                minimap: { enabled: false },
-                padding: { top: 18, bottom: 18 },
-                scrollBeyondLastLine: false,
-                smoothScrolling: true,
-                tabSize: 4,
-                wordWrap: "on",
-                readOnly: !canEdit,
-              }}
+            <CodeMirrorEditor
+              ref={editorRef}
+              activePath={activePath}
+              ydoc={collab.ydoc}
+              awareness={collab.awareness}
+              canEdit={canEdit}
+              onReadyChange={onEditorReadyChange}
             />
           </div>
           <OutputPanel
@@ -514,8 +535,71 @@ export function RoomPage() {
           />
         </section>
 
-        {showAiPanel && (
-          <aside className="grid min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70 lg:grid-rows-[auto_1fr]">
+        {showAiPanel && !isCompactWorkspace && (
+          <ResizeHandle
+            label="Resize AI assistant"
+            onPointerDown={beginSidebarResize("right")}
+            onKeyboardResize={(delta) => resizeRightSidebarBy(-delta)}
+          />
+        )}
+
+        {showAiPanel && !isCompactWorkspace && (
+          <aside className="grid min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70 grid-rows-[auto_1fr]">
+            <section className="border-b border-zinc-800 p-4">
+              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
+                <Users className="h-4 w-4 text-cyan" />
+                Participants ({collab.peers.length})
+              </div>
+              <div className="space-y-3">
+                {collab.peers.length === 0 ? (
+                  <p className="text-xs text-zinc-500">No live participants yet.</p>
+                ) : (
+                  collab.peers.map((peer) => (
+                    <Participant
+                      key={peer.clientId}
+                      name={peer.name}
+                      color={peer.color}
+                      isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="flex min-h-0 flex-col p-4">
+              <ChatPanel
+                roomId={roomId}
+                getEditorText={getEditorText}
+                getAllFiles={getAllFiles}
+                activeFilePath={activePath}
+                lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+                isOwner={room?.currentUserRole === "OWNER"}
+              />
+            </section>
+          </aside>
+        )}
+
+        {showFileExplorer && isCompactWorkspace && (
+          <aside className="absolute inset-y-0 left-0 z-30 flex w-[min(82vw,22rem)] min-h-0 flex-col gap-2 overflow-y-auto border-r border-zinc-800 bg-surface p-4 shadow-glow">
+            <FileExplorer
+              ref={fileExplorerRef}
+              roomId={roomId}
+              activePath={activePath}
+              onActivePathChange={openFile}
+              canEdit={canEdit}
+              onImportLocal={handleImportLocal}
+              importing={importing}
+            />
+            {importStatus && (
+              <p className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-400">
+                {importStatus}
+              </p>
+            )}
+          </aside>
+        )}
+
+        {showAiPanel && isCompactWorkspace && (
+          <aside className="absolute inset-y-0 right-0 z-30 grid w-[min(88vw,24rem)] min-h-0 overflow-hidden border-l border-zinc-800 bg-surface shadow-glow grid-rows-[auto_1fr]">
             <section className="border-b border-zinc-800 p-4">
               <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
                 <Users className="h-4 w-4 text-cyan" />
@@ -639,22 +723,56 @@ function ConnectionPill({ connected }: { connected: boolean }) {
   );
 }
 
-const CODELEON_DARK_THEME: monaco.editor.IStandaloneThemeData = {
-  base: "vs-dark",
-  inherit: true,
-  rules: [
-    { token: "comment", foreground: "71717A" },
-    { token: "keyword", foreground: "8B5CF6" },
-    { token: "string", foreground: "10B981" },
-    { token: "number", foreground: "06B6D4" },
-  ],
-  colors: {
-    "editor.background": "#09090B",
-    "editor.foreground": "#FAFAFA",
-    "editor.lineHighlightBackground": "#18181B",
-    "editorLineNumber.foreground": "#52525B",
-    "editorCursor.foreground": "#06B6D4",
-    "editor.selectionBackground": "#6366F166",
-    "editor.inactiveSelectionBackground": "#27272A",
-  },
-};
+function ResizeHandle({
+  label,
+  onPointerDown,
+  onKeyboardResize,
+}: {
+  label: string;
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  onKeyboardResize: (delta: number) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      tabIndex={0}
+      aria-orientation="vertical"
+      onPointerDown={onPointerDown}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onKeyboardResize(-16);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onKeyboardResize(16);
+        }
+      }}
+      className="group relative min-h-0 cursor-col-resize bg-zinc-950 outline-none focus-visible:bg-cyan/20"
+    >
+      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-zinc-800 transition group-hover:bg-cyan" />
+    </div>
+  );
+}
+
+const LEFT_SIDEBAR_MIN = 192;
+const LEFT_SIDEBAR_MAX = 448;
+const RIGHT_SIDEBAR_MIN = 256;
+const RIGHT_SIDEBAR_MAX = 544;
+const MIN_EDITOR_WIDTH = 420;
+
+function readStoredWidth(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (typeof window === "undefined") return fallback;
+  const parsed = Number(window.localStorage.getItem(key));
+  return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}

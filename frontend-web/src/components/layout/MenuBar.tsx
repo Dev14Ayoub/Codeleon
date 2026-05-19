@@ -346,7 +346,7 @@ function AboutDialog({
 
           <dl className="mt-6 space-y-3 text-xs">
             <Row label="Frontend">React 18 · Vite 5 · TypeScript · Tailwind</Row>
-            <Row label="Editor">Monaco + Yjs (multi-cursor)</Row>
+            <Row label="Editor">CodeMirror 6 + Yjs (multi-cursor)</Row>
             <Row label="Backend">Spring Boot 3 · PostgreSQL · Flyway</Row>
             <Row label="AI">Ollama · Qdrant · local CPU inference</Row>
             <Row label="Sandbox">Docker (Python 3.12)</Row>
@@ -375,7 +375,6 @@ function ShortcutsDialog({
     ["Ctrl + H", "Replace"],
     ["Shift + Alt + F", "Format document"],
     ["Ctrl + Enter", "Run active file"],
-    ["Ctrl + Shift + P", "Monaco command palette"],
     ["Right click", "File context menu (rename / delete)"],
     ["Middle click", "Close tab"],
     ["Enter", "Send chat message"],

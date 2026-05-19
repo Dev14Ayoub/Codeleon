@@ -42,7 +42,7 @@ export function LandingPage() {
               Code adapts. Teams thrive.
             </p>
             <p className="max-w-2xl leading-7 text-zinc-400">
-              A collaborative programming workspace with rooms, a Monaco editor, code execution, and a local RAG assistant that understands each project.
+              A collaborative programming workspace with rooms, a CodeMirror editor, code execution, and a local RAG assistant that understands each project.
             </p>
           </div>
 
