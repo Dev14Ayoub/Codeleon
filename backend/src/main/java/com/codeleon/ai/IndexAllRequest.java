@@ -16,7 +16,7 @@ import java.util.List;
  * inserting fresh ones, so calling this repeatedly never duplicates.
  */
 public record IndexAllRequest(
-        @NotEmpty @Size(max = 200) List<@NotNull IndexFile> files
+        @NotEmpty @Size(max = 1_000) List<@NotNull IndexFile> files
 ) {
     public record IndexFile(
             String path,

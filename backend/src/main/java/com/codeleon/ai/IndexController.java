@@ -59,6 +59,7 @@ public class IndexController {
         }
         int totalChunks = 0;
         long totalDuration = 0;
+        indexer.deleteRoomIndex(roomId);
         for (IndexAllRequest.IndexFile file : request.files()) {
             IndexResult result = indexer.index(roomId, file.pathOrDefault(), file.text());
             totalChunks += result.chunks();

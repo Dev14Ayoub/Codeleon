@@ -102,4 +102,22 @@ class RoomFileIndexerTest {
         assertThat(must.get(0)).containsEntry("key", "roomId");
         assertThat(must.get(1)).containsEntry("key", "path");
     }
+
+    @Test
+    void deleteRoomIndexDeletesEveryPathInRoom() {
+        OllamaClient ollama = mock(OllamaClient.class);
+        QdrantClient qdrant = mock(QdrantClient.class);
+        UUID room = UUID.fromString("00000000-0000-0000-0000-000000000abc");
+
+        RoomFileIndexer indexer = new RoomFileIndexer(ollama, qdrant);
+        indexer.deleteRoomIndex(room);
+
+        verify(qdrant).ensureCollection();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(qdrant).deleteByFilter(captor.capture());
+        assertThat(captor.getValue()).isEqualTo(RoomFileIndexer.filterForRoom(room));
+        verify(ollama, never()).embed(any());
+        verify(qdrant, never()).upsert(any());
+    }
 }

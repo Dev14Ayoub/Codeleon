@@ -1,5 +1,6 @@
 package com.codeleon.room.imports;
 
+import com.codeleon.auth.oauth.OAuthAccountRepository;
 import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.room.RoomFile;
 import com.codeleon.room.RoomFileService;
@@ -73,8 +74,10 @@ public class GithubImportService {
     );
 
     private final RoomFileService roomFileService;
+    private final OAuthAccountRepository oauthAccountRepository;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
     public GithubImportResponse importRepo(UUID roomId, User user, String repoUrl, String requestedBranch) {
@@ -83,7 +86,8 @@ public class GithubImportService {
                 ? "main"
                 : requestedBranch.trim();
 
-        FetchResult fetch = downloadZipWithFallback(or, preferredBranch);
+        String githubToken = linkedGithubToken(user);
+        FetchResult fetch = downloadZipWithFallback(or, preferredBranch, githubToken);
 
         List<GithubImportResponse.ImportedFile> imported = new ArrayList<>();
         List<GithubImportResponse.SkippedFile> skipped = new ArrayList<>();
@@ -186,36 +190,58 @@ public class GithubImportService {
     // ZIP download with main → master fallback.
     // ---------------------------------------------------------------------
 
-    private FetchResult downloadZipWithFallback(OwnerRepo or, String preferredBranch) {
+    private FetchResult downloadZipWithFallback(OwnerRepo or, String preferredBranch, String githubToken) {
         try {
-            return new FetchResult(downloadZip(or, preferredBranch), preferredBranch);
+            return new FetchResult(downloadZip(or, preferredBranch, githubToken), preferredBranch);
         } catch (BranchNotFoundException ex) {
             // GitHub returns 404 when the branch does not exist. If the user
             // accepted the default we transparently retry against master.
             if ("main".equals(preferredBranch)) {
-                return new FetchResult(downloadZip(or, "master"), "master");
+                try {
+                    return new FetchResult(downloadZip(or, "master", githubToken), "master");
+                } catch (BranchNotFoundException fallbackEx) {
+                    throw missingRepositoryOrBranch(or, githubToken);
+                }
             }
             throw new BadRequestException(
-                    "Branch '" + preferredBranch + "' not found in " + or.owner() + "/" + or.repo()
+                    "Branch or repository '" + preferredBranch + "' not found in " + or.owner() + "/" + or.repo() +
+                    (githubToken == null ? ". If this is a private repository, connect your GitHub account first." : "")
             );
         }
     }
 
-    private byte[] downloadZip(OwnerRepo or, String branch) {
-        String url = String.format(
-                "https://github.com/%s/%s/archive/refs/heads/%s.zip",
-                or.owner(), or.repo(), branch
-        );
-        HttpRequest request = HttpRequest.newBuilder()
+    private byte[] downloadZip(OwnerRepo or, String branch, String githubToken) {
+        boolean authenticated = githubToken != null && !githubToken.isBlank();
+        String url = authenticated
+                ? String.format(
+                        "https://api.github.com/repos/%s/%s/zipball/%s",
+                        or.owner(), or.repo(), branch
+                )
+                : String.format(
+                        "https://github.com/%s/%s/archive/refs/heads/%s.zip",
+                        or.owner(), or.repo(), branch
+                );
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(60))
-                .GET()
-                .build();
+                .header("Accept", "application/zip, application/octet-stream")
+                .header("User-Agent", "Codeleon-GitHub-Importer")
+                .GET();
+        if (authenticated) {
+            builder.header("Authorization", "Bearer " + githubToken)
+                    .header("X-GitHub-Api-Version", "2022-11-28");
+        }
+        HttpRequest request = builder.build();
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             int code = response.statusCode();
             if (code == 404) {
                 throw new BranchNotFoundException();
+            }
+            if (code == 401 || code == 403) {
+                throw new BadRequestException(authenticated
+                        ? "GitHub authentication failed. Reconnect your GitHub account, then try importing again."
+                        : "GitHub authentication required. Connect your GitHub account to import private repositories.");
             }
             if (code / 100 != 2) {
                 throw new BadRequestException("GitHub returned HTTP " + code + " when fetching the archive");
@@ -225,6 +251,21 @@ public class GithubImportService {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new BadRequestException("Could not reach github.com: " + ex.getMessage());
         }
+    }
+
+    private String linkedGithubToken(User user) {
+        if (user == null || user.getId() == null) return null;
+        return oauthAccountRepository.findByUser_IdAndProvider(user.getId(), "github")
+                .map(account -> account.getAccessToken())
+                .filter(token -> token != null && !token.isBlank())
+                .orElse(null);
+    }
+
+    private BadRequestException missingRepositoryOrBranch(OwnerRepo or, String githubToken) {
+        return new BadRequestException(
+                "Repository or default branch not found for " + or.owner() + "/" + or.repo() +
+                (githubToken == null ? ". If this is a private repository, connect your GitHub account first." : "")
+        );
     }
 
     private record FetchResult(byte[] bytes, String branch) {

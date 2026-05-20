@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { Archive, ArrowDownAZ, Clock, DoorOpen, FileCode2, Globe2, LayoutGrid, Lock, LogOut, Pin, Plus, Radio, Search, Sparkles, Users } from "lucide-react";
+import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
@@ -11,7 +11,21 @@ import { ProjectCard } from "@/components/projects/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
-import { createRoom, fetchCurrentUser, fetchMyRooms, fetchPublicRooms, fetchTemplates, joinRoom, type ProjectTemplate, type Room } from "@/lib/api";
+import {
+  API_BASE_URL,
+  createRoom,
+  fetchCurrentUser,
+  fetchMyRooms,
+  fetchOAuthAccounts,
+  fetchOAuthProviders,
+  fetchPublicRooms,
+  fetchTemplates,
+  joinRoom,
+  type OAuthAccount,
+  type ProjectTemplate,
+  type Room,
+} from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { CreateRoomValues, JoinRoomValues, createRoomSchema, joinRoomSchema } from "@/lib/validators";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -137,6 +151,10 @@ export function DashboardPage() {
             <Radio className="h-4 w-4" />
             Public projects
           </a>
+          <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#integrations">
+            <Link2 className="h-4 w-4" />
+            Integrations
+          </a>
         </nav>
       </aside>
 
@@ -160,6 +178,8 @@ export function DashboardPage() {
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
             <StatTile icon={<Users className="h-4 w-4 text-cyan" />} label="Collaborators" value={totalCollaborators} />
           </div>
+
+          <AccountIntegrations className="xl:hidden" />
 
           <section id="projects" className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -291,7 +311,8 @@ export function DashboardPage() {
             </div>
 
             <aside className="hidden xl:block">
-              <div className="sticky top-8">
+              <div className="sticky top-8 space-y-4">
+                <AccountIntegrations />
                 <ActivityFeed currentUserId={user?.id} />
               </div>
             </aside>
@@ -356,6 +377,105 @@ function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string
         {label}
       </div>
       <p className="mt-2 text-2xl font-semibold text-zinc-50">{value}</p>
+    </div>
+  );
+}
+
+function AccountIntegrations({ className }: { className?: string }) {
+  const accountsQuery = useQuery({
+    queryKey: ["oauth-accounts"],
+    queryFn: fetchOAuthAccounts,
+    staleTime: 30_000,
+  });
+  const providersQuery = useQuery({
+    queryKey: ["auth-providers"],
+    queryFn: fetchOAuthProviders,
+    staleTime: 60_000,
+  });
+
+  const accounts = accountsQuery.data ?? [];
+  const providers = providersQuery.data?.providers ?? [];
+  const github = accounts.find((account) => account.provider === "github");
+  const githubAvailable = providers.includes("github");
+
+  return (
+    <section id="integrations" className={cn("rounded-lg border border-zinc-800 bg-surface p-5", className)}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950">
+          <ShieldCheck className="h-4 w-4 text-cyan" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-zinc-50">Account integrations</h2>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            Link GitHub to import private repositories from the same Codeleon account.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <IntegrationRow
+          account={github}
+          available={githubAvailable}
+          icon={<Github className="h-4 w-4" />}
+          provider="github"
+          title="GitHub"
+        />
+      </div>
+
+      {accountsQuery.isError && (
+        <p className="mt-3 text-xs text-rose-400">Could not load linked accounts.</p>
+      )}
+    </section>
+  );
+}
+
+function IntegrationRow({
+  account,
+  available,
+  icon,
+  provider,
+  title,
+}: {
+  account: OAuthAccount | undefined;
+  available: boolean;
+  icon: React.ReactNode;
+  provider: string;
+  title: string;
+}) {
+  const connected = Boolean(account);
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="text-zinc-400">{icon}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-zinc-100">{title}</span>
+              {connected && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                  <Check className="h-3 w-3" />
+                  Connected
+                </span>
+              )}
+            </div>
+            <p className="truncate text-xs text-zinc-500">
+              {account?.email ?? (available ? "Not connected" : "OAuth provider not configured")}
+            </p>
+          </div>
+        </div>
+
+        {!connected && available && (
+          <Button asChild variant="secondary" className="h-8 shrink-0 px-3 text-xs">
+            <a href={`${API_BASE_URL}/oauth2/authorization/${provider}`}>
+              <Link2 className="h-3.5 w-3.5" />
+              Connect
+            </a>
+          </Button>
+        )}
+      </div>
+      {connected && account?.scopes && (
+        <p className="mt-2 truncate font-mono text-[10px] text-zinc-600">Scopes: {account.scopes}</p>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  FileText,
   Loader2,
   Play,
   Terminal,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/api";
 import { prepareLocalImport } from "@/lib/files/local-import";
 import { useCollabRoom } from "@/lib/collab/useCollabRoom";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function RoomPage() {
   const { roomId } = useParams();
@@ -55,6 +57,7 @@ export function RoomPage() {
   });
 
   const collab = useCollabRoom(roomId);
+  const currentUser = useAuthStore((state) => state.user);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -401,14 +404,20 @@ export function RoomPage() {
   // Snapshot every file's current content for whole-project indexing.
   // Content is read from the Y.Doc. The CodeMirror Yjs binding keeps each
   // Y.Text in sync with its editor in real time, so even files with no
-  // open tab carry their up-to-date text here. Empty files are skipped:
-  // there is nothing to embed and they would only add noise to the index.
+  // open tab carry their up-to-date text here. Empty files are included so
+  // the backend can clear stale chunks when a project is renamed, deleted,
+  // or emptied after an earlier index.
   const getAllFiles = useCallback((): IndexFile[] => {
     const files = roomFilesQuery.data ?? [];
-    return files
-      .map((file) => ({ path: file.path, text: collab.ydoc.getText(file.path).toString() }))
-      .filter((file) => file.text.trim().length > 0);
+    return files.map((file) => ({
+      path: file.path,
+      text: collab.ydoc.getText(file.path).toString(),
+    }));
   }, [roomFilesQuery.data, collab.ydoc]);
+
+  useEffect(() => {
+    collab.setActivePath(activePath);
+  }, [activePath, collab.setActivePath]);
 
   if (!roomId) {
     return <Navigate to="/dashboard" replace />;
@@ -617,7 +626,8 @@ export function RoomPage() {
                       key={peer.clientId}
                       name={peer.name}
                       color={peer.color}
-                      isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
+                      activePath={peer.activePath}
+                      isMe={peer.userId === currentUser?.id}
                     />
                   ))
                 )}
@@ -675,7 +685,8 @@ export function RoomPage() {
                       key={peer.clientId}
                       name={peer.name}
                       color={peer.color}
-                      isMe={peer.userId === room?.ownerId && peer.userId === peer.userId}
+                      activePath={peer.activePath}
+                      isMe={peer.userId === currentUser?.id}
                     />
                   ))
                 )}
@@ -753,18 +764,34 @@ function OutputPanel({
   );
 }
 
-function Participant({ name, color, isMe }: { name: string; color: string; isMe?: boolean }) {
+function Participant({
+  name,
+  color,
+  activePath,
+  isMe,
+}: {
+  name: string;
+  color: string;
+  activePath: string | null;
+  isMe?: boolean;
+}) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
-      <div className="flex items-center gap-3">
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
         <span
           className="h-2.5 w-2.5 rounded-full"
           style={{ backgroundColor: color }}
           aria-hidden
         />
-        <span className="text-sm text-zinc-200">{name}</span>
+          <span className="truncate text-sm text-zinc-200">{name}</span>
+        </div>
+        <span className="shrink-0 text-xs text-zinc-500">{isMe ? "you" : "online"}</span>
       </div>
-      <span className="text-xs text-zinc-500">{isMe ? "you" : "online"}</span>
+      <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
+        <FileText className="h-3 w-3 shrink-0" />
+        <span className="truncate">{activePath ?? "No file open"}</span>
+      </p>
     </div>
   );
 }

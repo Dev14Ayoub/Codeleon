@@ -65,6 +65,25 @@ export const api = axios.create({
   },
 });
 
+export function getApiErrorMessage(error: unknown, fallback = "Request failed") {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as
+      | { message?: string; validationErrors?: Record<string, string> }
+      | undefined;
+    const validationErrors = data?.validationErrors
+      ? Object.entries(data.validationErrors)
+      : [];
+    if (validationErrors.length > 0) {
+      const details = validationErrors
+        .map(([field, message]) => `${field}: ${message}`)
+        .join("; ");
+      return data?.message ? `${data.message}: ${details}` : details;
+    }
+    return data?.message ?? error.message;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
   if (token) {
@@ -103,6 +122,19 @@ export interface OAuthProviders {
  */
 export async function fetchOAuthProviders() {
   const { data } = await api.get<OAuthProviders>("/auth/providers");
+  return data;
+}
+
+export interface OAuthAccount {
+  provider: string;
+  email: string | null;
+  scopes: string | null;
+  expiresAt: string | null;
+  updatedAt: string;
+}
+
+export async function fetchOAuthAccounts() {
+  const { data } = await api.get<OAuthAccount[]>("/users/me/oauth-accounts");
   return data;
 }
 

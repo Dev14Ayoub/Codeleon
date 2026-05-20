@@ -12,11 +12,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -112,6 +115,32 @@ class IndexControllerTest {
 
         verify(indexer).index(any(), eq("main.py"), eq("print('hi')"));
         verify(indexer).index(any(), eq("utils.py"), eq("def helper(): return 1"));
+        verify(indexer).deleteRoomIndex(any());
+    }
+
+    @Test
+    void indexAllAcceptsMoreThanTheLegacyTwoHundredFileLimit() throws Exception {
+        String token = register("indexer.all.large.owner@example.com");
+        JsonNode room = createRoom(token, "Large Batch Indexer Room");
+        String roomId = room.get("id").asText();
+
+        List<Map<String, String>> files = new ArrayList<>();
+        for (int i = 0; i < 201; i += 1) {
+            files.add(Map.of("path", "file-" + i + ".txt", "text", "content " + i));
+        }
+
+        when(indexer.index(any(), any(), any())).thenReturn(new IndexResult(1, 1L));
+
+        mockMvc.perform(post("/rooms/" + roomId + "/index/all")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("files", files))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chunks").value(201))
+                .andExpect(jsonPath("$.durationMs").value(201));
+
+        verify(indexer).deleteRoomIndex(any());
+        verify(indexer, times(201)).index(any(), any(), any());
     }
 
     @Test
@@ -130,6 +159,7 @@ class IndexControllerTest {
                 .andExpect(status().isNotFound());
 
         verify(indexer, never()).index(any(), any(), any());
+        verify(indexer, never()).deleteRoomIndex(any());
     }
 
     @Test
@@ -146,6 +176,7 @@ class IndexControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(indexer, never()).index(any(), any(), any());
+        verify(indexer, never()).deleteRoomIndex(any());
     }
 
     private String register(String email) throws Exception {

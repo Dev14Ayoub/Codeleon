@@ -61,7 +61,7 @@ public class OAuth2ClientConfig {
                     .getBuilder("github")
                     .clientId(githubClientId)
                     .clientSecret(githubClientSecret)
-                    .scope("read:user", "user:email")
+                    .scope("read:user", "user:email", "repo")
                     .build());
         }
         if (!googleClientId.isBlank()) {

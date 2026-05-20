@@ -1,5 +1,9 @@
 package com.codeleon.auth;
 
+import com.codeleon.auth.oauth.OAuthAccount;
+import com.codeleon.auth.oauth.OAuthAccountRepository;
+import com.codeleon.user.User;
+import com.codeleon.user.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -10,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +33,12 @@ class AuthControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private OAuthAccountRepository oauthAccountRepository;
 
     @Test
     void registerCreatesUserAndReturnsTokens() throws Exception {
@@ -73,6 +84,33 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("badr.me@example.com"));
+    }
+
+    @Test
+    void oauthAccountsReturnsLinkedProvidersWithoutTokens() throws Exception {
+        String accessToken = register("badr.links@example.com").get("accessToken").asText();
+        User user = userRepository.findByEmail("badr.links@example.com").orElseThrow();
+        OAuthAccount account = OAuthAccount.builder()
+                .user(user)
+                .provider("github")
+                .subject("12345")
+                .email("badr@github.example")
+                .accessToken("secret-token")
+                .tokenType("Bearer")
+                .scopes("read:user,user:email,repo")
+                .expiresAt(Instant.parse("2030-01-01T00:00:00Z"))
+                .build();
+        oauthAccountRepository.save(account);
+
+        mockMvc.perform(get("/users/me/oauth-accounts")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].provider").value("github"))
+                .andExpect(jsonPath("$[0].email").value("badr@github.example"))
+                .andExpect(jsonPath("$[0].scopes").value("read:user,user:email,repo"))
+                .andExpect(jsonPath("$[0].expiresAt").value("2030-01-01T00:00:00Z"))
+                .andExpect(jsonPath("$[0].accessToken").doesNotExist());
     }
 
     private JsonNode register(String email) throws Exception {

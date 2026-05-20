@@ -23,6 +23,11 @@ public class RoomFileIndexer {
     private final OllamaClient ollama;
     private final QdrantClient qdrant;
 
+    public void deleteRoomIndex(UUID roomId) {
+        qdrant.ensureCollection();
+        qdrant.deleteByFilter(filterForRoom(roomId));
+    }
+
     public IndexResult index(UUID roomId, String path, String text) {
         long start = System.currentTimeMillis();
         String resolvedPath = (path == null || path.isBlank()) ? "main" : path;
@@ -67,6 +72,12 @@ public class RoomFileIndexer {
         return Map.of("must", List.of(
                 Map.of("key", "roomId", "match", Map.of("value", roomId.toString())),
                 Map.of("key", "path", "match", Map.of("value", path))
+        ));
+    }
+
+    static Map<String, Object> filterForRoom(UUID roomId) {
+        return Map.of("must", List.of(
+                Map.of("key", "roomId", "match", Map.of("value", roomId.toString()))
         ));
     }
 }

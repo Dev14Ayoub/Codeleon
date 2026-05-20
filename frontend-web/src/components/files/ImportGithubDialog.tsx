@@ -1,9 +1,10 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { AxiosError } from "axios";
 import { Github, Loader2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  API_BASE_URL,
+  getApiErrorMessage,
   importGithub,
   type GithubImportResponse,
 } from "@/lib/api";
@@ -56,16 +57,16 @@ export function ImportGithubDialog({
       setReport(response);
       await onImported(response);
     } catch (ex) {
-      if (ex instanceof AxiosError) {
-        const msg = (ex.response?.data as { message?: string } | undefined)?.message;
-        setError(msg ?? ex.message);
-      } else {
-        setError(ex instanceof Error ? ex.message : "Import failed");
-      }
+      setError(getApiErrorMessage(ex, "Import failed"));
     } finally {
       setBusy(false);
     }
   };
+
+  const shouldShowGithubConnect =
+    error != null &&
+    /github/i.test(error) &&
+    /(authentication|required|private|connect|reconnect)/i.test(error);
 
   return (
     <Dialog.Root
@@ -85,7 +86,7 @@ export function ImportGithubDialog({
                 Import from GitHub
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-zinc-400">
-                Paste a public repository URL. Up to 200 text files smaller than 100 KB will be added to this room.
+                Paste a repository URL. Private repositories require a connected GitHub account. Up to 200 text files smaller than 100 KB will be added to this room.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -120,9 +121,17 @@ export function ImportGithubDialog({
             </Field>
 
             {error && (
-              <p className="rounded border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
-                {error}
-              </p>
+              <div className="space-y-2 rounded border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+                <p>{error}</p>
+                {shouldShowGithubConnect && (
+                  <Button asChild type="button" variant="secondary">
+                    <a href={`${API_BASE_URL}/oauth2/authorization/github`}>
+                      <Github className="h-4 w-4" />
+                      Connect GitHub
+                    </a>
+                  </Button>
+                )}
+              </div>
             )}
 
             {report && (

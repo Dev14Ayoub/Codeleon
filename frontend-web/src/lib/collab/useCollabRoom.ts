@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { api } from "@/lib/api";
@@ -9,6 +9,7 @@ export interface CollabPeer {
   userId: string;
   name: string;
   color: string;
+  activePath: string | null;
 }
 
 export interface CollabRoom {
@@ -19,6 +20,7 @@ export interface CollabRoom {
   isConnected: boolean;
   isReady: boolean;
   peers: CollabPeer[];
+  setActivePath: (path: string | null) => void;
 }
 
 const SNAPSHOT_DEBOUNCE_MS = 3000;
@@ -52,6 +54,7 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
   const yText = useMemo(() => ydoc.getText(Y_TEXT_KEY), [ydoc]);
 
   const providerRef = useRef<WebsocketProvider | null>(null);
+  const activePathRef = useRef<string | null>(null);
   const snapshotTimerRef = useRef<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -92,6 +95,9 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
         name: user!.fullName,
         color: pickColor(user!.id),
       });
+      provider.awareness.setLocalStateField("activity", {
+        activePath: activePathRef.current,
+      });
 
       provider.on("status", ({ status }: { status: string }) => {
         if (cancelled) return;
@@ -118,12 +124,16 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
             const userState = state?.user as
               | { id: string; name: string; color: string }
               | undefined;
+            const activityState = state?.activity as
+              | { activePath?: string | null }
+              | undefined;
             if (!userState) return null;
             return {
               clientId,
               userId: userState.id,
               name: userState.name,
               color: userState.color,
+              activePath: activityState?.activePath ?? null,
             };
           })
           .filter((peer): peer is CollabPeer => peer !== null);
@@ -193,6 +203,13 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
     };
   }, [roomId, accessToken, user, ydoc]);
 
+  const setActivePath = useCallback((path: string | null) => {
+    activePathRef.current = path;
+    providerRef.current?.awareness.setLocalStateField("activity", {
+      activePath: path,
+    });
+  }, []);
+
   return {
     ydoc,
     yText,
@@ -201,5 +218,6 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
     isConnected,
     isReady,
     peers,
+    setActivePath,
   };
 }

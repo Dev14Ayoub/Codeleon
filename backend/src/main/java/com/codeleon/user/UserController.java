@@ -1,5 +1,7 @@
 package com.codeleon.user;
 
+import com.codeleon.auth.oauth.OAuthAccountRepository;
+import com.codeleon.auth.oauth.OAuthAccountResponse;
 import com.codeleon.user.dto.UpdateProfileRequest;
 import com.codeleon.user.dto.UserResponse;
 import jakarta.validation.Valid;
@@ -11,16 +13,26 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserRepository userRepository;
+    private final OAuthAccountRepository oauthAccountRepository;
 
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal User user) {
         return toResponse(user);
+    }
+
+    @GetMapping("/me/oauth-accounts")
+    public List<OAuthAccountResponse> oauthAccounts(@AuthenticationPrincipal User user) {
+        return oauthAccountRepository.findByUser_IdOrderByProviderAsc(user.getId()).stream()
+                .map(OAuthAccountResponse::of)
+                .toList();
     }
 
     @PatchMapping("/me")

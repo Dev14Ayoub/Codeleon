@@ -11,8 +11,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.DefaultRedirectStrategy;
 import org.springframework.security.web.RedirectStrategy;
@@ -28,6 +32,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Runs after Spring Security finishes the OAuth2 dance with GitHub or
@@ -49,6 +54,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final JwtService jwtService;
     private final RefreshTokenRepository refreshTokenRepository;
     private final SecurityProperties securityProperties;
+    private final ObjectProvider<OAuth2AuthorizedClientService> authorizedClientServiceProvider;
     private final RedirectStrategy redirectStrategy = new DefaultRedirectStrategy();
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -83,7 +89,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     profile.subject,
                     profile.email,
                     profile.name,
-                    profile.avatarUrl
+                    profile.avatarUrl,
+                    tokenDetails(provider, oauthToken)
             );
         } catch (RuntimeException ex) {
             log.warn("OAuth find-or-create failed for {}/{}: {}", provider, profile.subject, ex.getMessage());
@@ -124,6 +131,24 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         String origins = securityProperties.corsAllowedOrigins();
         if (origins == null || origins.isBlank()) return "http://localhost:5173";
         return origins.split(",")[0].trim();
+    }
+
+    private OAuthTokenDetails tokenDetails(String provider, OAuth2AuthenticationToken oauthToken) {
+        OAuth2AuthorizedClientService service = authorizedClientServiceProvider.getIfAvailable();
+        if (service == null) return null;
+        OAuth2AuthorizedClient client = service.loadAuthorizedClient(provider, oauthToken.getName());
+        if (client == null || client.getAccessToken() == null) return null;
+
+        OAuth2AccessToken accessToken = client.getAccessToken();
+        String scopes = accessToken.getScopes().stream()
+                .sorted()
+                .collect(Collectors.joining(" "));
+        return new OAuthTokenDetails(
+                accessToken.getTokenValue(),
+                accessToken.getTokenType().getValue(),
+                scopes,
+                accessToken.getExpiresAt()
+        );
     }
 
     static ProviderProfile extractProfile(String provider, Map<String, Object> attributes) {
