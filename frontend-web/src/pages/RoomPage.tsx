@@ -75,6 +75,7 @@ export function RoomPage() {
   const [editorReady, setEditorReady] = useState(false);
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [runStdin, setRunStdin] = useState("");
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
@@ -106,7 +107,12 @@ export function RoomPage() {
         throw new Error("Codeleon can run Python and Java files right now.");
       }
       const code = editorRef.current?.getValue() ?? "";
-      return runCode(roomId ?? "", { language, code, filename: activePath ?? undefined });
+      return runCode(roomId ?? "", {
+        language,
+        code,
+        filename: activePath ?? undefined,
+        stdin: runStdin,
+      });
     },
     onSuccess: (data) => {
       setRunResult(data);
@@ -642,6 +648,8 @@ export function RoomPage() {
             error={runError}
             activePath={activePath}
             languageLabel={activeRunLanguageLabel}
+            stdin={runStdin}
+            onStdinChange={setRunStdin}
           />
         </section>
 
@@ -736,12 +744,16 @@ function OutputPanel({
   activePath,
   isPending,
   languageLabel,
+  stdin,
+  onStdinChange,
   result,
   error,
 }: {
   activePath: string | null;
   isPending: boolean;
   languageLabel: string | null;
+  stdin: string;
+  onStdinChange: (value: string) => void;
   result: RunResult | null;
   error: string | null;
 }) {
@@ -754,11 +766,11 @@ function OutputPanel({
     : "text-zinc-500";
 
   return (
-    <div className="h-48 border-t border-zinc-800 bg-zinc-950">
+    <div className="h-64 border-t border-zinc-800 bg-zinc-950">
       <div className="flex h-9 items-center justify-between border-b border-zinc-800 bg-surface px-4">
         <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
           <Terminal className="h-3.5 w-3.5 text-zinc-500" />
-          Output
+          Run
         </div>
         <div className={`font-mono text-xs ${exitTone}`}>
           {isPending
@@ -772,24 +784,43 @@ function OutputPanel({
                 : "idle"}
         </div>
       </div>
-      <pre className="h-[calc(100%-2.25rem)] overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
-        {error ? (
-          <span className="text-rose-400">{error}</span>
-        ) : result ? (
-          <>
-            {result.stdout}
-            {result.stderr && <span className="text-rose-400">{result.stderr}</span>}
-          </>
-        ) : (
-          <span className="text-zinc-600">
-            {!activePath
-              ? "Open a Python or Java file to run it."
-              : languageLabel
-                ? `Press Run to execute the current ${languageLabel} file.`
-                : "Codeleon can run Python and Java files right now."}
-          </span>
-        )}
-      </pre>
+      <div className="grid h-[calc(100%-2.25rem)] min-h-0 grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.5fr)] divide-x divide-zinc-800">
+        <div className="flex min-h-0 flex-col">
+          <label className="flex h-8 items-center border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+            Stdin
+          </label>
+          <textarea
+            value={stdin}
+            onChange={(event) => onStdinChange(event.target.value)}
+            placeholder="Input for Scanner, input(), etc."
+            spellCheck={false}
+            className="min-h-0 flex-1 resize-none bg-zinc-950 px-4 py-3 font-mono text-xs leading-5 text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-zinc-950/80"
+          />
+        </div>
+        <div className="flex min-h-0 flex-col">
+          <div className="flex h-8 items-center border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+            Output
+          </div>
+          <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
+            {error ? (
+              <span className="text-rose-400">{error}</span>
+            ) : result ? (
+              <>
+                {result.stdout}
+                {result.stderr && <span className="text-rose-400">{result.stderr}</span>}
+              </>
+            ) : (
+              <span className="text-zinc-600">
+                {!activePath
+                  ? "Open a Python or Java file to run it."
+                  : languageLabel
+                    ? `Press Run to execute the current ${languageLabel} file.`
+                    : "Codeleon can run Python and Java files right now."}
+              </span>
+            )}
+          </pre>
+        </div>
+      </div>
     </div>
   );
 }
