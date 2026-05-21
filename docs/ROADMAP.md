@@ -1,7 +1,7 @@
 # Codeleon — Roadmap
 
-> Living document. Last refreshed: **2026-05-19**.
-> Backend verified with 85 tests green; frontend production build verified.
+> Living document. Last refreshed: **2026-05-21**.
+> Backend verified with 90 tests green; frontend production build and lint verified.
 
 This file is the single source of truth for **what Codeleon is, what is
 already shipped, and what is still planned** — both for the PFE
@@ -17,9 +17,9 @@ platform with a local RAG AI assistant. Every dependency runs on
 the developer's own machine — no cloud LLM, no SaaS storage. Users
 sign in (email/password, GitHub, Google), open a workspace, edit
 code together with multi-cursor presence, run their code in a
-sandboxed Docker container, ask the assistant questions about their
-own indexed code, and import existing folders or public GitHub
-repositories with one click.
+sandboxed Docker container (Python or Java), ask the assistant
+questions about their own indexed code, and import existing folders
+or public/private GitHub repositories with one click.
 
 PFE final-year project, Licence Pro Génie Logiciel, Faculté
 Polydisciplinaire de Taza, academic year 2025-2026.
@@ -47,6 +47,8 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | Area | Commit |
 |---|---|
 | Python sandbox (Docker, `--network=none`, mem/cpu/timeout caps) | `28356e8` |
+| Java 21 sandbox + file-language-aware Run button | `c3c44f4` |
+| Runner stdin separation for Python/Java code execution | `c3c44f4` |
 
 ### 2.4 RAG AI assistant
 | Area | Commit |
@@ -105,6 +107,7 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | Pin and archive projects | `390e22e` |
 | Template catalogue for project creation | `2d7c354` |
 | Activity feed and last-edited-by metadata | `0f5f448` |
+| Search suggestions while typing in My projects | `c3c44f4` |
 
 ### 2.11 AI polish and chat history
 | Area | Commit |
@@ -118,6 +121,24 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | Area | Commit |
 |---|---|
 | 16-page supervisor presentation PDF | `29ff75a` |
+
+### 2.13 Defense MVP polish
+| Area | Commit |
+|---|---|
+| Account integrations panel + explicit GitHub linking UX | `0cc2b7d` |
+| Large-project indexing guard/status improvements | `0cc2b7d` |
+| Room presence metadata and owner AI review flow polish | `0cc2b7d` |
+| Premium landing/auth/dashboard/room motion pass | `c3c44f4` |
+| Room right sidebar tabs (AI / People / Review) and workspace status strip | `c3c44f4` |
+
+### 2.14 Current verification baseline
+| Check | Result |
+|---|---|
+| Backend `mvn test` | 90 tests green |
+| Frontend `npm run lint` | 0 errors, 0 warnings |
+| Frontend `npm run build` | green (large chunk warning remains) |
+| Docker sandbox smoke | Python and Java compile/run with stdin |
+| HTTP smoke | `/`, `/login`, `/dashboard` return 200 |
 
 ---
 
@@ -143,9 +164,10 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 
 ## 4. User project dashboard
 
-**Status on 2026-05-19: shipped.** The dashboard now uses project
-cards, search/sort/filter controls, template-based project creation,
-pin/archive actions, an activity feed, and last-edited-by metadata.
+**Status on 2026-05-21: shipped and polished.** The dashboard now uses project
+cards, search/sort/filter controls, live suggestions while typing in
+"My projects", template-based project creation, pin/archive actions,
+an activity feed, and last-edited-by metadata.
 The backend pieces are covered by Flyway migrations `V5__pin_and_archive.sql`
 and `V6__room_events.sql`; the frontend uses `ProjectCard.tsx` and
 `ActivityFeed.tsx`.
@@ -353,7 +375,7 @@ serve your demo story best.
 |---|---|---|---|
 | 1 | **Project templates marketplace** | Lets users save their own templates and share them publicly. Demonstrates a small but real social feature. | 6h |
 | 2 | **Markdown live preview pane** | Split-pane view when the active file is `.md`. Easy win, very visual. | 3h |
-| 3 | **Multiple language runners** (Node, Java, Go) | Demonstrates extensibility of the sandbox runner. Each = 1-2h with a Docker image swap. | 4-6h |
+| 3 | **More language runners** (Node, Go, etc.) | Java is now shipped; remaining runtimes demonstrate extensibility of the sandbox runner. Each = 1-2h with a Docker image swap. | 3-5h |
 | 4 | **AI inline suggestions** ("explain this line") | Right-click a selection → "Ask AI". Reuses the existing RAG endpoint. | 2h |
 | 5 | **Public project landing page** | Each public project gets a `/p/{inviteCode}` read-only page anyone can preview without an account. SEO bait + impressive demo. | 4h |
 | 6 | **Activity heatmap** on the user profile | GitHub-style green-square contribution calendar driven by `room_events`. | 3h |
@@ -362,7 +384,7 @@ serve your demo story best.
 | 9 | **Comments on lines** (a la GitHub PR review) | A `room_comments (file_id, line, user_id, body)` table + CodeMirror line decorations. | 5h |
 | 10 | **Notifications panel** | Inbox-style: someone joined, AI answered, run finished. Backed by a `notifications` table + WebSocket push. | 5h |
 | 11 | **Public invite code QR** | Click "Share" → shows a QR for the invite link. 30 lines of code with `qrcode.react`. | 1h |
-| 12 | **Session presence map** | Sidebar shows who is currently in the room + which file each person is editing right now. Reuses Yjs awareness. | 2h |
+| 12 | **Session presence map** | Shipped in `c3c44f4` as the room People tab with active-file awareness. Future work can add richer statuses or history. | Done |
 | 13 | **Room export as ZIP** | Server-side zip of every Y.Text in the Y.Doc + RoomFile metadata. | 2h |
 | 14 | **AI chat history persistence** | Shipped in `ef8319d` and extended in `2c19e5c`: chats persist per user/room, and room owners can review member threads read-only. | Done |
 | 15 | **Multi-account on the same browser** | Switch between Codeleon accounts without logging out (like GitHub). Useful for the demo (`as admin`, `as collaborator`). | 5h |
@@ -396,7 +418,7 @@ about the document and the live demo, in that order. With that in mind:
 Pick **one or two** from section 6 above for additional wow factor:
 - Idea **2** (markdown preview) — great visual demo
 - Idea **5** (public project page) — easy crowd-pleaser
-- Idea **12** (presence map) — reinforces the collaboration story
+- Idea **12** (presence map) — shipped as the room People tab in `c3c44f4`; extend it only if more presence detail is needed
 - Idea **20** (system health page) — useful for the soutenance Q&A
 - Idea **21** (embedded bash terminal) — confirmed late-stretch goal,
   decided 2026-05-09. Only attempt with at least 2 free days and after
