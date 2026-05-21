@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { AnimatePresence, motion } from "framer-motion";
 import { Github, Loader2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -77,8 +78,23 @@ export function ImportGithubDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-zinc-800 bg-surface p-6 shadow-glow">
+        <Dialog.Overlay asChild>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+          />
+        </Dialog.Overlay>
+        <Dialog.Content asChild>
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.96 }}
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-zinc-800 bg-surface p-6 shadow-glow"
+          >
+          <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/70 to-transparent" />
           <div className="flex items-start justify-between gap-4">
             <div>
               <Dialog.Title className="flex items-center gap-2 text-lg font-semibold text-zinc-50">
@@ -120,8 +136,14 @@ export function ImportGithubDialog({
               />
             </Field>
 
+            <AnimatePresence>
             {error && (
-              <div className="space-y-2 rounded border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="space-y-2 rounded border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300"
+              >
                 <p>{error}</p>
                 {shouldShowGithubConnect && (
                   <Button asChild type="button" variant="secondary">
@@ -131,11 +153,18 @@ export function ImportGithubDialog({
                     </a>
                   </Button>
                 )}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {report && (
-              <div className="space-y-2 rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs">
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="space-y-2 rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs"
+              >
                 <p className="text-emerald-400">
                   Imported {report.imported.length} file
                   {report.imported.length === 1 ? "" : "s"} from{" "}
@@ -164,8 +193,9 @@ export function ImportGithubDialog({
                     </ul>
                   </details>
                 )}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
@@ -181,6 +211,7 @@ export function ImportGithubDialog({
               </Button>
             </div>
           </form>
+          </motion.div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

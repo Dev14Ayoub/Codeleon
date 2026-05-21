@@ -25,7 +25,7 @@ cloud, and run it in a Docker sandbox with one click.
 |---|---|
 | **Real-time collaborative editor** with multi-cursor + presence | Yjs CRDT + y-codemirror.next + WebSocket binary relay |
 | **Multi-file workspace** with VS Code-style tabs, file explorer, right-click menus, menubar | React + Radix Context Menu / Menubar / Dialog |
-| **Code execution sandbox** | Docker `python:3.12-slim`, `--network=none`, 256 MB / 0.5 CPU / 8 s timeout |
+| **Code execution sandbox** | Docker `python:3.12-slim` + `eclipse-temurin:21-jdk`, `--network=none`, 256 MB / 0.5 CPU / 8 s timeout |
 | **Local RAG AI assistant** with streaming SSE, auto-indexing, chat history, and retrieved context drawer | Ollama (`qwen2.5-coder:0.5b` + `nomic-embed-text`) + Qdrant 1.11 |
 | **Project import** from local folder or public GitHub repo | `webkitdirectory` picker / GitHub archive ZIP fetch + filter |
 | **Project dashboard** with cards, templates, pin/archive, activity feed, and admin view | React Query + Spring REST + Flyway events/pins |
@@ -67,7 +67,7 @@ cloud, and run it in a Docker sandbox with one click.
 │ Flyway    │ │            │ │ 768-d Cos. │    │ qwen2.5 + nomic   │
 └───────────┘ └────────────┘ └────────────┘    └───────────────────┘
                                             ┌─────────────────────┐
-                                Run code  → │ Docker python:3.12  │
+                                Run code  → │ Docker python/java  │
                                             │ --network=none      │
                                             └─────────────────────┘
 ```
@@ -191,7 +191,7 @@ Done:
 - [x] Auth (JWT, refresh tokens, OAuth2 GitHub + Google)
 - [x] Rooms, members, invite codes
 - [x] Real-time collaborative editing (Yjs, multi-cursor, snapshot persistence)
-- [x] Code runner (Python sandbox)
+- [x] Code runner (Python + Java sandbox)
 - [x] RAG infrastructure (Qdrant + Ollama, file indexing, chat endpoint, ChatPanel UI)
 - [x] AI chat history per user/room + owner read-only review of member chats
 - [x] Multi-file workspace (file explorer, tabs, menubar, local + GitHub import)
@@ -212,7 +212,7 @@ Pending (PFE timeline):
 Out of scope for this PFE:
 
 - Mobile app (no `frontend-mobile/` planned)
-- Multi-language run (only Python)
+- Additional runtimes beyond Python/Java
 - Inherited file-tree folders inside the explorer (flat list only)
 
 ---
@@ -227,7 +227,7 @@ Codeleon/
 │   │   ├── ai/               # Ollama + Qdrant clients, RAG chat, indexer, chat panel
 │   │   ├── config/           # SecurityConfig, JwtAuthenticationFilter
 │   │   ├── room/             # Room CRUD, files, WebSocket, GitHub import
-│   │   ├── runner/           # Python Docker sandbox
+│   │   ├── runner/           # Python + Java Docker sandbox
 │   │   └── user/             # User entity + service (incl. findOrCreateByOAuth)
 │   └── src/main/resources/db/migration/  # V1..V7 (Flyway)
 ├── frontend-web/             # React 18 + Vite 5 + Tailwind 3 + TypeScript 5.4

@@ -1,4 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Edit3,
   FileCode2,
@@ -200,16 +201,18 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
           <ul className="-mx-1 flex-1 space-y-0.5 overflow-y-auto px-1">
+            <AnimatePresence initial={false}>
             {pending?.kind === "new" && (
-              <li>
+              <motion.li initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
                 <FileNameInput
                   initial=""
                   placeholder="filename.ext"
                   onConfirm={handleCreate}
                   onCancel={() => setPending(null)}
                 />
-              </li>
+              </motion.li>
             )}
+            </AnimatePresence>
 
             {loading && files.length === 0 && (
               <li className="flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-500">
@@ -225,24 +228,24 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
 
             {files.map((file) =>
               pending?.kind === "rename" && pending.fileId === file.id ? (
-                <li key={file.id}>
+                <motion.li key={file.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
                   <FileNameInput
                     initial={file.path}
                     placeholder={file.path}
                     onConfirm={(newPath) => handleRename(file.id, newPath)}
                     onCancel={() => setPending(null)}
                   />
-                </li>
+                </motion.li>
               ) : (
                 <ContextMenu.Root key={file.id}>
                   <ContextMenu.Trigger asChild>
-                    <li>
+                    <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }}>
                       <FileRow
                         file={file}
                         active={file.path === activePath}
                         onClick={() => onActivePathChange(file.path)}
                       />
-                    </li>
+                    </motion.li>
                   </ContextMenu.Trigger>
                   {canEdit && (
                     <FileContextMenuContent
@@ -295,13 +298,15 @@ function FileRow({
   onClick: () => void;
 }) {
   return (
-    <button
+    <motion.button
       type="button"
+      whileHover={{ x: 3 }}
+      whileTap={{ scale: 0.99 }}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition",
+        "relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition",
         active
-          ? "bg-surfaceRaised text-zinc-50"
+          ? "bg-surfaceRaised text-zinc-50 shadow-[inset_2px_0_0_rgba(6,182,212,0.95)]"
           : "text-zinc-400 hover:bg-surface hover:text-zinc-100",
       )}
     >
@@ -309,7 +314,7 @@ function FileRow({
         className={cn("h-3.5 w-3.5 shrink-0", active ? "text-cyan" : "text-zinc-500")}
       />
       <span className="truncate">{file.path}</span>
-    </button>
+    </motion.button>
   );
 }
 

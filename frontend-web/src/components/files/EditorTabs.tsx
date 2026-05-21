@@ -1,4 +1,5 @@
 import { FileCode2, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 
@@ -34,15 +35,17 @@ export function EditorTabs({
       aria-label="Open files"
       className="flex h-9 items-stretch overflow-x-auto border-b border-zinc-800 bg-surface"
     >
-      {openPaths.map((path) => (
-        <Tab
-          key={path}
-          path={path}
-          isActive={path === activePath}
-          onActivate={() => onActivate(path)}
-          onClose={() => onClose(path)}
-        />
-      ))}
+      <AnimatePresence initial={false}>
+        {openPaths.map((path) => (
+          <Tab
+            key={path}
+            path={path}
+            isActive={path === activePath}
+            onActivate={() => onActivate(path)}
+            onClose={() => onClose(path)}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -71,7 +74,12 @@ function Tab({
   };
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ duration: 0.16 }}
       role="tab"
       aria-selected={isActive}
       tabIndex={0}
@@ -107,8 +115,12 @@ function Tab({
         <X className="h-3 w-3" />
       </button>
       {isActive && (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-cyan" aria-hidden />
+        <motion.span
+          layoutId="active-editor-tab-underline"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-cyan"
+          aria-hidden
+        />
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -50,7 +50,7 @@ export function useCollabRoom(roomId: string | undefined): CollabRoom {
   const accessToken = useAuthStore((state) => state.accessToken);
   const user = useAuthStore((state) => state.user);
 
-  const ydoc = useMemo(() => new Y.Doc(), [roomId]);
+  const ydoc = useMemo(() => new Y.Doc({ guid: roomId ?? "pending-room" }), [roomId]);
   const yText = useMemo(() => ydoc.getText(Y_TEXT_KEY), [ydoc]);
 
   const providerRef = useRef<WebsocketProvider | null>(null);

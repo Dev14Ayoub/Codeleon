@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 public record RunRequest(
         @NotNull RunLanguage language,
         @NotNull @Size(max = 100_000) String code,
+        @Size(max = 255) String filename,
         @Size(max = 10_000) String stdin
 ) {
 }

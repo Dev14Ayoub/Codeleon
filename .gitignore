@@ -25,6 +25,7 @@ logs/
 .settings/
 
 # Java / Maven
+.jdks/
 backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 backend/dependency-reduced-pom.xml

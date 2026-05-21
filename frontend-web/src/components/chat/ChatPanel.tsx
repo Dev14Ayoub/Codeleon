@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -291,16 +292,18 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           </div>
         )}
 
-        {visibleMessages.map((msg, idx) => (
-          <ChatBubble
-            key={idx}
-            role={msg.role}
-            content={msg.content}
-            isLastAssistant={
-              !isReviewing && idx === visibleMessages.length - 1 && msg.role === "assistant" && chat.streaming
-            }
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {visibleMessages.map((msg, idx) => (
+            <ChatBubble
+              key={`${idx}-${msg.role}`}
+              role={msg.role}
+              content={msg.content}
+              isLastAssistant={
+                !isReviewing && idx === visibleMessages.length - 1 && msg.role === "assistant" && chat.streaming
+              }
+            />
+          ))}
+        </AnimatePresence>
 
         {chat.error && !isReviewing && (
           <div className="rounded-md border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
@@ -341,7 +344,11 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           chat. The input form below is hidden in this mode — the owner
           cannot post into someone else's thread, only read it. */}
       {isReviewing && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2"
+        >
           <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
             <Eye className="h-3.5 w-3.5 text-cyan" />
             Read-only · viewing <span className="font-medium text-zinc-200">{reviewUserName}</span>
@@ -358,7 +365,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to my chat
           </Button>
-        </div>
+        </motion.div>
       )}
 
       {/* Input */}
@@ -452,7 +459,14 @@ function ChatBubble({
 }) {
   const isUser = role === "user";
   return (
-    <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      transition={{ duration: 0.18 }}
+      className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}
+    >
       <span className="text-[10px] uppercase tracking-wide text-zinc-600">
         {isUser ? "you" : "codeleon"}
       </span>
@@ -467,13 +481,18 @@ function ChatBubble({
           <span className="ml-1 inline-block h-3 w-1.5 animate-pulse bg-cyan align-middle" />
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
   return (
-    <li className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+    <motion.li
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
+      className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 transition-colors hover:border-cyan/40"
+    >
       <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500">
         <span className="font-mono">
           {chunk.path}#chunk{chunk.chunkIndex}
@@ -483,6 +502,6 @@ function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
       <pre className="overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-4 text-zinc-300">
         {chunk.preview}
       </pre>
-    </li>
+    </motion.li>
   );
 }

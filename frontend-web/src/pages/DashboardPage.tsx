@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
+import { AnimatePresence, motion } from "framer-motion";
 import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -11,6 +12,7 @@ import { ProjectCard } from "@/components/projects/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
+import { MotionPage, fadeUp, stagger } from "@/components/ui/motion";
 import {
   API_BASE_URL,
   createRoom,
@@ -40,6 +42,8 @@ export function DashboardPage() {
   const setUser = useAuthStore((state) => state.setUser);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [filterKey, setFilterKey] = useState<FilterKey>("all");
 
@@ -115,8 +119,8 @@ export function DashboardPage() {
     navigate("/");
   }
 
-  const myRooms = myRoomsQuery.data ?? [];
-  const publicRooms = publicRoomsQuery.data ?? [];
+  const myRooms = useMemo(() => myRoomsQuery.data ?? [], [myRoomsQuery.data]);
+  const publicRooms = useMemo(() => publicRoomsQuery.data ?? [], [publicRoomsQuery.data]);
 
   const myRoomsView = useMemo(
     () => filterAndSort(myRooms, searchQuery, sortKey, filterKey),
@@ -134,6 +138,47 @@ export function DashboardPage() {
     () => myRooms.reduce((acc, r) => acc + Math.max(0, r.memberCount - 1), 0),
     [myRooms],
   );
+  const searchSuggestions = useMemo(() => getProjectSuggestions(myRooms, searchQuery), [myRooms, searchQuery]);
+  const showSearchSuggestions = searchFocused && searchQuery.trim().length > 0 && searchSuggestions.length > 0;
+
+  useEffect(() => {
+    setActiveSuggestionIndex(searchSuggestions.length > 0 ? 0 : -1);
+  }, [searchQuery, searchSuggestions.length]);
+
+  function openProjectSuggestion(room: Room) {
+    setSearchFocused(false);
+    navigate(`/rooms/${room.id}`);
+  }
+
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (searchSuggestions.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSearchFocused(true);
+      setActiveSuggestionIndex((current) => (current + 1) % searchSuggestions.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSearchFocused(true);
+      setActiveSuggestionIndex((current) => (current <= 0 ? searchSuggestions.length - 1 : current - 1));
+      return;
+    }
+
+    if (event.key === "Enter" && showSearchSuggestions && activeSuggestionIndex >= 0) {
+      event.preventDefault();
+      openProjectSuggestion(searchSuggestions[activeSuggestionIndex]);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      setSearchFocused(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-background">
@@ -158,7 +203,7 @@ export function DashboardPage() {
         </nav>
       </aside>
 
-      <section className="lg:pl-64">
+      <MotionPage className="lg:pl-64">
         <header className="flex items-center justify-between border-b border-zinc-800 bg-background/90 px-4 py-4 backdrop-blur lg:px-8">
           <div>
             <p className="text-sm text-zinc-500">Dashboard</p>
@@ -173,11 +218,11 @@ export function DashboardPage() {
         <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
           <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0 space-y-8">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-3 sm:grid-cols-3">
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
             <StatTile icon={<Users className="h-4 w-4 text-cyan" />} label="Collaborators" value={totalCollaborators} />
-          </div>
+          </motion.div>
 
           <AccountIntegrations className="xl:hidden" />
 
@@ -193,11 +238,50 @@ export function DashboardPage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                   <Input
                     aria-label="Search projects"
-                    className="h-10 w-56 pl-9"
+                    aria-autocomplete="list"
+                    aria-controls="my-project-search-suggestions"
+                    aria-expanded={showSearchSuggestions}
+                    className="h-10 w-72 pl-9"
                     placeholder="Search projects..."
+                    role="combobox"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setSearchFocused(true);
+                    }}
+                    onFocus={() => setSearchFocused(true)}
+                    onKeyDown={handleSearchKeyDown}
                   />
+                  <AnimatePresence>
+                    {showSearchSuggestions && (
+                      <motion.div
+                        id="my-project-search-suggestions"
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                        transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                        className="absolute left-0 top-12 z-40 w-80 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/95 shadow-[0_24px_70px_rgba(0,0,0,0.46)] backdrop-blur"
+                        role="listbox"
+                      >
+                        <div className="border-b border-zinc-800 px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                          My project suggestions
+                        </div>
+                        <div className="max-h-80 overflow-y-auto p-1.5">
+                          {searchSuggestions.map((room, index) => (
+                            <SearchSuggestion
+                              key={room.id}
+                              active={index === activeSuggestionIndex}
+                              query={searchQuery}
+                              room={room}
+                              onMouseEnter={() => setActiveSuggestionIndex(index)}
+                              onSelect={() => openProjectSuggestion(room)}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <FilterMenu filterKey={filterKey} onChange={setFilterKey} />
                 <SortMenu sortKey={sortKey} onChange={setSortKey} />
@@ -205,8 +289,11 @@ export function DashboardPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-              <form
-                className="space-y-4 rounded-lg border border-zinc-800 bg-surface p-5"
+              <motion.form
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                className="relative space-y-4 overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_16px_42px_rgba(0,0,0,0.22)]"
                 onSubmit={createForm.handleSubmit((values) =>
                   createRoomMutation.mutate({
                     ...values,
@@ -215,6 +302,7 @@ export function DashboardPage() {
                   }),
                 )}
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/60 to-transparent" />
                 <div className="flex items-center gap-2">
                   <Plus className="h-4 w-4 text-cyan" />
                   <h3 className="font-medium text-zinc-100">Create project</h3>
@@ -262,12 +350,16 @@ export function DashboardPage() {
                   <Plus className="h-4 w-4" />
                   {createRoomMutation.isPending ? "Creating..." : "Create project"}
                 </Button>
-              </form>
+              </motion.form>
 
-              <form
-                className="space-y-4 rounded-lg border border-zinc-800 bg-surface p-5"
+              <motion.form
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                className="relative space-y-4 overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_16px_42px_rgba(0,0,0,0.22)]"
                 onSubmit={joinForm.handleSubmit((values) => joinRoomMutation.mutate(values))}
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet/60 to-transparent" />
                 <div className="flex items-center gap-2">
                   <DoorOpen className="h-4 w-4 text-cyan" />
                   <h3 className="font-medium text-zinc-100">Join with invite</h3>
@@ -287,7 +379,7 @@ export function DashboardPage() {
                   <DoorOpen className="h-4 w-4" />
                   {joinRoomMutation.isPending ? "Joining..." : "Join project"}
                 </Button>
-              </form>
+              </motion.form>
             </div>
 
             <ProjectGrid
@@ -318,7 +410,7 @@ export function DashboardPage() {
             </aside>
           </div>
         </div>
-      </section>
+      </MotionPage>
     </main>
   );
 }
@@ -342,10 +434,7 @@ function filterAndSort(rooms: Room[], query: string, sortKey: SortKey, filterKey
 
   const trimmed = query.trim().toLowerCase();
   if (trimmed) {
-    filtered = filtered.filter((room) => {
-      const haystack = `${room.name} ${room.description ?? ""} ${room.ownerName}`.toLowerCase();
-      return haystack.includes(trimmed);
-    });
+    filtered = filtered.filter((room) => roomSearchHaystack(room).includes(trimmed));
   }
 
   const sorted = [...filtered];
@@ -369,15 +458,137 @@ function filterAndSort(rooms: Room[], query: string, sortKey: SortKey, filterKey
   return sorted;
 }
 
+function roomSearchHaystack(room: Room) {
+  return [
+    room.name,
+    room.description,
+    room.ownerName,
+    room.lastEditedByName,
+    room.visibility,
+    room.inviteCode,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getProjectSuggestions(rooms: Room[], query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) {
+    return [];
+  }
+
+  return [...rooms]
+    .filter((room) => roomSearchHaystack(room).includes(trimmed))
+    .sort((a, b) => {
+      const aNameStarts = a.name.toLowerCase().startsWith(trimmed);
+      const bNameStarts = b.name.toLowerCase().startsWith(trimmed);
+      if (aNameStarts !== bNameStarts) {
+        return Number(bNameStarts) - Number(aNameStarts);
+      }
+      if (a.pinned !== b.pinned) {
+        return Number(b.pinned) - Number(a.pinned);
+      }
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    })
+    .slice(0, 6);
+}
+
+function SearchSuggestion({
+  active,
+  onMouseEnter,
+  onSelect,
+  query,
+  room,
+}: {
+  active: boolean;
+  onMouseEnter: () => void;
+  onSelect: () => void;
+  query: string;
+  room: Room;
+}) {
+  const updatedAt = new Date(room.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const details = [
+    `${room.fileCount} ${room.fileCount === 1 ? "file" : "files"}`,
+    `${room.memberCount} ${room.memberCount === 1 ? "member" : "members"}`,
+    `Updated ${updatedAt}`,
+  ];
+
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      onMouseDown={(event) => event.preventDefault()}
+      onMouseEnter={onMouseEnter}
+      onClick={onSelect}
+      className={cn(
+        "group flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition",
+        active ? "bg-surfaceRaised text-zinc-50" : "text-zinc-300 hover:bg-surfaceRaised hover:text-zinc-50",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition",
+          active ? "border-cyan/50 bg-cyan/10 text-cyan" : "border-zinc-800 bg-zinc-950 text-zinc-500 group-hover:text-cyan",
+        )}
+      >
+        {room.visibility === "PUBLIC" ? <Globe2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{highlightSearchText(room.name, query)}</span>
+          {room.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-cyan" />}
+          {room.archived && <Archive className="h-3.5 w-3.5 shrink-0 text-zinc-500" />}
+        </span>
+        <span className="mt-1 block truncate text-xs text-zinc-500">
+          {room.description ? highlightSearchText(room.description, query) : `Owned by ${room.ownerName}`}
+        </span>
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-600">
+          {details.map((detail) => (
+            <span key={detail}>{detail}</span>
+          ))}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function highlightSearchText(text: string, query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return text;
+  }
+
+  const start = text.toLowerCase().indexOf(trimmed.toLowerCase());
+  if (start < 0) {
+    return text;
+  }
+
+  const end = start + trimmed.length;
+  return (
+    <>
+      {text.slice(0, start)}
+      <mark className="rounded-sm bg-cyan/15 px-0.5 text-cyan">{text.slice(start, end)}</mark>
+      {text.slice(end)}
+    </>
+  );
+}
+
 function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-surface px-5 py-4">
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ y: -3, scale: 1.01 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32 }}
+      className="rounded-lg border border-zinc-800 bg-surface px-5 py-4 shadow-[0_12px_34px_rgba(0,0,0,0.2)] transition hover:border-cyan/40 hover:bg-surfaceRaised"
+    >
       <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
         {icon}
         {label}
       </div>
       <p className="mt-2 text-2xl font-semibold text-zinc-50">{value}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -399,7 +610,14 @@ function AccountIntegrations({ className }: { className?: string }) {
   const githubAvailable = providers.includes("github");
 
   return (
-    <section id="integrations" className={cn("rounded-lg border border-zinc-800 bg-surface p-5", className)}>
+    <motion.section
+      id="integrations"
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className={cn("relative overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_16px_42px_rgba(0,0,0,0.22)]", className)}
+    >
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/60 to-transparent" />
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950">
           <ShieldCheck className="h-4 w-4 text-cyan" />
@@ -425,7 +643,7 @@ function AccountIntegrations({ className }: { className?: string }) {
       {accountsQuery.isError && (
         <p className="mt-3 text-xs text-rose-400">Could not load linked accounts.</p>
       )}
-    </section>
+    </motion.section>
   );
 }
 
@@ -538,22 +756,32 @@ function SortMenu({ sortKey, onChange }: { sortKey: SortKey; onChange: (key: Sor
 
 function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoading: boolean; rooms: Room[] }) {
   if (isLoading) {
-    return <div className="rounded-lg border border-zinc-800 bg-surface/50 p-8 text-center text-sm text-zinc-500">Loading projects...</div>;
-  }
-  if (rooms.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-800 bg-surface/50 p-8 text-center">
-        <p className="font-medium text-zinc-200">{emptyText}</p>
-        <p className="mt-2 text-sm text-zinc-500">Create or join a project to start collaborating.</p>
+      <div className="rounded-lg border border-zinc-800 bg-surface/50 p-8">
+        <div className="mx-auto max-w-2xl space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="codeleon-shimmer h-12 rounded-md bg-zinc-900" />
+          ))}
+        </div>
       </div>
     );
   }
+  if (rooms.length === 0) {
+    return (
+      <motion.div initial="hidden" animate="show" variants={fadeUp} className="rounded-lg border border-dashed border-zinc-800 bg-surface/50 p-8 text-center">
+        <p className="font-medium text-zinc-200">{emptyText}</p>
+        <p className="mt-2 text-sm text-zinc-500">Create or join a project to start collaborating.</p>
+      </motion.div>
+    );
+  }
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {rooms.map((room) => (
-        <ProjectCard key={room.id} room={room} />
+        <motion.div key={room.id} variants={fadeUp}>
+          <ProjectCard room={room} />
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -621,8 +849,10 @@ function TemplateChip({
   tooltip?: string;
 }) {
   return (
-    <button
+    <motion.button
       type="button"
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
       title={tooltip}
       className={
@@ -634,7 +864,7 @@ function TemplateChip({
     >
       <span className={selected ? "text-sm font-medium text-zinc-50" : "text-sm font-medium text-zinc-200"}>{title}</span>
       <span className="text-xs text-zinc-500">{subtitle}</span>
-    </button>
+    </motion.button>
   );
 }
 

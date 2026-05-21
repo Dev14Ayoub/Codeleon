@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Activity, Bot, FilePlus2, FileX2, LogIn, Pencil, Play } from "lucide-react";
 import { fetchActivity, type RoomEvent, type RoomEventType } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/utils";
+import { fadeUp, stagger } from "@/components/ui/motion";
 
 interface ActivityFeedProps {
   /** Current user id, used to render "You" instead of the full name. */
@@ -52,7 +54,13 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
   });
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-surface">
+    <motion.div
+      initial="hidden"
+      animate="show"
+      variants={fadeUp}
+      className="rounded-lg border border-zinc-800 bg-surface shadow-[0_16px_42px_rgba(0,0,0,0.22)]"
+    >
+      <span className="block h-px bg-gradient-to-r from-transparent via-cyan/50 to-transparent" />
       <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
         <Activity className="h-4 w-4 text-cyan" />
         <h3 className="text-sm font-medium text-zinc-100">Recent activity</h3>
@@ -62,7 +70,7 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
         {isLoading && (
           <div className="space-y-3 p-4">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-9 animate-pulse rounded bg-zinc-900" />
+              <div key={i} className="codeleon-shimmer h-9 rounded bg-zinc-900" />
             ))}
           </div>
         )}
@@ -78,14 +86,14 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
         )}
 
         {!isLoading && !isError && (data?.length ?? 0) > 0 && (
-          <ul className="divide-y divide-zinc-800/60">
+          <motion.ul variants={stagger} initial="hidden" animate="show" className="divide-y divide-zinc-800/60">
             {data!.map((event) => {
               const actor =
                 event.userId && event.userId === currentUserId
                   ? "You"
                   : event.userName ?? "Someone";
               return (
-                <li key={event.id} className="flex gap-3 px-4 py-3">
+                <motion.li key={event.id} variants={fadeUp} className="flex gap-3 px-4 py-3 transition-colors hover:bg-zinc-950/50">
                   <span className="mt-0.5 shrink-0">{ICONS[event.type] ?? <Activity className="h-3.5 w-3.5 text-zinc-500" />}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs leading-5 text-zinc-300">
@@ -95,12 +103,12 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
                     </p>
                     <p className="mt-0.5 text-[11px] text-zinc-600">{formatRelativeDate(event.createdAt)}</p>
                   </div>
-                </li>
+                </motion.li>
               );
             })}
-          </ul>
+          </motion.ul>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

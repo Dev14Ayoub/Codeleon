@@ -16,12 +16,24 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @EnableConfigurationProperties(CodeRunnerProperties.class)
 public class DockerCodeRunnerService implements CodeRunnerService {
 
     private static final Logger log = LoggerFactory.getLogger(DockerCodeRunnerService.class);
+    private static final Pattern JAVA_PACKAGE_PATTERN = Pattern.compile(
+            "(?m)^\\s*package\\s+([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)\\s*;"
+    );
+    private static final Pattern JAVA_PUBLIC_TYPE_PATTERN = Pattern.compile(
+            "\\bpublic\\s+(?:abstract\\s+|final\\s+|sealed\\s+|non-sealed\\s+)?(?:class|record|enum)\\s+([A-Za-z_$][\\w$]*)\\b"
+    );
+    private static final Pattern JAVA_TYPE_PATTERN = Pattern.compile(
+            "\\b(?:class|record|enum)\\s+([A-Za-z_$][\\w$]*)\\b"
+    );
+    private static final Pattern JAVA_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_$][\\w$]*");
 
     private final CodeRunnerProperties props;
 
@@ -36,18 +48,42 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         }
         return switch (request.language()) {
             case PYTHON -> runPython(request);
+            case JAVA -> runJava(request);
         };
     }
 
     private RunResult runPython(RunRequest request) {
         String containerName = "codeleon-runner-" + UUID.randomUUID();
-        List<String> command = buildBaseCommand(containerName, props.pythonImage());
-        command.add("python");
-        command.add("-");
+        List<String> command = buildBaseCommand(containerName, props.pythonImage(), List.of(
+                "PYTHONDONTWRITEBYTECODE=1",
+                "CODELEON_CODE_BYTES=" + codeBytes(request)
+        ));
+        command.add("/bin/sh");
+        command.add("-c");
+        command.add("set -eu; mkdir -p /tmp/codeleon; cd /tmp/codeleon; "
+                + "dd bs=1 count=\"$CODELEON_CODE_BYTES\" of=main.py 2>/dev/null; "
+                + "python main.py");
         return execute(command, containerName, request);
     }
 
-    private List<String> buildBaseCommand(String containerName, String image) {
+    private RunResult runJava(RunRequest request) {
+        JavaRunSpec spec = javaRunSpec(request);
+        String containerName = "codeleon-runner-" + UUID.randomUUID();
+        List<String> command = buildBaseCommand(containerName, props.javaImage(), List.of(
+                "CODELEON_CODE_BYTES=" + codeBytes(request),
+                "CODELEON_SOURCE=" + spec.sourceFile(),
+                "CODELEON_MAIN_CLASS=" + spec.mainClass()
+        ));
+        command.add("/bin/sh");
+        command.add("-c");
+        command.add("set -eu; mkdir -p /tmp/codeleon; cd /tmp/codeleon; "
+                + "dd bs=1 count=\"$CODELEON_CODE_BYTES\" of=\"$CODELEON_SOURCE\" 2>/dev/null; "
+                + "javac -d . \"$CODELEON_SOURCE\"; "
+                + "java -cp . \"$CODELEON_MAIN_CLASS\"");
+        return execute(command, containerName, request);
+    }
+
+    private List<String> buildBaseCommand(String containerName, String image, List<String> environment) {
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");
         cmd.add("run");
@@ -62,9 +98,52 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         cmd.add("--pids-limit=" + props.pidsLimit());
         cmd.add("--cap-drop=ALL");
         cmd.add("--security-opt=no-new-privileges");
-        cmd.add("--env=PYTHONDONTWRITEBYTECODE=1");
+        for (String env : environment) {
+            cmd.add("--env=" + env);
+        }
         cmd.add(image);
         return cmd;
+    }
+
+    private JavaRunSpec javaRunSpec(RunRequest request) {
+        String packageName = matchFirstGroup(JAVA_PACKAGE_PATTERN, request.code());
+        String className = matchFirstGroup(JAVA_PUBLIC_TYPE_PATTERN, request.code());
+        if (className == null) {
+            className = matchFirstGroup(JAVA_TYPE_PATTERN, request.code());
+        }
+        if (className == null) {
+            className = classNameFromFilename(request.filename());
+        }
+        if (className == null) {
+            className = "Main";
+        }
+
+        String mainClass = packageName == null ? className : packageName + "." + className;
+        return new JavaRunSpec(className + ".java", mainClass);
+    }
+
+    private String matchFirstGroup(Pattern pattern, String value) {
+        Matcher matcher = pattern.matcher(value);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private String classNameFromFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return null;
+        }
+
+        String normalized = filename.replace('\\', '/');
+        String basename = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (!basename.endsWith(".java")) {
+            return null;
+        }
+
+        String withoutExtension = basename.substring(0, basename.length() - ".java".length());
+        return JAVA_IDENTIFIER_PATTERN.matcher(withoutExtension).matches() ? withoutExtension : null;
+    }
+
+    private int codeBytes(RunRequest request) {
+        return request.code().getBytes(StandardCharsets.UTF_8).length;
     }
 
     private RunResult execute(List<String> command, String containerName, RunRequest request) {
@@ -80,7 +159,6 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         try (OutputStream stdin = process.getOutputStream()) {
             stdin.write(request.code().getBytes(StandardCharsets.UTF_8));
             if (request.stdin() != null && !request.stdin().isEmpty()) {
-                stdin.write("\n".getBytes(StandardCharsets.UTF_8));
                 stdin.write(request.stdin().getBytes(StandardCharsets.UTF_8));
             }
         } catch (IOException ex) {
@@ -163,5 +241,8 @@ public class DockerCodeRunnerService implements CodeRunnerService {
             }
             return "";
         }
+    }
+
+    private record JavaRunSpec(String sourceFile, String mainClass) {
     }
 }

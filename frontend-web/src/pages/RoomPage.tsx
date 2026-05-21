@@ -1,18 +1,23 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  Bot,
   Check,
   Copy,
+  Database,
+  Eye,
   FileText,
   Loader2,
   Play,
+  ShieldCheck,
   Terminal,
   Users,
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
@@ -33,11 +38,15 @@ import {
   type GithubImportResponse,
   type IndexFile,
   type RoomFile,
+  type RunLanguage,
   type RunResult,
 } from "@/lib/api";
 import { prepareLocalImport } from "@/lib/files/local-import";
-import { useCollabRoom } from "@/lib/collab/useCollabRoom";
+import { languageDisplayName, languageFromPath } from "@/lib/files/file-language";
+import { useCollabRoom, type CollabPeer } from "@/lib/collab/useCollabRoom";
 import { useAuthStore } from "@/stores/auth-store";
+
+type RightPanelTab = "ai" | "participants" | "review";
 
 export function RoomPage() {
   const { roomId } = useParams();
@@ -57,6 +66,7 @@ export function RoomPage() {
   });
 
   const collab = useCollabRoom(roomId);
+  const setCollabActivePath = collab.setActivePath;
   const currentUser = useAuthStore((state) => state.user);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
@@ -73,6 +83,7 @@ export function RoomPage() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("ai");
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(() =>
     readStoredWidth("codeleon.leftSidebarWidth", 272, 192, 448),
   );
@@ -84,11 +95,18 @@ export function RoomPage() {
   const room = roomQuery.data;
   const canEdit =
     room?.currentUserRole === "OWNER" || room?.currentUserRole === "EDITOR";
+  const activeRunLanguage = runLanguageFromPath(activePath);
+  const activeRunLanguageLabel = activeRunLanguage ? runLanguageLabel(activeRunLanguage) : null;
+  const canRunActiveFile = Boolean(activePath && editorReady && activeRunLanguage);
 
   const runMutation = useMutation({
     mutationFn: () => {
+      const language = runLanguageFromPath(activePath);
+      if (!language) {
+        throw new Error("Codeleon can run Python and Java files right now.");
+      }
       const code = editorRef.current?.getValue() ?? "";
-      return runCode(roomId ?? "", { language: "PYTHON", code });
+      return runCode(roomId ?? "", { language, code, filename: activePath ?? undefined });
     },
     onSuccess: (data) => {
       setRunResult(data);
@@ -101,7 +119,7 @@ export function RoomPage() {
           (error.response?.data as { message?: string } | undefined)?.message ?? error.message;
         setRunError(message);
       } else {
-        setRunError("Failed to run code");
+        setRunError(error instanceof Error ? error.message : "Failed to run code");
       }
     },
   });
@@ -142,7 +160,14 @@ export function RoomPage() {
   const onFormatDocument = useCallback(() => editorRef.current?.formatDocument(), []);
 
   const onNewFile = useCallback(() => fileExplorerRef.current?.openNewFileInput(), []);
-  const onRunFile = useCallback(() => runMutation.mutate(), [runMutation]);
+  const onRunFile = useCallback(() => {
+    if (!activeRunLanguage) {
+      setRunResult(null);
+      setRunError("Codeleon can run Python and Java files right now.");
+      return;
+    }
+    runMutation.mutate();
+  }, [activeRunLanguage, runMutation]);
   const onEditorReadyChange = useCallback((ready: boolean) => {
     setEditorReady(ready);
   }, []);
@@ -416,8 +441,8 @@ export function RoomPage() {
   }, [roomFilesQuery.data, collab.ydoc]);
 
   useEffect(() => {
-    collab.setActivePath(activePath);
-  }, [activePath, collab.setActivePath]);
+    setCollabActivePath(activePath);
+  }, [activePath, setCollabActivePath]);
 
   if (!roomId) {
     return <Navigate to="/dashboard" replace />;
@@ -487,7 +512,14 @@ export function RoomPage() {
           </Button>
           <Button
             onClick={() => runMutation.mutate()}
-            disabled={!activePath || !editorReady || runMutation.isPending}
+            disabled={!canRunActiveFile || runMutation.isPending}
+            title={
+              activePath && !activeRunLanguage
+                ? "Codeleon can run Python and Java files right now."
+                : activeRunLanguageLabel
+                  ? `Run ${activeRunLanguageLabel} file`
+                  : "Open a Python or Java file to run it"
+            }
           >
             {runMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -514,6 +546,7 @@ export function RoomPage() {
         isAiPanelVisible={showAiPanel}
         hasActiveTab={activePath !== null}
         hasOpenTabs={openPaths.length > 0}
+        canRunActiveFile={canRunActiveFile && !runMutation.isPending}
         canEdit={canEdit}
       />
 
@@ -585,6 +618,14 @@ export function RoomPage() {
               {collab.isReady ? "Live" : "Connecting..."}
             </span>
           </div>
+          <WorkspaceStatusStrip
+            connected={collab.isConnected}
+            isReady={collab.isReady}
+            activePath={activePath}
+            peersCount={collab.peers.length}
+            runPending={runMutation.isPending}
+            runLanguageLabel={activeRunLanguageLabel}
+          />
           <div className="flex-1 min-h-0">
             <CodeMirrorEditor
               ref={editorRef}
@@ -599,6 +640,8 @@ export function RoomPage() {
             isPending={runMutation.isPending}
             result={runResult}
             error={runError}
+            activePath={activePath}
+            languageLabel={activeRunLanguageLabel}
           />
         </section>
 
@@ -611,39 +654,19 @@ export function RoomPage() {
         )}
 
         {showAiPanel && !isCompactWorkspace && (
-          <aside className="grid min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70 grid-rows-[auto_1fr]">
-            <section className="border-b border-zinc-800 p-4">
-              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
-                <Users className="h-4 w-4 text-cyan" />
-                Participants ({collab.peers.length})
-              </div>
-              <div className="space-y-3">
-                {collab.peers.length === 0 ? (
-                  <p className="text-xs text-zinc-500">No live participants yet.</p>
-                ) : (
-                  collab.peers.map((peer) => (
-                    <Participant
-                      key={peer.clientId}
-                      name={peer.name}
-                      color={peer.color}
-                      activePath={peer.activePath}
-                      isMe={peer.userId === currentUser?.id}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="flex min-h-0 flex-col p-4">
-              <ChatPanel
-                roomId={roomId}
-                getEditorText={getEditorText}
-                getAllFiles={getAllFiles}
-                activeFilePath={activePath}
-                lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
-                isOwner={room?.currentUserRole === "OWNER"}
-              />
-            </section>
+          <aside className="min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70">
+            <RoomRightPanel
+              tab={rightPanelTab}
+              onTabChange={setRightPanelTab}
+              peers={collab.peers}
+              currentUserId={currentUser?.id}
+              roomId={roomId}
+              activePath={activePath}
+              getEditorText={getEditorText}
+              getAllFiles={getAllFiles}
+              lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+              isOwner={room?.currentUserRole === "OWNER"}
+            />
           </aside>
         )}
 
@@ -670,39 +693,19 @@ export function RoomPage() {
         )}
 
         {showAiPanel && isCompactWorkspace && (
-          <aside className="absolute inset-y-0 right-0 z-30 grid w-[min(88vw,24rem)] min-h-0 overflow-hidden border-l border-zinc-800 bg-surface shadow-glow grid-rows-[auto_1fr]">
-            <section className="border-b border-zinc-800 p-4">
-              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-200">
-                <Users className="h-4 w-4 text-cyan" />
-                Participants ({collab.peers.length})
-              </div>
-              <div className="space-y-3">
-                {collab.peers.length === 0 ? (
-                  <p className="text-xs text-zinc-500">No live participants yet.</p>
-                ) : (
-                  collab.peers.map((peer) => (
-                    <Participant
-                      key={peer.clientId}
-                      name={peer.name}
-                      color={peer.color}
-                      activePath={peer.activePath}
-                      isMe={peer.userId === currentUser?.id}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="flex min-h-0 flex-col p-4">
-              <ChatPanel
-                roomId={roomId}
-                getEditorText={getEditorText}
-                getAllFiles={getAllFiles}
-                activeFilePath={activePath}
-                lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
-                isOwner={room?.currentUserRole === "OWNER"}
-              />
-            </section>
+          <aside className="absolute inset-y-0 right-0 z-30 w-[min(88vw,24rem)] min-h-0 overflow-hidden border-l border-zinc-800 bg-surface shadow-glow">
+            <RoomRightPanel
+              tab={rightPanelTab}
+              onTabChange={setRightPanelTab}
+              peers={collab.peers}
+              currentUserId={currentUser?.id}
+              roomId={roomId}
+              activePath={activePath}
+              getEditorText={getEditorText}
+              getAllFiles={getAllFiles}
+              lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+              isOwner={room?.currentUserRole === "OWNER"}
+            />
           </aside>
         )}
       </section>
@@ -710,12 +713,35 @@ export function RoomPage() {
   );
 }
 
+function runLanguageFromPath(path: string | null): RunLanguage | null {
+  if (!path) {
+    return null;
+  }
+
+  switch (languageFromPath(path)) {
+    case "python":
+      return "PYTHON";
+    case "java":
+      return "JAVA";
+    default:
+      return null;
+  }
+}
+
+function runLanguageLabel(language: RunLanguage) {
+  return languageDisplayName(language.toLowerCase());
+}
+
 function OutputPanel({
+  activePath,
   isPending,
+  languageLabel,
   result,
   error,
 }: {
+  activePath: string | null;
   isPending: boolean;
+  languageLabel: string | null;
   result: RunResult | null;
   error: string | null;
 }) {
@@ -756,10 +782,228 @@ function OutputPanel({
           </>
         ) : (
           <span className="text-zinc-600">
-            Press Run to execute the current file with Python.
+            {!activePath
+              ? "Open a Python or Java file to run it."
+              : languageLabel
+                ? `Press Run to execute the current ${languageLabel} file.`
+                : "Codeleon can run Python and Java files right now."}
           </span>
         )}
       </pre>
+    </div>
+  );
+}
+
+function WorkspaceStatusStrip({
+  connected,
+  isReady,
+  activePath,
+  peersCount,
+  runPending,
+  runLanguageLabel,
+}: {
+  connected: boolean;
+  isReady: boolean;
+  activePath: string | null;
+  peersCount: number;
+  runPending: boolean;
+  runLanguageLabel: string | null;
+}) {
+  return (
+    <div className="flex h-9 items-center gap-2 overflow-x-auto border-b border-zinc-800 bg-background/80 px-4 text-[11px] text-zinc-500">
+      <StatusItem tone={connected ? "success" : "muted"} icon={connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}>
+        {isReady ? "Live room" : "Connecting"}
+      </StatusItem>
+      <StatusItem tone="cyan" icon={<Users className="h-3 w-3" />}>
+        {peersCount} online
+      </StatusItem>
+      <StatusItem tone="muted" icon={<FileText className="h-3 w-3" />}>
+        {activePath ?? "No file open"}
+      </StatusItem>
+      <StatusItem tone="cyan" icon={<Database className="h-3 w-3" />}>
+        Private AI
+      </StatusItem>
+      <StatusItem tone={runPending ? "warning" : runLanguageLabel ? "success" : "muted"} icon={<ShieldCheck className="h-3 w-3" />}>
+        {runPending
+          ? `${runLanguageLabel ?? "Sandbox"} running`
+          : runLanguageLabel
+            ? `${runLanguageLabel} sandbox ready`
+            : "Python/Java runner"}
+      </StatusItem>
+    </div>
+  );
+}
+
+function StatusItem({
+  children,
+  icon,
+  tone,
+}: {
+  children: ReactNode;
+  icon: JSX.Element;
+  tone: "success" | "warning" | "cyan" | "muted";
+}) {
+  const toneClass = {
+    success: "border-emerald-800/60 bg-emerald-950/30 text-emerald-300",
+    warning: "border-amber-800/60 bg-amber-950/30 text-amber-300",
+    cyan: "border-cyan/30 bg-cyan/10 text-cyan",
+    muted: "border-zinc-800 bg-zinc-950 text-zinc-400",
+  }[tone];
+  return (
+    <motion.span
+      layout
+      className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2 ${toneClass}`}
+    >
+      {icon}
+      <span className="max-w-[15rem] truncate">{children}</span>
+    </motion.span>
+  );
+}
+
+function RoomRightPanel({
+  tab,
+  onTabChange,
+  peers,
+  currentUserId,
+  roomId,
+  getEditorText,
+  getAllFiles,
+  activePath,
+  lastRunStderr,
+  isOwner,
+}: {
+  tab: RightPanelTab;
+  onTabChange: (tab: RightPanelTab) => void;
+  peers: CollabPeer[];
+  currentUserId: string | undefined;
+  roomId: string;
+  getEditorText: () => string;
+  getAllFiles: () => IndexFile[];
+  activePath: string | null;
+  lastRunStderr: string | null;
+  isOwner: boolean;
+}) {
+  const tabs: { id: RightPanelTab; label: string; icon: JSX.Element }[] = [
+    { id: "ai", label: "AI", icon: <Bot className="h-3.5 w-3.5" /> },
+    { id: "participants", label: "People", icon: <Users className="h-3.5 w-3.5" /> },
+    ...(isOwner ? [{ id: "review" as const, label: "Review", icon: <Eye className="h-3.5 w-3.5" /> }] : []),
+  ];
+
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_1fr]">
+      <div className="border-b border-zinc-800 bg-surface/90 p-2">
+        <div className="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+          {tabs.map((item) => {
+            const active = item.id === tab;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onTabChange(item.id)}
+                className={active ? "relative inline-flex h-8 items-center justify-center gap-1.5 rounded-sm text-xs font-medium text-zinc-50" : "inline-flex h-8 items-center justify-center gap-1.5 rounded-sm text-xs text-zinc-500 transition hover:bg-surface hover:text-zinc-200"}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="room-right-panel-active-tab"
+                    className="absolute inset-0 rounded-sm bg-surfaceRaised shadow-[0_8px_24px_rgba(99,102,241,0.16)]"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10 inline-flex items-center gap-1.5">
+                  {item.icon}
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="min-h-0 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {tab === "participants" ? (
+            <motion.section
+              key="participants"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.2 }}
+              className="h-full overflow-y-auto p-4"
+            >
+              <ParticipantsList peers={peers} currentUserId={currentUserId} />
+            </motion.section>
+          ) : (
+            <motion.section
+              key={tab}
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.2 }}
+              className="flex h-full min-h-0 flex-col p-4"
+            >
+              {tab === "review" && (
+                <p className="mb-3 rounded-md border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs text-cyan">
+                  Owner review mode: use the chat picker to inspect member AI threads.
+                </p>
+              )}
+              <ChatPanel
+                roomId={roomId}
+                getEditorText={getEditorText}
+                getAllFiles={getAllFiles}
+                activeFilePath={activePath}
+                lastRunStderr={lastRunStderr}
+                isOwner={isOwner}
+              />
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function ParticipantsList({
+  peers,
+  currentUserId,
+}: {
+  peers: CollabPeer[];
+  currentUserId: string | undefined;
+}) {
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+          <Users className="h-4 w-4 text-cyan" />
+          Participants
+        </div>
+        <span className="rounded-md border border-cyan/30 bg-cyan/10 px-2 py-1 text-xs text-cyan">
+          {peers.length} online
+        </span>
+      </div>
+      <div className="space-y-3">
+        {peers.length === 0 ? (
+          <p className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-4 text-center text-xs text-zinc-500">
+            No live participants yet.
+          </p>
+        ) : (
+          peers.map((peer) => (
+            <motion.div
+              key={peer.clientId}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Participant
+                name={peer.name}
+                color={peer.color}
+                activePath={peer.activePath}
+                isMe={peer.userId === currentUserId}
+              />
+            </motion.div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

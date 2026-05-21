@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Github } from "lucide-react";
 import { API_BASE_URL, fetchOAuthProviders } from "@/lib/api";
+import { stagger, fadeUp } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 
 interface OAuthButtonsProps {
@@ -40,8 +42,8 @@ export function OAuthButtons({ action = "Continue" }: OAuthButtonsProps) {
   if (query.isLoading) {
     return (
       <div className="space-y-2">
-        <div className="h-10 animate-pulse rounded-md bg-zinc-900" />
-        <div className="h-10 animate-pulse rounded-md bg-zinc-900" />
+        <div className="codeleon-shimmer h-10 rounded-md bg-zinc-900" />
+        <div className="codeleon-shimmer h-10 rounded-md bg-zinc-900" />
       </div>
     );
   }
@@ -53,23 +55,26 @@ export function OAuthButtons({ action = "Continue" }: OAuthButtonsProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <motion.div initial="hidden" animate="show" variants={stagger} className="space-y-3">
       <div className="flex flex-col gap-2">
         {providers.map((id) => {
           const meta = providerCopy[id];
           if (!meta) return null;
           return (
-            <a
+            <motion.a
               key={id}
+              variants={fadeUp}
+              whileHover={{ y: -2, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
               href={`${API_BASE_URL}/oauth2/authorization/${id}`}
               className={cn(
-                "inline-flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm font-medium transition",
+                "inline-flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm font-medium transition shadow-[0_10px_28px_rgba(0,0,0,0.18)]",
                 meta.className,
               )}
             >
               {meta.icon}
               {action} with {meta.label}
-            </a>
+            </motion.a>
           );
         })}
       </div>
@@ -79,7 +84,7 @@ export function OAuthButtons({ action = "Continue" }: OAuthButtonsProps) {
         <span className="text-[10px] uppercase tracking-wide text-zinc-500">or</span>
         <hr className="flex-1 border-zinc-800" />
       </div>
-    </div>
+    </motion.div>
   );
 }
 

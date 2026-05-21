@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Archive, ArchiveRestore, Copy, FileCode2, Globe2, Lock, MoreHorizontal, Pin, PinOff, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -8,6 +9,8 @@ import { formatRelativeDate } from "@/lib/utils";
 interface ProjectCardProps {
   room: Room;
 }
+
+const MotionLink = motion(Link);
 
 export function ProjectCard({ room }: ProjectCardProps) {
   const [copied, setCopied] = useState(false);
@@ -73,14 +76,19 @@ export function ProjectCard({ room }: ProjectCardProps) {
   const role = room.currentUserRole ?? "guest";
 
   return (
-    <Link
+    <MotionLink
       to={`/rooms/${room.id}`}
+      whileHover={{ y: -5, scale: 1.012 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32 }}
       className={
         room.archived
-          ? "group relative flex flex-col rounded-lg border border-zinc-800 bg-surface/60 p-5 opacity-70 transition hover:border-signature/60 hover:bg-surfaceRaised hover:opacity-100"
-          : "group relative flex flex-col rounded-lg border border-zinc-800 bg-surface p-5 transition hover:border-signature/60 hover:bg-surfaceRaised"
+          ? "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface/60 p-5 opacity-70 shadow-[0_14px_38px_rgba(0,0,0,0.2)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:opacity-100 hover:shadow-[0_22px_70px_rgba(99,102,241,0.18)]"
+          : "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_14px_38px_rgba(0,0,0,0.2)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:shadow-[0_22px_70px_rgba(99,102,241,0.2)]"
       }
     >
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/70 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <span className="pointer-events-none absolute -right-16 -top-20 h-32 w-32 rotate-12 bg-[linear-gradient(90deg,transparent,rgba(6,182,212,0.12),transparent)] opacity-0 blur-xl transition-opacity duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -149,7 +157,7 @@ export function ProjectCard({ room }: ProjectCardProps) {
             type="button"
             onClick={handlePinToggle}
             disabled={pinMutation.isPending}
-            className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-50"
+            className="rounded-md p-1 text-zinc-500 transition hover:-translate-y-0.5 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-50"
             title={room.pinned ? "Unpin" : "Pin to top"}
             aria-label={room.pinned ? "Unpin project" : "Pin project"}
           >
@@ -197,6 +205,6 @@ export function ProjectCard({ room }: ProjectCardProps) {
           )}
         </div>
       </div>
-    </Link>
+    </MotionLink>
   );
 }

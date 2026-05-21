@@ -19,6 +19,7 @@ export interface MenuBarActions {
   isAiPanelVisible: boolean;
   hasActiveTab: boolean;
   hasOpenTabs: boolean;
+  canRunActiveFile: boolean;
   canEdit: boolean;
 }
 
@@ -153,7 +154,7 @@ function ViewMenu({
   );
 }
 
-function RunMenu({ onRunFile, hasActiveTab }: MenuBarActions) {
+function RunMenu({ onRunFile, canRunActiveFile }: MenuBarActions) {
   return (
     <Menubar.Menu>
       <MenuTrigger>Run</MenuTrigger>
@@ -161,13 +162,14 @@ function RunMenu({ onRunFile, hasActiveTab }: MenuBarActions) {
         <MenuItem
           onSelect={onRunFile}
           shortcut="Ctrl+Enter"
-          disabled={!hasActiveTab}
+          disabled={!canRunActiveFile}
         >
           Run Active File
         </MenuItem>
         <MenuSeparator />
         <MenuLabel>Supported runtimes</MenuLabel>
         <MenuItem disabled>Python 3.12 (sandbox)</MenuItem>
+        <MenuItem disabled>Java 21 (sandbox)</MenuItem>
       </MenuContent>
     </Menubar.Menu>
   );

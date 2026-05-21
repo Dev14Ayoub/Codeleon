@@ -3,6 +3,7 @@ package com.codeleon.runner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,6 +56,32 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.stdout").value("hello\n"))
                 .andExpect(jsonPath("$.exitCode").value(0))
                 .andExpect(jsonPath("$.timedOut").value(false));
+    }
+
+    @Test
+    void runAcceptsJavaLanguageAndFilenameForRoomMember() throws Exception {
+        String token = register("runner.java.owner@example.com");
+        JsonNode room = createRoom(token, "Java Runner Room");
+        String roomId = room.get("id").asText();
+
+        when(codeRunnerService.run(any())).thenReturn(new RunResult("hello java\n", "", 0, 84L, false));
+
+        mockMvc.perform(post("/rooms/" + roomId + "/run")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "language", "JAVA",
+                                "filename", "src/Main.java",
+                                "code", "public class Main { public static void main(String[] args) { System.out.println(\"hello java\"); } }"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stdout").value("hello java\n"))
+                .andExpect(jsonPath("$.exitCode").value(0));
+
+        ArgumentCaptor<RunRequest> requestCaptor = ArgumentCaptor.forClass(RunRequest.class);
+        verify(codeRunnerService).run(requestCaptor.capture());
+        assertEquals(RunLanguage.JAVA, requestCaptor.getValue().language());
+        assertEquals("src/Main.java", requestCaptor.getValue().filename());
     }
 
     @Test

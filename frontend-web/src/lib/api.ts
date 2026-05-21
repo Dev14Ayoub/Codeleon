@@ -213,11 +213,12 @@ export async function unarchiveRoom(roomId: string) {
   return data;
 }
 
-export type RunLanguage = "PYTHON";
+export type RunLanguage = "PYTHON" | "JAVA";
 
 export interface RunRequest {
   language: RunLanguage;
   code: string;
+  filename?: string;
   stdin?: string;
 }
 

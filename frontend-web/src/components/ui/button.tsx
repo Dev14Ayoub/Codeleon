@@ -13,16 +13,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ asChild = false, className, variant = "primary", ...props }, ref) => {
     const Component = asChild ? Slot : "button";
     const variants: Record<ButtonVariant, string> = {
-      primary: "bg-signature text-white hover:bg-indigo-500",
-      secondary: "border border-zinc-700 bg-surface text-zinc-100 hover:bg-surfaceRaised",
-      ghost: "text-zinc-300 hover:bg-surface",
+      primary: "bg-signature text-white shadow-[0_10px_30px_rgba(99,102,241,0.22)] hover:bg-indigo-500 hover:shadow-[0_14px_36px_rgba(99,102,241,0.32)]",
+      secondary: "border border-zinc-700 bg-surface text-zinc-100 hover:border-zinc-600 hover:bg-surfaceRaised",
+      ghost: "text-zinc-300 hover:bg-surface hover:text-white",
     };
 
     return (
       <Component
         ref={ref}
         className={cn(
-          "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
           variants[variant],
           className,
         )}
