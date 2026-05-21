@@ -49,6 +49,7 @@ Polydisciplinaire de Taza, academic year 2025-2026.
 | Python sandbox (Docker, `--network=none`, mem/cpu/timeout caps) | `28356e8` |
 | Java 21 sandbox + file-language-aware Run button | `c3c44f4` |
 | Runner stdin separation for Python/Java code execution | `c3c44f4` |
+| Maven Java dependency builds with cached dependencies and no-network runtime | latest |
 
 ### 2.4 RAG AI assistant
 | Area | Commit |

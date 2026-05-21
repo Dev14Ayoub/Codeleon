@@ -39,6 +39,7 @@ import {
   type IndexFile,
   type RoomFile,
   type RunLanguage,
+  type RunProjectFile,
   type RunResult,
 } from "@/lib/api";
 import { prepareLocalImport } from "@/lib/files/local-import";
@@ -112,6 +113,7 @@ export function RoomPage() {
         code,
         filename: activePath ?? undefined,
         stdin: runStdin,
+        files: language === "JAVA" ? buildRunProjectFiles(getAllFiles(), activePath, code) : undefined,
       });
     },
     onSuccess: (data) => {
@@ -738,6 +740,18 @@ function runLanguageFromPath(path: string | null): RunLanguage | null {
 
 function runLanguageLabel(language: RunLanguage) {
   return languageDisplayName(language.toLowerCase());
+}
+
+function buildRunProjectFiles(
+  files: IndexFile[],
+  activePath: string | null,
+  activeCode: string,
+): RunProjectFile[] {
+  const byPath = new Map(files.map((file) => [file.path, file.text]));
+  if (activePath) {
+    byPath.set(activePath, activeCode);
+  }
+  return Array.from(byPath, ([path, text]) => ({ path, text }));
 }
 
 function OutputPanel({

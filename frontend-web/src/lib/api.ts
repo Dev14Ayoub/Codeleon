@@ -220,6 +220,12 @@ export interface RunRequest {
   code: string;
   filename?: string;
   stdin?: string;
+  files?: RunProjectFile[];
+}
+
+export interface RunProjectFile {
+  path: string;
+  text: string;
 }
 
 export interface RunResult {

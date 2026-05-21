@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,7 +73,11 @@ class RunControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "language", "JAVA",
                                 "filename", "src/Main.java",
-                                "code", "public class Main { public static void main(String[] args) { System.out.println(\"hello java\"); } }"
+                                "code", "public class Main { public static void main(String[] args) { System.out.println(\"hello java\"); } }",
+                                "files", List.of(
+                                        Map.of("path", "pom.xml", "text", "<project></project>"),
+                                        Map.of("path", "src/Main.java", "text", "stale")
+                                )
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.stdout").value("hello java\n"))
@@ -82,6 +87,7 @@ class RunControllerTest {
         verify(codeRunnerService).run(requestCaptor.capture());
         assertEquals(RunLanguage.JAVA, requestCaptor.getValue().language());
         assertEquals("src/Main.java", requestCaptor.getValue().filename());
+        assertEquals(2, requestCaptor.getValue().files().size());
     }
 
     @Test

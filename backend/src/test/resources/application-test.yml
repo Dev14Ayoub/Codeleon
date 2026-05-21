@@ -24,9 +24,14 @@ codeleon:
   runner:
     enabled: true
     python-image: python:3.12-slim
+    java-image: eclipse-temurin:21-jdk
+    maven-image: maven:3.9-eclipse-temurin-21
+    maven-cache-volume: codeleon-maven-cache-test
     timeout-ms: 5000
     java-timeout-ms: 15000
+    maven-timeout-ms: 30000
     memory-mb: 256
+    maven-memory-mb: 512
     cpus: 0.5
     pids-limit: 64
     max-output-bytes: 65536
