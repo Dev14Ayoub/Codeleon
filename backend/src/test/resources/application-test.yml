@@ -25,6 +25,7 @@ codeleon:
     enabled: true
     python-image: python:3.12-slim
     timeout-ms: 5000
+    java-timeout-ms: 15000
     memory-mb: 256
     cpus: 0.5
     pids-limit: 64

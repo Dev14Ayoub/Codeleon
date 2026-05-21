@@ -63,7 +63,7 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         command.add("set -eu; mkdir -p /tmp/codeleon; cd /tmp/codeleon; "
                 + "dd bs=1 count=\"$CODELEON_CODE_BYTES\" of=main.py 2>/dev/null; "
                 + "python main.py");
-        return execute(command, containerName, request);
+        return execute(command, containerName, request, props.timeoutMs());
     }
 
     private RunResult runJava(RunRequest request) {
@@ -80,7 +80,7 @@ public class DockerCodeRunnerService implements CodeRunnerService {
                 + "dd bs=1 count=\"$CODELEON_CODE_BYTES\" of=\"$CODELEON_SOURCE\" 2>/dev/null; "
                 + "javac -d . \"$CODELEON_SOURCE\"; "
                 + "java -cp . \"$CODELEON_MAIN_CLASS\"");
-        return execute(command, containerName, request);
+        return execute(command, containerName, request, props.javaTimeoutMs());
     }
 
     private List<String> buildBaseCommand(String containerName, String image, List<String> environment) {
@@ -146,7 +146,7 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         return request.code().getBytes(StandardCharsets.UTF_8).length;
     }
 
-    private RunResult execute(List<String> command, String containerName, RunRequest request) {
+    private RunResult execute(List<String> command, String containerName, RunRequest request, int timeoutMs) {
         long start = System.currentTimeMillis();
         Process process;
         try {
@@ -170,7 +170,7 @@ public class DockerCodeRunnerService implements CodeRunnerService {
 
         boolean finished;
         try {
-            finished = process.waitFor(props.timeoutMs(), TimeUnit.MILLISECONDS);
+            finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             killContainer(containerName);

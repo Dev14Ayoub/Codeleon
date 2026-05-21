@@ -49,6 +49,7 @@ codeleon:
     python-image: ${RUNNER_PYTHON_IMAGE:python:3.12-slim}
     java-image: ${RUNNER_JAVA_IMAGE:eclipse-temurin:21-jdk}
     timeout-ms: ${RUNNER_TIMEOUT_MS:8000}
+    java-timeout-ms: ${RUNNER_JAVA_TIMEOUT_MS:25000}
     memory-mb: ${RUNNER_MEMORY_MB:256}
     cpus: ${RUNNER_CPUS:0.5}
     pids-limit: ${RUNNER_PIDS_LIMIT:64}

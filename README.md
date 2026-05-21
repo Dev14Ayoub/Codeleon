@@ -25,7 +25,7 @@ cloud, and run it in a Docker sandbox with one click.
 |---|---|
 | **Real-time collaborative editor** with multi-cursor + presence | Yjs CRDT + y-codemirror.next + WebSocket binary relay |
 | **Multi-file workspace** with VS Code-style tabs, file explorer, right-click menus, menubar | React + Radix Context Menu / Menubar / Dialog |
-| **Code execution sandbox** | Docker `python:3.12-slim` + `eclipse-temurin:21-jdk`, `--network=none`, 256 MB / 0.5 CPU / 8 s timeout |
+| **Code execution sandbox** | Docker `python:3.12-slim` + `eclipse-temurin:21-jdk`, `--network=none`, 256 MB / 0.5 CPU / 8 s Python timeout / 25 s Java timeout |
 | **Local RAG AI assistant** with streaming SSE, auto-indexing, chat history, and retrieved context drawer | Ollama (`qwen2.5-coder:0.5b` + `nomic-embed-text`) + Qdrant 1.11 |
 | **Project import** from local folder or public GitHub repo | `webkitdirectory` picker / GitHub archive ZIP fetch + filter |
 | **Project dashboard** with cards, templates, pin/archive, activity feed, and admin view | React Query + Spring REST + Flyway events/pins |
