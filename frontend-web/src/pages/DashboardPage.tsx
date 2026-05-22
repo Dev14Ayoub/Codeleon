@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Logo } from "@/components/brand/Logo";
 import { ActivityFeed } from "@/components/projects/ActivityFeed";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -598,6 +598,8 @@ function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 function AccountIntegrations({ className }: { className?: string }) {
+  const [params] = useSearchParams();
+  const oauthConnected = params.get("oauth_connected");
   const accountsQuery = useQuery({
     queryKey: ["oauth-accounts"],
     queryFn: fetchOAuthAccounts,
@@ -633,6 +635,20 @@ function AccountIntegrations({ className }: { className?: string }) {
           </p>
         </div>
       </div>
+
+      <AnimatePresence>
+        {oauthConnected === "github" && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="mt-4 flex items-start gap-2 rounded-md border border-emerald-800 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-200"
+          >
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            GitHub is connected. If GitHub skipped the authorization screen, it means this account had already approved Codeleon.
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mt-4 space-y-3">
         <IntegrationRow
@@ -688,7 +704,12 @@ function IntegrationRow({
 
         {!connected && available && (
           <Button asChild variant="secondary" className="h-8 shrink-0 px-3 text-xs">
-            <a href={`${API_BASE_URL}/oauth2/authorization/${provider}`}>
+            <a
+              href={`${API_BASE_URL}/oauth2/authorization/${provider}`}
+              onClick={() => {
+                window.sessionStorage.setItem("codeleon.oauth.linkIntent", provider);
+              }}
+            >
               <Link2 className="h-3.5 w-3.5" />
               Connect
             </a>

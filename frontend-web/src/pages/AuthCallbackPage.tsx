@@ -43,6 +43,12 @@ export function AuthCallbackPage() {
     fetchCurrentUser()
       .then((user) => {
         setSession({ accessToken, refreshToken, user });
+        const linkIntent = window.sessionStorage.getItem("codeleon.oauth.linkIntent");
+        if (linkIntent) {
+          window.sessionStorage.removeItem("codeleon.oauth.linkIntent");
+          navigate(`/dashboard?oauth_connected=${encodeURIComponent(linkIntent)}#integrations`, { replace: true });
+          return;
+        }
         navigate("/dashboard", { replace: true });
       })
       .catch(() => {
