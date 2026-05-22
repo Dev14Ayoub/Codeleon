@@ -1,9 +1,12 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ChevronDown,
+  ChevronRight,
   Edit3,
   FileCode2,
   FilePlus2,
+  Folder,
   FolderOpen,
   FolderUp,
   Loader2,
@@ -14,6 +17,7 @@ import {
   forwardRef,
   FormEvent,
   KeyboardEvent,
+  useMemo,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -49,6 +53,10 @@ type Pending =
   | { kind: "rename"; fileId: string; currentPath: string }
   | null;
 
+type FileTreeNode =
+  | { kind: "folder"; name: string; path: string; children: FileTreeNode[] }
+  | { kind: "file"; name: string; path: string; file: RoomFile };
+
 export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
   {
     roomId,
@@ -65,7 +73,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
 ) {
   const { files, loading, error, create, rename, remove, refresh } = useRoomFiles(roomId);
   const [pending, setPending] = useState<Pending>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
+  const tree = useMemo(() => buildFileTree(files), [files]);
 
   const handleImportClick = () => {
     if (importing) return;
@@ -101,6 +111,20 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
     }
   }, [files, activePath, onActivePathChange]);
 
+  useEffect(() => {
+    if (!activePath) return;
+    const ancestors = folderAncestors(activePath);
+    if (ancestors.length === 0) return;
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const ancestor of ancestors) {
+        if (next.delete(ancestor)) changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [activePath]);
+
   const handleCreate = async (path: string) => {
     const file = await create(path);
     setPending(null);
@@ -132,6 +156,100 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
       const next = files.find((f) => f.id !== file.id);
       if (next) onActivePathChange(next.path);
     }
+  };
+
+  const toggleFolder = (path: string) => {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const renderTreeNode = (node: FileTreeNode, depth: number): React.ReactNode => {
+    if (node.kind === "folder") {
+      const collapsed = collapsedFolders.has(node.path);
+      return (
+        <motion.li
+          key={`folder:${node.path}`}
+          layout
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <FolderRow
+            name={node.name}
+            path={node.path}
+            depth={depth}
+            collapsed={collapsed}
+            onClick={() => toggleFolder(node.path)}
+          />
+          <AnimatePresence initial={false}>
+            {!collapsed && (
+              <motion.ul
+                key={`${node.path}:children`}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.16 }}
+                className="overflow-hidden"
+              >
+                {node.children.map((child) => renderTreeNode(child, depth + 1))}
+              </motion.ul>
+            )}
+          </AnimatePresence>
+        </motion.li>
+      );
+    }
+
+    if (pending?.kind === "rename" && pending.fileId === node.file.id) {
+      return (
+        <motion.li
+          key={node.file.id}
+          layout
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ paddingLeft: depth * TREE_INDENT }}
+        >
+          <FileNameInput
+            initial={node.file.path}
+            placeholder={node.file.path}
+            onConfirm={(newPath) => handleRename(node.file.id, newPath)}
+            onCancel={() => setPending(null)}
+          />
+        </motion.li>
+      );
+    }
+
+    return (
+      <ContextMenu.Root key={node.file.id}>
+        <ContextMenu.Trigger asChild>
+          <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }}>
+            <FileRow
+              file={node.file}
+              name={node.name}
+              depth={depth}
+              active={node.file.path === activePath}
+              onClick={() => onActivePathChange(node.file.path)}
+            />
+          </motion.li>
+        </ContextMenu.Trigger>
+        {canEdit && (
+          <FileContextMenuContent
+            onRename={() =>
+              setPending({
+                kind: "rename",
+                fileId: node.file.id,
+                currentPath: node.file.path,
+              })
+            }
+            onDelete={() => void handleDelete(node.file)}
+            onNew={() => setPending({ kind: "new" })}
+          />
+        )}
+      </ContextMenu.Root>
+    );
   };
 
   return (
@@ -226,43 +344,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
               </li>
             )}
 
-            {files.map((file) =>
-              pending?.kind === "rename" && pending.fileId === file.id ? (
-                <motion.li key={file.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-                  <FileNameInput
-                    initial={file.path}
-                    placeholder={file.path}
-                    onConfirm={(newPath) => handleRename(file.id, newPath)}
-                    onCancel={() => setPending(null)}
-                  />
-                </motion.li>
-              ) : (
-                <ContextMenu.Root key={file.id}>
-                  <ContextMenu.Trigger asChild>
-                    <motion.li layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }}>
-                      <FileRow
-                        file={file}
-                        active={file.path === activePath}
-                        onClick={() => onActivePathChange(file.path)}
-                      />
-                    </motion.li>
-                  </ContextMenu.Trigger>
-                  {canEdit && (
-                    <FileContextMenuContent
-                      onRename={() =>
-                        setPending({
-                          kind: "rename",
-                          fileId: file.id,
-                          currentPath: file.path,
-                        })
-                      }
-                      onDelete={() => void handleDelete(file)}
-                      onNew={() => setPending({ kind: "new" })}
-                    />
-                  )}
-                </ContextMenu.Root>
-              ),
-            )}
+            {tree.map((node) => renderTreeNode(node, 0))}
           </ul>
         </ContextMenu.Trigger>
         {/*
@@ -288,12 +370,54 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
   );
 });
 
+function FolderRow({
+  name,
+  path,
+  depth,
+  collapsed,
+  onClick,
+}: {
+  name: string;
+  path: string;
+  depth: number;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ x: 3 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={onClick}
+      title={path}
+      className="relative flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] text-zinc-300 transition hover:bg-surface hover:text-zinc-100"
+      style={{ paddingLeft: 8 + depth * TREE_INDENT }}
+    >
+      {collapsed ? (
+        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+      ) : (
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+      )}
+      {collapsed ? (
+        <Folder className="h-3.5 w-3.5 shrink-0 text-cyan/80" />
+      ) : (
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-cyan" />
+      )}
+      <span className="truncate">{name}</span>
+    </motion.button>
+  );
+}
+
 function FileRow({
   file,
+  name,
+  depth,
   active,
   onClick,
 }: {
   file: RoomFile;
+  name: string;
+  depth: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -303,17 +427,19 @@ function FileRow({
       whileHover={{ x: 3 }}
       whileTap={{ scale: 0.99 }}
       onClick={onClick}
+      title={file.path}
       className={cn(
-        "relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition",
+        "relative flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] transition",
         active
           ? "bg-surfaceRaised text-zinc-50 shadow-[inset_2px_0_0_rgba(6,182,212,0.95)]"
           : "text-zinc-400 hover:bg-surface hover:text-zinc-100",
       )}
+      style={{ paddingLeft: 26 + depth * TREE_INDENT }}
     >
       <FileCode2
         className={cn("h-3.5 w-3.5 shrink-0", active ? "text-cyan" : "text-zinc-500")}
       />
-      <span className="truncate">{file.path}</span>
+      <span className="truncate">{name}</span>
     </motion.button>
   );
 }
@@ -437,3 +563,78 @@ function FileNameInput({
     </form>
   );
 }
+
+function buildFileTree(files: RoomFile[]): FileTreeNode[] {
+  type MutableFolder = {
+    kind: "folder";
+    name: string;
+    path: string;
+    folders: Map<string, MutableFolder>;
+    files: FileTreeNode[];
+  };
+
+  const root: MutableFolder = {
+    kind: "folder",
+    name: "",
+    path: "",
+    folders: new Map(),
+    files: [],
+  };
+
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  for (const file of sorted) {
+    const parts = file.path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+
+    let current = root;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const name = parts[i];
+      const path = current.path ? `${current.path}/${name}` : name;
+      let folder = current.folders.get(name);
+      if (!folder) {
+        folder = {
+          kind: "folder",
+          name,
+          path,
+          folders: new Map(),
+          files: [],
+        };
+        current.folders.set(name, folder);
+      }
+      current = folder;
+    }
+
+    current.files.push({
+      kind: "file",
+      name: parts[parts.length - 1],
+      path: file.path,
+      file,
+    });
+  }
+
+  const freezeFolder = (folder: MutableFolder): FileTreeNode[] => {
+    const folders = Array.from(folder.folders.values())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((child) => ({
+        kind: "folder" as const,
+        name: child.name,
+        path: child.path,
+        children: freezeFolder(child),
+      }));
+    const leafFiles = folder.files.sort((a, b) => a.name.localeCompare(b.name));
+    return [...folders, ...leafFiles];
+  };
+
+  return freezeFolder(root);
+}
+
+function folderAncestors(path: string): string[] {
+  const parts = path.split("/").filter(Boolean);
+  const ancestors: string[] = [];
+  for (let i = 1; i < parts.length; i += 1) {
+    ancestors.push(parts.slice(0, i).join("/"));
+  }
+  return ancestors;
+}
+
+const TREE_INDENT = 16;
