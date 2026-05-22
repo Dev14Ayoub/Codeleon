@@ -289,6 +289,24 @@ export interface GithubImportResponse {
   skipped: GithubImportSkippedFile[];
 }
 
+export interface GithubRepository {
+  fullName: string;
+  owner: string | null;
+  name: string | null;
+  htmlUrl: string | null;
+  defaultBranch: string | null;
+  privateRepo: boolean;
+  description: string | null;
+  updatedAt: string | null;
+}
+
+export async function fetchGithubRepositories(roomId: string) {
+  const { data } = await api.get<GithubRepository[]>(
+    `/rooms/${roomId}/import/github/repositories`,
+  );
+  return data;
+}
+
 export async function importGithub(
   roomId: string,
   payload: { repoUrl: string; branch?: string },

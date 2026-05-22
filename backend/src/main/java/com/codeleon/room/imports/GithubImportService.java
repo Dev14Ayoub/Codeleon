@@ -5,6 +5,8 @@ import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.room.RoomFile;
 import com.codeleon.room.RoomFileService;
 import com.codeleon.user.User;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -34,8 +37,9 @@ import java.util.zip.ZipInputStream;
  * files within size and count limits, creates a {@link RoomFile} per kept
  * entry and returns the contents so the frontend can seed the Y.Doc.
  *
- * <p>Anonymous fetches only — covers public repos within the GitHub rate
- * limit. PAT support is intentionally out of scope for now.</p>
+ * <p>When the user has linked GitHub, imports and repository listing use
+ * the stored OAuth token so private repositories work too. Without a linked
+ * account, public repository URLs still use the anonymous archive path.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -45,6 +49,7 @@ public class GithubImportService {
 
     static final int MAX_FILES = 200;
     static final int MAX_FILE_BYTES = 100 * 1024;
+    static final int MAX_REPOSITORY_PAGES = 10;
 
     private static final Pattern HTTPS_URL_PATTERN =
             Pattern.compile("^https?://github\\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\\.git)?/?$");
@@ -75,6 +80,7 @@ public class GithubImportService {
 
     private final RoomFileService roomFileService;
     private final OAuthAccountRepository oauthAccountRepository;
+    private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -158,6 +164,23 @@ public class GithubImportService {
         return new GithubImportResponse(
                 or.owner(), or.repo(), fetch.branch, truncated, imported, skipped
         );
+    }
+
+    public List<GithubRepositoryResponse> listConnectedRepositories(User user) {
+        String githubToken = linkedGithubToken(user);
+        if (githubToken == null) {
+            throw new BadRequestException("Connect your GitHub account to browse repositories.");
+        }
+
+        List<GithubRepositoryResponse> repositories = new ArrayList<>();
+        for (int page = 1; page <= MAX_REPOSITORY_PAGES; page++) {
+            List<GithubRepositoryResponse> current = fetchRepositoryPage(githubToken, page);
+            repositories.addAll(current);
+            if (current.size() < 100) {
+                break;
+            }
+        }
+        return repositories;
     }
 
     // ---------------------------------------------------------------------
@@ -261,6 +284,64 @@ public class GithubImportService {
                 .orElse(null);
     }
 
+    private List<GithubRepositoryResponse> fetchRepositoryPage(String githubToken, int page) {
+        String url = String.format(
+                "https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=updated&per_page=100&page=%d",
+                page
+        );
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(30))
+                .header("Accept", "application/vnd.github+json")
+                .header("Authorization", "Bearer " + githubToken)
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .header("User-Agent", "Codeleon-GitHub-Importer")
+                .GET()
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            int code = response.statusCode();
+            if (code == 401 || code == 403) {
+                throw new BadRequestException("GitHub authentication failed. Reconnect your GitHub account, then try again.");
+            }
+            if (code / 100 != 2) {
+                throw new BadRequestException("GitHub returned HTTP " + code + " when listing repositories");
+            }
+            return parseRepositoryPage(response.body());
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new BadRequestException("Could not reach github.com: " + ex.getMessage());
+        }
+    }
+
+    List<GithubRepositoryResponse> parseRepositoryPage(String body) throws IOException {
+        JsonNode root = objectMapper.readTree(body);
+        if (!root.isArray()) {
+            throw new BadRequestException("GitHub returned an unexpected repository list");
+        }
+
+        List<GithubRepositoryResponse> repositories = new ArrayList<>();
+        for (JsonNode node : root) {
+            String fullName = text(node, "full_name");
+            if (fullName == null || fullName.isBlank()) {
+                continue;
+            }
+            String owner = text(node.path("owner"), "login");
+            String name = text(node, "name");
+            repositories.add(new GithubRepositoryResponse(
+                    fullName,
+                    owner,
+                    name,
+                    text(node, "html_url"),
+                    text(node, "default_branch"),
+                    node.path("private").asBoolean(false),
+                    text(node, "description"),
+                    instantOrNull(text(node, "updated_at"))
+            ));
+        }
+        return repositories;
+    }
+
     private BadRequestException missingRepositoryOrBranch(OwnerRepo or, String githubToken) {
         return new BadRequestException(
                 "Repository or default branch not found for " + or.owner() + "/" + or.repo() +
@@ -324,5 +405,21 @@ public class GithubImportService {
             out.write(buffer, 0, n);
         }
         return out.toByteArray();
+    }
+
+    private static String text(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    private static Instant instantOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 }

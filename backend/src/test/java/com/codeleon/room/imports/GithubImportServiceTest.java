@@ -1,10 +1,12 @@
 package com.codeleon.room.imports;
 
 import com.codeleon.common.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 class GithubImportServiceTest {
 
@@ -74,5 +76,35 @@ class GithubImportServiceTest {
         assertThat(GithubImportService.isLikelyTextFile("logo.png")).isFalse();
         assertThat(GithubImportService.isLikelyTextFile("video.mp4")).isFalse();
         assertThat(GithubImportService.isLikelyTextFile("noext")).isFalse();
+    }
+
+    @Test
+    void parsesGithubRepositoryPage() throws Exception {
+        GithubImportService service = new GithubImportService(
+                mock(com.codeleon.room.RoomFileService.class),
+                mock(com.codeleon.auth.oauth.OAuthAccountRepository.class),
+                new ObjectMapper()
+        );
+
+        var repos = service.parseRepositoryPage("""
+                [
+                  {
+                    "full_name": "octocat/hello-world",
+                    "name": "hello-world",
+                    "html_url": "https://github.com/octocat/hello-world",
+                    "default_branch": "main",
+                    "private": true,
+                    "description": "Demo repo",
+                    "updated_at": "2026-05-22T10:15:30Z",
+                    "owner": { "login": "octocat" }
+                  }
+                ]
+                """);
+
+        assertThat(repos).hasSize(1);
+        assertThat(repos.get(0).fullName()).isEqualTo("octocat/hello-world");
+        assertThat(repos.get(0).owner()).isEqualTo("octocat");
+        assertThat(repos.get(0).privateRepo()).isTrue();
+        assertThat(repos.get(0).defaultBranch()).isEqualTo("main");
     }
 }

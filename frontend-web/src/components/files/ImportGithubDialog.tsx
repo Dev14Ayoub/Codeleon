@@ -1,12 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Github, Loader2, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { Github, Loader2, Lock, Search, X } from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   API_BASE_URL,
+  fetchGithubRepositories,
   getApiErrorMessage,
   importGithub,
+  type GithubRepository,
   type GithubImportResponse,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -30,13 +33,30 @@ export function ImportGithubDialog({
   onImported,
 }: ImportGithubDialogProps) {
   const [repoUrl, setRepoUrl] = useState("");
+  const [repoSearch, setRepoSearch] = useState("");
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<GithubImportResponse | null>(null);
 
+  const repositoriesQuery = useQuery({
+    queryKey: ["github-repositories", roomId],
+    queryFn: () => fetchGithubRepositories(roomId),
+    enabled: open,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const repositories = repositoriesQuery.data ?? [];
+  const showRepositoryPicker = repositoriesQuery.isSuccess;
+  const filteredRepositories = useMemo(
+    () => filterRepositories(repositories, repoSearch),
+    [repositories, repoSearch],
+  );
+
   const reset = () => {
     setRepoUrl("");
+    setRepoSearch("");
     setBranch("");
     setError(null);
     setReport(null);
@@ -102,7 +122,9 @@ export function ImportGithubDialog({
                 Import from GitHub
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-zinc-400">
-                Paste a repository URL. Private repositories require a connected GitHub account. Up to 200 text files smaller than 100 KB will be added to this room.
+                {showRepositoryPicker
+                  ? "Choose one of your GitHub repositories, or paste a URL manually. Up to 200 text files smaller than 100 KB will be added to this room."
+                  : "Paste a repository URL. Private repositories require a connected GitHub account. Up to 200 text files smaller than 100 KB will be added to this room."}
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -116,6 +138,55 @@ export function ImportGithubDialog({
           </div>
 
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            {repositoriesQuery.isLoading && (
+              <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan" />
+                Checking connected GitHub repositories...
+              </div>
+            )}
+
+            {showRepositoryPicker && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500">
+                    Your GitHub repositories
+                  </span>
+                  <span className="text-[11px] text-zinc-600">
+                    {repositories.length} found
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                  <input
+                    value={repoSearch}
+                    onChange={(e) => setRepoSearch(e.target.value)}
+                    placeholder="Search repositories..."
+                    disabled={busy}
+                    className={cn(fieldClasses, "pl-9 font-sans")}
+                  />
+                </div>
+                <div className="max-h-56 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-1">
+                  {filteredRepositories.length > 0 ? (
+                    filteredRepositories.map((repository) => (
+                      <RepositoryOption
+                        key={repository.fullName}
+                        repository={repository}
+                        selected={repoUrl === repository.fullName}
+                        onSelect={() => {
+                          setRepoUrl(repository.fullName);
+                          setBranch(repository.defaultBranch ?? "");
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <p className="px-3 py-6 text-center text-xs text-zinc-500">
+                      No repositories match your search.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <Field label="Repository URL">
               <input
                 value={repoUrl}
@@ -123,7 +194,7 @@ export function ImportGithubDialog({
                 placeholder="https://github.com/owner/repo  (or  owner/repo)"
                 disabled={busy}
                 className={fieldClasses}
-                autoFocus
+                autoFocus={!showRepositoryPicker}
               />
             </Field>
             <Field label="Branch (optional)">
@@ -222,6 +293,66 @@ const fieldClasses = cn(
   "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-[13px] text-zinc-100",
   "placeholder:text-zinc-600 focus:border-cyan focus:outline-none disabled:opacity-60",
 );
+
+function RepositoryOption({
+  onSelect,
+  repository,
+  selected,
+}: {
+  onSelect: () => void;
+  repository: GithubRepository;
+  selected: boolean;
+}) {
+  const updatedAt = repository.updatedAt
+    ? new Date(repository.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : null;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "group flex w-full items-start justify-between gap-3 rounded px-3 py-2 text-left transition",
+        selected ? "bg-cyan/10 text-zinc-50" : "text-zinc-300 hover:bg-surfaceRaised hover:text-zinc-50",
+      )}
+    >
+      <span className="min-w-0">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-mono text-xs">{repository.fullName}</span>
+          {repository.privateRepo && <Lock className="h-3 w-3 shrink-0 text-zinc-500" />}
+        </span>
+        <span className="mt-1 block truncate text-xs text-zinc-600">
+          {repository.description ?? "No description"}
+        </span>
+      </span>
+      <span className="shrink-0 text-right text-[10px] text-zinc-600">
+        {repository.defaultBranch && <span className="block font-mono">{repository.defaultBranch}</span>}
+        {updatedAt && <span className="block">Updated {updatedAt}</span>}
+      </span>
+    </button>
+  );
+}
+
+function filterRepositories(repositories: GithubRepository[], query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) {
+    return repositories;
+  }
+
+  return repositories.filter((repository) =>
+    [
+      repository.fullName,
+      repository.owner,
+      repository.name,
+      repository.description,
+      repository.defaultBranch,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(trimmed),
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
