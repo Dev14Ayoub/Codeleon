@@ -36,12 +36,10 @@ public class UserService implements UserDetailsService {
      * Resolves the local {@link User} for an OAuth2 sign-in, creating one if
      * the {@code (provider, subject)} pair is not yet known.
      *
-     * <p>If a user with the same email already exists with a password,
-     * we deliberately refuse to silently link the OAuth identity — that
-     * would let anyone who controls a matching email at the provider
-     * take over an existing password account. The user must log in via
-     * the original method first and link from a settings screen (a
-     * follow-up).</p>
+     * <p>If a user with the same email already exists, we attach the
+     * provider identity to that Codeleon account. This keeps the dashboard
+     * "Connect GitHub" flow usable even though the browser stores the
+     * Codeleon JWT in localStorage rather than a backend session cookie.</p>
      */
     @Transactional
     public User findOrCreateByOAuth(
@@ -103,13 +101,8 @@ public class UserService implements UserDetailsService {
 
         return userRepository.findByEmail(normalizedEmail)
                 .map(existing -> {
-                    if (existing.getPasswordHash() != null) {
-                        throw new BadRequestException(
-                                "An account already exists for " + normalizedEmail +
-                                ". Sign in with your password first to link your " + provider + " account."
-                        );
-                    }
-                    if (existing.getOauthProvider() == null || existing.getOauthProvider().isBlank()) {
+                    if (existing.getPasswordHash() == null
+                            && (existing.getOauthProvider() == null || existing.getOauthProvider().isBlank())) {
                         existing.setOauthProvider(provider);
                         existing.setOauthSubject(subject);
                     }

@@ -140,12 +140,13 @@ class UserServiceOAuthTest {
     }
 
     @Test
-    void refusesToHijackPasswordAccountWithSameEmail() {
+    void linksGithubToExistingPasswordAccountWithSameEmail() {
         UserRepository repo = mock(UserRepository.class);
         OAuthAccountRepository oauthRepo = oauthRepo();
         UserService service = new UserService(repo, oauthRepo);
 
         User passwordUser = User.builder()
+                .id(UUID.randomUUID())
                 .fullName("Pwd User")
                 .email("victim@example.com")
                 .passwordHash("$2a$10$existinghash")
@@ -153,13 +154,23 @@ class UserServiceOAuthTest {
                 .build();
         when(repo.findByOauthProviderAndOauthSubject(any(), any())).thenReturn(Optional.empty());
         when(repo.findByEmail("victim@example.com")).thenReturn(Optional.of(passwordUser));
+        when(repo.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThatThrownBy(() -> service.findOrCreateByOAuth(
-                "github", "evil-sub", "victim@example.com", "Attacker", null
-        )).isInstanceOf(BadRequestException.class)
-          .hasMessageContaining("Sign in with your password first");
+        User result = service.findOrCreateByOAuth(
+                "github", "github-sub", "victim@example.com", "GitHub Name", "https://avatar"
+        );
 
-        verify(repo, never()).save(any(User.class));
+        assertThat(result).isSameAs(passwordUser);
+        assertThat(passwordUser.getPasswordHash()).isEqualTo("$2a$10$existinghash");
+        assertThat(passwordUser.getOauthProvider()).isNull();
+        assertThat(passwordUser.getOauthSubject()).isNull();
+        assertThat(passwordUser.getFullName()).isEqualTo("GitHub Name");
+        assertThat(passwordUser.getAvatarUrl()).isEqualTo("https://avatar");
+        verify(oauthRepo).save(org.mockito.ArgumentMatchers.argThat(account ->
+                account.getUser() == passwordUser &&
+                account.getProvider().equals("github") &&
+                account.getSubject().equals("github-sub")
+        ));
     }
 
     @Test
