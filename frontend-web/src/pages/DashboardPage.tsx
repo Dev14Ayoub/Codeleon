@@ -224,9 +224,7 @@ export function DashboardPage() {
             <StatTile icon={<Users className="h-4 w-4 text-cyan" />} label="Collaborators" value={totalCollaborators} />
           </motion.div>
 
-          <AccountIntegrations className="xl:hidden" />
-
-          <section id="projects" className="space-y-4">
+          <section id="projects" className="scroll-mt-8 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-zinc-50">My projects</h2>
@@ -389,7 +387,7 @@ export function DashboardPage() {
             />
           </section>
 
-          <section id="public" className="space-y-4">
+          <section id="public" className="scroll-mt-8 space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">Public projects</h2>
               <p className="text-sm text-zinc-500">Discover public programming sessions.</p>
@@ -400,11 +398,18 @@ export function DashboardPage() {
               rooms={publicRoomsView}
             />
           </section>
+
+          <section id="integrations" className="scroll-mt-8 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-50">Integrations</h2>
+              <p className="text-sm text-zinc-500">Connect external accounts for imports and project workflows.</p>
+            </div>
+            <AccountIntegrations />
+          </section>
             </div>
 
             <aside className="hidden xl:block">
               <div className="sticky top-8 space-y-4">
-                <AccountIntegrations />
                 <ActivityFeed currentUserId={user?.id} />
               </div>
             </aside>
@@ -611,7 +616,6 @@ function AccountIntegrations({ className }: { className?: string }) {
 
   return (
     <motion.section
-      id="integrations"
       variants={fadeUp}
       initial="hidden"
       animate="show"
