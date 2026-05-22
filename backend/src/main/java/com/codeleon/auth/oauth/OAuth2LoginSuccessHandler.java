@@ -22,6 +22,9 @@ import org.springframework.security.web.DefaultRedirectStrategy;
 import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
@@ -31,7 +34,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -55,6 +62,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final RefreshTokenRepository refreshTokenRepository;
     private final SecurityProperties securityProperties;
     private final ObjectProvider<OAuth2AuthorizedClientService> authorizedClientServiceProvider;
+    private final RestClient.Builder restClientBuilder;
     private final RedirectStrategy redirectStrategy = new DefaultRedirectStrategy();
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -82,6 +90,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             return;
         }
 
+        OAuthTokenDetails token = tokenDetails(provider, oauthToken);
+        profile = resolveMissingProviderEmail(provider, profile, token);
+
         User user;
         try {
             user = userService.findOrCreateByOAuth(
@@ -90,11 +101,11 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     profile.email,
                     profile.name,
                     profile.avatarUrl,
-                    tokenDetails(provider, oauthToken)
+                    token
             );
         } catch (RuntimeException ex) {
             log.warn("OAuth find-or-create failed for {}/{}: {}", provider, profile.subject, ex.getMessage());
-            redirectWithError(response, "oauth_link_conflict");
+            redirectWithError(response, blank(profile.email) ? "oauth_email_missing" : "oauth_link_conflict");
             return;
         }
 
@@ -151,6 +162,53 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         );
     }
 
+    private ProviderProfile resolveMissingProviderEmail(
+            String provider,
+            ProviderProfile profile,
+            OAuthTokenDetails token
+    ) {
+        if (!"github".equals(provider) || !blank(profile.email) || token == null || blank(token.accessToken())) {
+            return profile;
+        }
+
+        String email = fetchGithubEmail(token.accessToken());
+        if (blank(email)) {
+            return profile;
+        }
+        return new ProviderProfile(profile.subject, email, profile.name, profile.avatarUrl);
+    }
+
+    private String fetchGithubEmail(String accessToken) {
+        try {
+            List<GithubEmail> emails = restClientBuilder.build()
+                    .get()
+                    .uri("https://api.github.com/user/emails")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .header(HttpHeaders.ACCEPT, "application/vnd.github+json")
+                    .header(HttpHeaders.USER_AGENT, "Codeleon")
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {
+                    });
+            return selectBestGithubEmail(emails).orElse(null);
+        } catch (RuntimeException ex) {
+            log.warn("Could not fetch GitHub email fallback: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    static Optional<String> selectBestGithubEmail(List<GithubEmail> emails) {
+        if (emails == null || emails.isEmpty()) {
+            return Optional.empty();
+        }
+        return emails.stream()
+                .filter(Objects::nonNull)
+                .filter(email -> !blank(email.email()))
+                .min(Comparator
+                        .comparing((GithubEmail email) -> !Boolean.TRUE.equals(email.primary()))
+                        .thenComparing(email -> !Boolean.TRUE.equals(email.verified())))
+                .map(GithubEmail::email);
+    }
+
     static ProviderProfile extractProfile(String provider, Map<String, Object> attributes) {
         return switch (provider) {
             case "github" -> new ProviderProfile(
@@ -173,6 +231,10 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         return value == null ? null : value.toString();
     }
 
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
     private String generateRefreshToken() {
         byte[] bytes = new byte[64];
         secureRandom.nextBytes(bytes);
@@ -190,5 +252,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     }
 
     record ProviderProfile(String subject, String email, String name, String avatarUrl) {
+    }
+
+    record GithubEmail(String email, Boolean primary, Boolean verified, String visibility) {
     }
 }

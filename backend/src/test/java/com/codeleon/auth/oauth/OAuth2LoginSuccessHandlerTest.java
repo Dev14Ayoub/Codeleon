@@ -2,6 +2,7 @@ package com.codeleon.auth.oauth;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,5 +61,36 @@ class OAuth2LoginSuccessHandlerTest {
         assertThat(profile.email()).isNull();
         assertThat(profile.name()).isNull();
         assertThat(profile.avatarUrl()).isNull();
+    }
+
+    @Test
+    void prefersPrimaryVerifiedGithubEmail() {
+        List<OAuth2LoginSuccessHandler.GithubEmail> emails = List.of(
+                new OAuth2LoginSuccessHandler.GithubEmail("secondary@example.com", false, true, null),
+                new OAuth2LoginSuccessHandler.GithubEmail("primary@example.com", true, true, "private")
+        );
+
+        assertThat(OAuth2LoginSuccessHandler.selectBestGithubEmail(emails))
+                .contains("primary@example.com");
+    }
+
+    @Test
+    void fallsBackToPrimaryGithubEmailWhenUnverified() {
+        List<OAuth2LoginSuccessHandler.GithubEmail> emails = List.of(
+                new OAuth2LoginSuccessHandler.GithubEmail("verified@example.com", false, true, null),
+                new OAuth2LoginSuccessHandler.GithubEmail("primary@example.com", true, false, null)
+        );
+
+        assertThat(OAuth2LoginSuccessHandler.selectBestGithubEmail(emails))
+                .contains("primary@example.com");
+    }
+
+    @Test
+    void ignoresBlankGithubEmails() {
+        List<OAuth2LoginSuccessHandler.GithubEmail> emails = List.of(
+                new OAuth2LoginSuccessHandler.GithubEmail(" ", true, true, null)
+        );
+
+        assertThat(OAuth2LoginSuccessHandler.selectBestGithubEmail(emails)).isEmpty();
     }
 }
