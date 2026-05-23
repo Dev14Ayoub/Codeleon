@@ -40,8 +40,8 @@ export function ImportGithubDialog({
   const [report, setReport] = useState<GithubImportResponse | null>(null);
 
   const repositoriesQuery = useQuery({
-    queryKey: ["github-repositories", roomId],
-    queryFn: () => fetchGithubRepositories(roomId),
+    queryKey: ["github-repositories"],
+    queryFn: fetchGithubRepositories,
     enabled: open,
     retry: false,
     staleTime: 60_000,

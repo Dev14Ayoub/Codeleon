@@ -165,6 +165,14 @@ export async function createRoom(payload: {
   return data;
 }
 
+export async function saveRoomSnapshot(roomId: string, update: Uint8Array) {
+  await api.put(`/rooms/${roomId}/snapshot`, update, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+    },
+  });
+}
+
 export interface ProjectTemplate {
   id: string;
   name: string;
@@ -300,10 +308,8 @@ export interface GithubRepository {
   updatedAt: string | null;
 }
 
-export async function fetchGithubRepositories(roomId: string) {
-  const { data } = await api.get<GithubRepository[]>(
-    `/rooms/${roomId}/import/github/repositories`,
-  );
+export async function fetchGithubRepositories() {
+  const { data } = await api.get<GithubRepository[]>("/github/repositories");
   return data;
 }
 

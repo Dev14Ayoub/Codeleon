@@ -2,10 +2,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Upload, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import * as Y from "yjs";
 import { Logo } from "@/components/brand/Logo";
 import { ActivityFeed } from "@/components/projects/ActivityFeed";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -15,24 +16,32 @@ import { Input } from "@/components/ui/input";
 import { MotionPage, fadeUp, stagger } from "@/components/ui/motion";
 import {
   API_BASE_URL,
+  createRoomFile,
   createRoom,
+  fetchGithubRepositories,
   fetchCurrentUser,
   fetchMyRooms,
   fetchOAuthAccounts,
   fetchOAuthProviders,
   fetchPublicRooms,
   fetchTemplates,
+  importGithub,
   joinRoom,
+  saveRoomSnapshot,
+  type GithubImportResponse,
+  type GithubRepository,
   type OAuthAccount,
   type ProjectTemplate,
   type Room,
 } from "@/lib/api";
+import { prepareLocalImport, type ImportFilterReport, type PreparedFile } from "@/lib/files/local-import";
 import { cn } from "@/lib/utils";
 import { CreateRoomValues, JoinRoomValues, createRoomSchema, joinRoomSchema } from "@/lib/validators";
 import { useAuthStore } from "@/stores/auth-store";
 
 type SortKey = "recent" | "alphabetical" | "files";
 type FilterKey = "all" | "pinned" | "archived";
+type CreateProjectSource = "blank" | "local" | "github";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -46,6 +55,13 @@ export function DashboardPage() {
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [filterKey, setFilterKey] = useState<FilterKey>("all");
+  const [createSource, setCreateSource] = useState<CreateProjectSource>("blank");
+  const [localImportReport, setLocalImportReport] = useState<ImportFilterReport | null>(null);
+  const [localImportName, setLocalImportName] = useState<string | null>(null);
+  const [githubRepoSearch, setGithubRepoSearch] = useState("");
+  const [githubRepoUrl, setGithubRepoUrl] = useState("");
+  const [githubBranch, setGithubBranch] = useState("");
+  const localImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const createForm = useForm<CreateRoomValues>({
     resolver: zodResolver(createRoomSchema),
@@ -98,11 +114,54 @@ export function DashboardPage() {
     staleTime: 60 * 60 * 1000,
   });
 
+  const githubRepositoriesQuery = useQuery({
+    queryKey: ["github-repositories"],
+    queryFn: fetchGithubRepositories,
+    enabled: createSource === "github",
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const createRoomMutation = useMutation({
-    mutationFn: createRoom,
-    onSuccess: () => {
+    mutationFn: async (values: CreateRoomValues) => {
+      if (createSource === "local" && (!localImportReport || localImportReport.prepared.length === 0)) {
+        throw new Error("Choose a folder with at least one importable text file.");
+      }
+      if (createSource === "github" && !githubRepoUrl.trim()) {
+        throw new Error("Choose or enter a GitHub repository.");
+      }
+
+      const room = await createRoom({
+        ...values,
+        description: values.description?.trim() || undefined,
+        templateId: createSource === "blank" ? values.templateId?.trim() || undefined : undefined,
+      });
+
+      if (createSource === "local") {
+        await materializeLocalImport(room.id, localImportReport!.prepared);
+      }
+
+      if (createSource === "github") {
+        const repoUrl = githubRepoUrl.trim();
+        const response = await importGithub(room.id, {
+          repoUrl,
+          branch: githubBranch.trim() || undefined,
+        });
+        await seedImportedFiles(room.id, response.imported);
+      }
+
+      return room;
+    },
+    onSuccess: (room) => {
       createForm.reset({ name: "", description: "", visibility: "PRIVATE", templateId: "" });
+      setCreateSource("blank");
+      setLocalImportReport(null);
+      setLocalImportName(null);
+      setGithubRepoSearch("");
+      setGithubRepoUrl("");
+      setGithubBranch("");
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      navigate(`/rooms/${room.id}`);
     },
   });
 
@@ -119,8 +178,43 @@ export function DashboardPage() {
     navigate("/");
   }
 
+  async function handleDashboardLocalFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const report = await prepareLocalImport(fileList);
+    setLocalImportReport(report);
+    const projectName = inferLocalProjectName(fileList);
+    setLocalImportName(projectName);
+    setCreateSource("local");
+    createForm.setValue("templateId", "", { shouldDirty: true });
+    if (!createForm.getValues("name").trim() && projectName) {
+      createForm.setValue("name", projectName, { shouldDirty: true, shouldValidate: true });
+    }
+  }
+
+  async function materializeLocalImport(roomId: string, files: PreparedFile[]) {
+    for (const file of files) {
+      await createRoomFile(roomId, file.path);
+    }
+    await saveRoomSnapshot(roomId, encodeFilesSnapshot(files));
+  }
+
+  async function seedImportedFiles(roomId: string, files: GithubImportResponse["imported"]) {
+    if (files.length === 0) {
+      return;
+    }
+    await saveRoomSnapshot(roomId, encodeFilesSnapshot(files.map((file) => ({
+      path: file.path,
+      content: file.content,
+    }))));
+  }
+
   const myRooms = useMemo(() => myRoomsQuery.data ?? [], [myRoomsQuery.data]);
   const publicRooms = useMemo(() => publicRoomsQuery.data ?? [], [publicRoomsQuery.data]);
+  const githubRepositories = githubRepositoriesQuery.data ?? [];
+  const filteredGithubRepositories = useMemo(
+    () => filterGithubRepositories(githubRepositories, githubRepoSearch),
+    [githubRepositories, githubRepoSearch],
+  );
 
   const myRoomsView = useMemo(
     () => filterAndSort(myRooms, searchQuery, sortKey, filterKey),
@@ -292,13 +386,7 @@ export function DashboardPage() {
                 initial="hidden"
                 animate="show"
                 className="relative space-y-4 overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_16px_42px_rgba(0,0,0,0.22)]"
-                onSubmit={createForm.handleSubmit((values) =>
-                  createRoomMutation.mutate({
-                    ...values,
-                    description: values.description?.trim() || undefined,
-                    templateId: values.templateId?.trim() || undefined,
-                  }),
-                )}
+                onSubmit={createForm.handleSubmit((values) => createRoomMutation.mutate(values))}
               >
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/60 to-transparent" />
                 <div className="flex items-center gap-2">
@@ -322,12 +410,59 @@ export function DashboardPage() {
                   <FieldError message={createForm.formState.errors.description?.message} />
                 </div>
 
-                <TemplatePicker
-                  templates={templatesQuery.data ?? []}
-                  isLoading={templatesQuery.isLoading}
-                  selectedId={selectedTemplateId ?? ""}
-                  onChange={(id) => createForm.setValue("templateId", id, { shouldDirty: true })}
+                <ProjectSourcePicker
+                  source={createSource}
+                  onSourceChange={(source) => {
+                    setCreateSource(source);
+                    if (source !== "blank") {
+                      createForm.setValue("templateId", "", { shouldDirty: true });
+                    }
+                  }}
+                  localImportName={localImportName}
+                  localImportReport={localImportReport}
+                  onPickLocal={() => localImportInputRef.current?.click()}
+                  githubRepositories={filteredGithubRepositories}
+                  githubRepositoriesCount={githubRepositories.length}
+                  githubRepositoriesLoading={githubRepositoriesQuery.isLoading}
+                  githubRepositoriesError={githubRepositoriesQuery.isError ? getErrorMessage(githubRepositoriesQuery.error) : null}
+                  githubRepoSearch={githubRepoSearch}
+                  onGithubRepoSearchChange={setGithubRepoSearch}
+                  githubRepoUrl={githubRepoUrl}
+                  onGithubRepoUrlChange={setGithubRepoUrl}
+                  githubBranch={githubBranch}
+                  onGithubBranchChange={setGithubBranch}
+                  onSelectGithubRepository={(repository) => {
+                    setGithubRepoUrl(repository.fullName);
+                    setGithubBranch(repository.defaultBranch ?? "");
+                    if (!createForm.getValues("name").trim()) {
+                      createForm.setValue("name", repository.name ?? repository.fullName.split("/").at(-1) ?? repository.fullName, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }
+                  }}
                 />
+                <input
+                  ref={localImportInputRef}
+                  type="file"
+                  className="hidden"
+                  // @ts-expect-error webkitdirectory is supported by Chromium and carries webkitRelativePath.
+                  webkitdirectory=""
+                  multiple
+                  onChange={(event) => {
+                    void handleDashboardLocalFiles(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+
+                {createSource === "blank" && (
+                  <TemplatePicker
+                    templates={templatesQuery.data ?? []}
+                    isLoading={templatesQuery.isLoading}
+                    selectedId={selectedTemplateId ?? ""}
+                    onChange={(id) => createForm.setValue("templateId", id, { shouldDirty: true })}
+                  />
+                )}
 
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex cursor-pointer items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-300">
@@ -345,8 +480,8 @@ export function DashboardPage() {
                 {createRoomMutation.isError && <p className="text-sm text-danger">{getErrorMessage(createRoomMutation.error)}</p>}
 
                 <Button disabled={createRoomMutation.isPending} type="submit">
-                  <Plus className="h-4 w-4" />
-                  {createRoomMutation.isPending ? "Creating..." : "Create project"}
+                  {createRoomMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  {createRoomMutation.isPending ? "Creating..." : createSource === "blank" ? "Create project" : "Create and import"}
                 </Button>
               </motion.form>
 
@@ -810,6 +945,208 @@ function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoa
   );
 }
 
+function ProjectSourcePicker({
+  githubBranch,
+  githubRepoSearch,
+  githubRepoUrl,
+  githubRepositories,
+  githubRepositoriesCount,
+  githubRepositoriesError,
+  githubRepositoriesLoading,
+  localImportName,
+  localImportReport,
+  onGithubBranchChange,
+  onGithubRepoSearchChange,
+  onGithubRepoUrlChange,
+  onPickLocal,
+  onSelectGithubRepository,
+  onSourceChange,
+  source,
+}: {
+  githubBranch: string;
+  githubRepoSearch: string;
+  githubRepoUrl: string;
+  githubRepositories: GithubRepository[];
+  githubRepositoriesCount: number;
+  githubRepositoriesError: string | null;
+  githubRepositoriesLoading: boolean;
+  localImportName: string | null;
+  localImportReport: ImportFilterReport | null;
+  onGithubBranchChange: (value: string) => void;
+  onGithubRepoSearchChange: (value: string) => void;
+  onGithubRepoUrlChange: (value: string) => void;
+  onPickLocal: () => void;
+  onSelectGithubRepository: (repository: GithubRepository) => void;
+  onSourceChange: (source: CreateProjectSource) => void;
+  source: CreateProjectSource;
+}) {
+  const options: { id: CreateProjectSource; label: string; icon: JSX.Element }[] = [
+    { id: "blank", label: "Blank / template", icon: <FileCode2 className="h-4 w-4" /> },
+    { id: "local", label: "Local device", icon: <Upload className="h-4 w-4" /> },
+    { id: "github", label: "GitHub repo", icon: <Github className="h-4 w-4" /> },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+        <Sparkles className="h-4 w-4 text-cyan" />
+        Project source
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSourceChange(option.id)}
+            className={cn(
+              "flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition",
+              source === option.id
+                ? "border-cyan/50 bg-cyan/10 text-cyan"
+                : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200",
+            )}
+            aria-pressed={source === option.id}
+          >
+            {option.icon}
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {source === "local" && (
+          <motion.div
+            key="local-source"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-200">
+                  {localImportName ?? "Choose a project folder"}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {localImportReport
+                    ? `${localImportReport.prepared.length} ready, ${localImportReport.skipped.length} skipped${localImportReport.truncated ? ", truncated at 200 files" : ""}`
+                    : "Imports text/code files and preserves nested folders."}
+                </p>
+              </div>
+              <Button type="button" variant="secondary" onClick={onPickLocal}>
+                <Upload className="h-4 w-4" />
+                Browse
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {source === "github" && (
+          <motion.div
+            key="github-source"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3"
+          >
+            {githubRepositoriesLoading && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan" />
+                Loading connected GitHub repositories...
+              </div>
+            )}
+
+            {githubRepositoriesError && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-800 bg-surface px-3 py-2">
+                <p className="text-xs text-zinc-500">Connect GitHub to browse repositories, or paste a public repository URL below.</p>
+                <Button asChild type="button" variant="secondary" className="h-8 px-3 text-xs">
+                  <a
+                    href={`${API_BASE_URL}/oauth2/authorization/github`}
+                    onClick={() => window.sessionStorage.setItem("codeleon.oauth.linkIntent", "github")}
+                  >
+                    <Github className="h-3.5 w-3.5" />
+                    Connect
+                  </a>
+                </Button>
+              </div>
+            )}
+
+            {githubRepositoriesCount > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500">Your GitHub repositories</span>
+                  <span className="text-[11px] text-zinc-600">{githubRepositoriesCount} found</span>
+                </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                  <input
+                    value={githubRepoSearch}
+                    onChange={(event) => onGithubRepoSearchChange(event.target.value)}
+                    placeholder="Search repositories..."
+                    className="h-9 w-full rounded-md border border-zinc-800 bg-background px-3 pl-9 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto rounded-md border border-zinc-800 bg-background p-1">
+                  {githubRepositories.length > 0 ? (
+                    githubRepositories.slice(0, 30).map((repository) => (
+                      <button
+                        key={repository.fullName}
+                        type="button"
+                        onClick={() => onSelectGithubRepository(repository)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left transition",
+                          githubRepoUrl === repository.fullName
+                            ? "bg-cyan/10 text-zinc-50"
+                            : "text-zinc-300 hover:bg-surfaceRaised hover:text-zinc-50",
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate font-mono text-xs">{repository.fullName}</span>
+                            {repository.privateRepo && <Lock className="h-3 w-3 shrink-0 text-zinc-500" />}
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-zinc-600">
+                            {repository.description ?? "No description"}
+                          </span>
+                        </span>
+                        {repository.defaultBranch && (
+                          <span className="shrink-0 font-mono text-[10px] text-zinc-600">{repository.defaultBranch}</span>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-5 text-center text-xs text-zinc-500">No repositories match your search.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
+              <label className="block">
+                <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Repository URL</span>
+                <input
+                  value={githubRepoUrl}
+                  onChange={(event) => onGithubRepoUrlChange(event.target.value)}
+                  placeholder="owner/repo or https://github.com/owner/repo"
+                  className="h-9 w-full rounded-md border border-zinc-800 bg-background px-3 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Branch</span>
+                <input
+                  value={githubBranch}
+                  onChange={(event) => onGithubBranchChange(event.target.value)}
+                  placeholder="main"
+                  className="h-9 w-full rounded-md border border-zinc-800 bg-background px-3 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan"
+                />
+              </label>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /**
  * Horizontal list of template cards shown inside the Create-project form.
  * Picking a card sets the form's templateId; picking "Empty" clears it so
@@ -897,5 +1234,49 @@ function getErrorMessage(error: unknown) {
   if (error instanceof AxiosError) {
     return error.response?.data?.message ?? "Request failed";
   }
+  if (error instanceof Error) {
+    return error.message;
+  }
   return "Request failed";
+}
+
+function encodeFilesSnapshot(files: PreparedFile[]): Uint8Array {
+  const doc = new Y.Doc();
+  for (const file of files) {
+    const yText = doc.getText(file.path);
+    if (file.content.length > 0) {
+      yText.insert(0, file.content);
+    }
+  }
+  return Y.encodeStateAsUpdate(doc);
+}
+
+function inferLocalProjectName(fileList: FileList): string | null {
+  const first = fileList.item(0) as (File & { webkitRelativePath?: string }) | null;
+  const rawPath = first?.webkitRelativePath;
+  if (!rawPath) {
+    return null;
+  }
+  const [folder] = rawPath.replace(/\\/g, "/").split("/");
+  return folder?.trim() || null;
+}
+
+function filterGithubRepositories(repositories: GithubRepository[], query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) {
+    return repositories;
+  }
+  return repositories.filter((repository) =>
+    [
+      repository.fullName,
+      repository.owner,
+      repository.name,
+      repository.description,
+      repository.defaultBranch,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(trimmed),
+  );
 }

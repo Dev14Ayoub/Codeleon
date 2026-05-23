@@ -15,13 +15,12 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/rooms/{roomId}/import")
 @RequiredArgsConstructor
 public class GithubImportController {
 
     private final GithubImportService githubImportService;
 
-    @PostMapping("/github")
+    @PostMapping("/rooms/{roomId}/import/github")
     public GithubImportResponse importGithub(
             @PathVariable UUID roomId,
             @AuthenticationPrincipal User user,
