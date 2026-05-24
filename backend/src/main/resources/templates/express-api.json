@@ -1,0 +1,19 @@
+{
+  "id": "express-api",
+  "name": "Express API",
+  "description": "A lightweight Express API starter with health and JSON routes.",
+  "language": "JavaScript",
+  "category": "Backend",
+  "runtime": "Node 20",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm test",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["node", "express", "api"],
+  "files": [
+    { "path": "package.json", "content": "{\"type\":\"module\",\"scripts\":{\"start\":\"node src/server.js\",\"test\":\"node test/smoke.test.js\"},\"dependencies\":{\"express\":\"latest\"},\"devDependencies\":{}}\n" },
+    { "path": "src/server.js", "content": "import express from 'express';\n\nexport function createApp() {\n  const app = express();\n  app.use(express.json());\n  app.get('/health', (_req, res) => res.json({ ok: true }));\n  app.get('/api/message', (_req, res) => res.json({ message: 'Hello from Express' }));\n  return app;\n}\n\nif (process.argv[1]?.endsWith('server.js')) {\n  createApp().listen(3000, () => console.log('API listening on :3000'));\n}\n" },
+    { "path": "test/smoke.test.js", "content": "import assert from 'node:assert/strict';\nimport { createApp } from '../src/server.js';\n\nconst routes = createApp()._router.stack.filter((layer) => layer.route).map((layer) => layer.route.path);\nassert(routes.includes('/health'));\nconsole.log('express smoke ok');\n" }
+  ]
+}

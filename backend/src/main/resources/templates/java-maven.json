@@ -1,0 +1,19 @@
+{
+  "id": "java-maven",
+  "name": "Java Maven App",
+  "description": "A Java 21 Maven application with a JUnit smoke test.",
+  "language": "Java",
+  "category": "CLI/Scripting",
+  "runtime": "Java 21",
+  "packageManager": "Maven",
+  "defaultCommand": "mvn test",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["java", "maven", "junit"],
+  "files": [
+    { "path": "pom.xml", "content": "<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>dev.codeleon</groupId>\n  <artifactId>starter</artifactId>\n  <version>1.0.0</version>\n  <properties><maven.compiler.release>21</maven.compiler.release></properties>\n  <dependencies><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version><scope>test</scope></dependency></dependencies>\n  <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version></plugin></plugins></build>\n</project>\n" },
+    { "path": "src/main/java/dev/codeleon/App.java", "content": "package dev.codeleon;\n\npublic class App {\n    public static String message() {\n        return \"Hello from Maven\";\n    }\n\n    public static void main(String[] args) {\n        System.out.println(message());\n    }\n}\n" },
+    { "path": "src/test/java/dev/codeleon/AppTest.java", "content": "package dev.codeleon;\n\nimport org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.assertEquals;\n\nclass AppTest {\n    @Test void messageIsReady() {\n        assertEquals(\"Hello from Maven\", App.message());\n    }\n}\n" }
+  ]
+}

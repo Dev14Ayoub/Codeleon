@@ -1,0 +1,18 @@
+{
+  "id": "php-composer",
+  "name": "PHP Composer CLI",
+  "description": "A PHP starter with Composer autoloading.",
+  "language": "PHP",
+  "category": "CLI/Scripting",
+  "runtime": "PHP 8.3",
+  "packageManager": "Composer",
+  "defaultCommand": "composer install && php src/index.php",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["php", "composer"],
+  "files": [
+    { "path": "composer.json", "content": "{\"autoload\":{\"psr-4\":{\"Codeleon\\\\\":\"src/\"}},\"scripts\":{\"test\":\"php src/index.php\"}}\n" },
+    { "path": "src/index.php", "content": "<?php\n\ndeclare(strict_types=1);\n\nrequire __DIR__ . '/../vendor/autoload.php';\n\necho \"Hello from PHP\\n\";\n" }
+  ]
+}

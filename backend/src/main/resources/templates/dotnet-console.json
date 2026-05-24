@@ -1,0 +1,18 @@
+{
+  "id": "dotnet-console",
+  "name": ".NET Console",
+  "description": "A C# .NET console application starter.",
+  "language": "C#",
+  "category": "CLI/Scripting",
+  "runtime": ".NET 8",
+  "packageManager": "dotnet",
+  "defaultCommand": "dotnet run",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["csharp", "dotnet"],
+  "files": [
+    { "path": "CodeleonStarter.csproj", "content": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n</Project>\n" },
+    { "path": "Program.cs", "content": "Console.WriteLine(\"Hello from .NET\");\n" }
+  ]
+}

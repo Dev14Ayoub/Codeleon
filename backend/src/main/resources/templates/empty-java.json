@@ -1,9 +1,20 @@
 {
   "id": "empty-java",
   "name": "Empty Java",
-  "description": "A blank Java project with a single Main.java entry point.",
+  "description": "A single-file Java starter with a Main entry point.",
   "language": "Java",
+  "category": "CLI/Scripting",
+  "runtime": "Java 21",
+  "packageManager": "none",
+  "defaultCommand": "Run file",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["java", "single-file", "beginner"],
   "files": [
-    { "path": "Main.java" }
+    {
+      "path": "Main.java",
+      "content": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from Codeleon Java\");\n    }\n}\n"
+    }
   ]
 }

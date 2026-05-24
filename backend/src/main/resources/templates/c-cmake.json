@@ -1,0 +1,18 @@
+{
+  "id": "c-cmake",
+  "name": "C with CMake",
+  "description": "A small C project with CMake build files.",
+  "language": "C",
+  "category": "Systems",
+  "runtime": "GCC",
+  "packageManager": "CMake",
+  "defaultCommand": "cmake -S . -B build && cmake --build build && ./build/codeleon_c",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["c", "cmake", "gcc"],
+  "files": [
+    { "path": "CMakeLists.txt", "content": "cmake_minimum_required(VERSION 3.20)\nproject(codeleon_c C)\nset(CMAKE_C_STANDARD 17)\nadd_executable(codeleon_c src/main.c)\n" },
+    { "path": "src/main.c", "content": "#include <stdio.h>\n\nint main(void) {\n    printf(\"Hello from C\\n\");\n    return 0;\n}\n" }
+  ]
+}

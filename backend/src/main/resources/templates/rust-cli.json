@@ -1,0 +1,18 @@
+{
+  "id": "rust-cli",
+  "name": "Rust Cargo CLI",
+  "description": "A Rust command-line starter with Cargo tests.",
+  "language": "Rust",
+  "category": "Systems",
+  "runtime": "Rust stable",
+  "packageManager": "Cargo",
+  "defaultCommand": "cargo test",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["rust", "cargo", "systems"],
+  "files": [
+    { "path": "Cargo.toml", "content": "[package]\nname = \"codeleon_starter\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n" },
+    { "path": "src/main.rs", "content": "fn greeting(name: &str) -> String {\n    format!(\"Hello, {name}\")\n}\n\nfn main() {\n    println!(\"{}\", greeting(\"Rust\"));\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn greets() {\n        assert_eq!(greeting(\"Codeleon\"), \"Hello, Codeleon\");\n    }\n}\n" }
+  ]
+}

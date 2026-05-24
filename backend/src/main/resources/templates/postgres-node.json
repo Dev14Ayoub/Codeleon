@@ -1,0 +1,19 @@
+{
+  "id": "postgres-node",
+  "name": "PostgreSQL Starter",
+  "description": "A Node project prepared for an ephemeral PostgreSQL service.",
+  "language": "JavaScript",
+  "category": "Databases",
+  "runtime": "Node 20 + PostgreSQL",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm test",
+  "runnable": true,
+  "preview": false,
+  "services": ["postgres"],
+  "tags": ["postgres", "sql", "database", "node"],
+  "files": [
+    { "path": "package.json", "content": "{\"type\":\"module\",\"scripts\":{\"test\":\"node src/smoke.js\"},\"dependencies\":{\"pg\":\"latest\"},\"devDependencies\":{}}\n" },
+    { "path": "schema.sql", "content": "CREATE TABLE IF NOT EXISTS notes (id SERIAL PRIMARY KEY, body TEXT NOT NULL);\nINSERT INTO notes (body) VALUES ('hello postgres');\n" },
+    { "path": "src/smoke.js", "content": "import pg from 'pg';\nconst url = process.env.DATABASE_URL || 'postgres://codeleon:codeleon@postgres:5432/codeleon';\nconst client = new pg.Client({ connectionString: url });\nawait client.connect();\nawait client.query('CREATE TABLE IF NOT EXISTS notes (id SERIAL PRIMARY KEY, body TEXT NOT NULL)');\nawait client.query('INSERT INTO notes (body) VALUES ($1)', ['hello postgres']);\nconst result = await client.query('SELECT count(*)::int AS count FROM notes');\nconsole.log(`postgres rows: ${result.rows[0].count}`);\nawait client.end();\n" }
+  ]
+}

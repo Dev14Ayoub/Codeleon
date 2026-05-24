@@ -12,6 +12,14 @@ public record TemplateSummary(
         String name,
         String description,
         String language,
+        String category,
+        String runtime,
+        String packageManager,
+        String defaultCommand,
+        boolean runnable,
+        boolean preview,
+        java.util.List<String> services,
+        java.util.List<String> tags,
         int fileCount
 ) {
     public static TemplateSummary of(Template template) {
@@ -20,6 +28,14 @@ public record TemplateSummary(
                 template.name(),
                 template.description(),
                 template.language(),
+                template.categoryOrDefault(),
+                template.runtime(),
+                template.packageManager(),
+                template.defaultCommand(),
+                template.runnableOrDefault(),
+                template.previewOrDefault(),
+                template.servicesOrDefault(),
+                template.tagsOrDefault(),
                 template.files().size()
         );
     }

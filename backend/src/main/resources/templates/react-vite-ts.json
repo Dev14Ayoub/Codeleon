@@ -1,0 +1,40 @@
+{
+  "id": "react-vite-ts",
+  "name": "React Vite TypeScript",
+  "description": "A typed Vite React starter that builds through the Nix project runner.",
+  "language": "typescript",
+  "category": "Frontend",
+  "runtime": "Node 20",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm run build",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["react", "vite", "typescript", "frontend"],
+  "files": [
+    {
+      "path": "package.json",
+      "content": "{\n  \"type\": \"module\",\n  \"scripts\": {\n    \"build\": \"vite build\",\n    \"test\": \"tsc --noEmit\"\n  },\n  \"dependencies\": {\n    \"@vitejs/plugin-react\": \"latest\",\n    \"vite\": \"latest\",\n    \"typescript\": \"latest\",\n    \"react\": \"latest\",\n    \"react-dom\": \"latest\"\n  },\n  \"devDependencies\": {}\n}\n"
+    },
+    {
+      "path": "index.html",
+      "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Codeleon React TypeScript</title>\n  </head>\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n"
+    },
+    {
+      "path": "src/main.tsx",
+      "content": "import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport './styles.css';\nimport { App } from './App';\n\ncreateRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n);\n"
+    },
+    {
+      "path": "src/App.tsx",
+      "content": "const features: string[] = ['Typed components', 'Fast Vite build', 'Nix project runner'];\n\nexport function App() {\n  return (\n    <main>\n      <section>\n        <p className=\"eyebrow\">Codeleon React</p>\n        <h1>Build a typed frontend starter.</h1>\n        <ul>\n          {features.map((feature) => (\n            <li key={feature}>{feature}</li>\n          ))}\n        </ul>\n      </section>\n    </main>\n  );\n}\n"
+    },
+    {
+      "path": "src/styles.css",
+      "content": ":root { font-family: Inter, system-ui, sans-serif; color: #f4f4f5; background: #09090b; }\nbody { margin: 0; }\nmain { min-height: 100vh; display: grid; place-items: center; padding: 2rem; }\nsection { width: min(720px, 100%); }\n.eyebrow { color: #22d3ee; text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 700; }\nh1 { font-size: clamp(2.5rem, 8vw, 5rem); line-height: .95; margin: 0 0 1.5rem; }\nul { display: grid; gap: .75rem; padding: 0; list-style: none; }\nli { border: 1px solid #27272a; border-radius: 8px; padding: .85rem 1rem; background: #18181b; }\n"
+    },
+    {
+      "path": "tsconfig.json",
+      "content": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2020\",\n    \"useDefineForClassFields\": true,\n    \"lib\": [\"DOM\", \"DOM.Iterable\", \"ES2020\"],\n    \"allowJs\": false,\n    \"skipLibCheck\": true,\n    \"esModuleInterop\": true,\n    \"allowSyntheticDefaultImports\": true,\n    \"strict\": true,\n    \"forceConsistentCasingInFileNames\": true,\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Node\",\n    \"resolveJsonModule\": true,\n    \"isolatedModules\": true,\n    \"noEmit\": true,\n    \"jsx\": \"react-jsx\"\n  },\n  \"include\": [\"src\"]\n}\n"
+    }
+  ]
+}

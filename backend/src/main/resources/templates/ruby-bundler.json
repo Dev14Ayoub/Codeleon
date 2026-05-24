@@ -1,0 +1,18 @@
+{
+  "id": "ruby-bundler",
+  "name": "Ruby Bundler CLI",
+  "description": "A Ruby starter with Bundler.",
+  "language": "Ruby",
+  "category": "CLI/Scripting",
+  "runtime": "Ruby",
+  "packageManager": "Bundler",
+  "defaultCommand": "bundle install && ruby app.rb",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["ruby", "bundler"],
+  "files": [
+    { "path": "Gemfile", "content": "source 'https://rubygems.org'\n" },
+    { "path": "app.rb", "content": "def greeting(name)\n  \"Hello, #{name}\"\nend\n\nputs greeting('Ruby')\n" }
+  ]
+}

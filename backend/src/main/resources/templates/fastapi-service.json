@@ -1,0 +1,19 @@
+{
+  "id": "fastapi-service",
+  "name": "FastAPI Service",
+  "description": "A Python FastAPI starter with tests and requirements.",
+  "language": "Python",
+  "category": "Backend",
+  "runtime": "Python 3.12",
+  "packageManager": "pip",
+  "defaultCommand": "python -m venv .codeleon-venv && . .codeleon-venv/bin/activate && python -m pip install -r requirements.txt && python -m pip install pytest && python -m pytest",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["python", "fastapi", "api"],
+  "files": [
+    { "path": "requirements.txt", "content": "fastapi\nuvicorn\nhttpx\n" },
+    { "path": "app/main.py", "content": "from fastapi import FastAPI\n\napp = FastAPI(title=\"Codeleon FastAPI\")\n\n\n@app.get('/health')\ndef health():\n    return {'ok': True}\n" },
+    { "path": "tests/test_app.py", "content": "from app.main import health\n\n\ndef test_health():\n    assert health() == {'ok': True}\n" }
+  ]
+}

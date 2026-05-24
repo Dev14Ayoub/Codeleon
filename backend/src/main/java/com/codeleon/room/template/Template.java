@@ -17,8 +17,36 @@ public record Template(
         String name,
         String description,
         String language,
+        String category,
+        String runtime,
+        String packageManager,
+        String defaultCommand,
+        Boolean runnable,
+        Boolean preview,
+        List<String> services,
+        List<String> tags,
         List<TemplateFile> files
 ) {
-    public record TemplateFile(String path) {
+    public String categoryOrDefault() {
+        return category == null || category.isBlank() ? "General" : category;
+    }
+
+    public boolean runnableOrDefault() {
+        return Boolean.TRUE.equals(runnable);
+    }
+
+    public boolean previewOrDefault() {
+        return Boolean.TRUE.equals(preview);
+    }
+
+    public List<String> servicesOrDefault() {
+        return services == null ? List.of() : services;
+    }
+
+    public List<String> tagsOrDefault() {
+        return tags == null ? List.of() : tags;
+    }
+
+    public record TemplateFile(String path, String content) {
     }
 }

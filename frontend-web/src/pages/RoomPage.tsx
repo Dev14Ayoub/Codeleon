@@ -55,6 +55,7 @@ type RightPanelTab = "ai" | "participants" | "review";
 interface ProjectRunEnvironment {
   label: string;
   defaultCommand: string;
+  services?: string[];
 }
 
 interface RunContext {
@@ -126,6 +127,7 @@ export function RoomPage() {
       text: collab.ydoc.getText(file.path).toString(),
     }));
   }, [roomFilesQuery.data, collab.ydoc]);
+  const staticPreviewHtml = buildStaticPreviewHtml(getAllFiles());
   const localProjectEnvironment = detectProjectRunEnvironment(getAllFiles());
   const projectDetectionQuery = useQuery({
     queryKey: [
@@ -148,6 +150,7 @@ export function RoomPage() {
       ? {
           label: projectDetectionQuery.data.environment,
           defaultCommand: projectDetectionQuery.data.command,
+          services: projectDetectionQuery.data.services,
         }
       : null;
   const projectEnvironment =
@@ -779,6 +782,7 @@ export function RoomPage() {
             projectCommand={projectRunCommand}
             projectCommandForDisplay={projectCommandForDisplay}
             onProjectCommandChange={setProjectRunCommand}
+            staticPreviewHtml={staticPreviewHtml}
           />
         </section>
 
@@ -884,9 +888,63 @@ function buildRunProjectFiles(
 function buildProjectDetectionFiles(files: IndexFile[]): RunProjectFile[] {
   return files.map((file) => {
     const path = normalizeProjectPath(file.path);
-    const needsContent = path === "package.json" || path === "pyproject.toml";
+    const needsContent =
+      path === "package.json" ||
+      path === "pyproject.toml" ||
+      path === "composer.json" ||
+      path === "Gemfile" ||
+      path.endsWith(".csproj");
     return { path: file.path, text: needsContent ? file.text : "" };
   });
+}
+
+function buildStaticPreviewHtml(files: IndexFile[]): string | null {
+  const byPath = new Map(files.map((file) => [normalizeProjectPath(file.path), file.text]));
+  const htmlPath = byPath.has("index.html")
+    ? "index.html"
+    : Array.from(byPath.keys()).find((path) => path.endsWith("/index.html"));
+  if (!htmlPath) return null;
+
+  const baseDir = htmlPath.includes("/") ? htmlPath.slice(0, htmlPath.lastIndexOf("/") + 1) : "";
+  let html = byPath.get(htmlPath) ?? "";
+
+  html = html.replace(
+    /<link\b([^>]*?)href=["']([^"']+\.css)["']([^>]*)>/gi,
+    (match, before: string, href: string, after: string) => {
+      const css = byPath.get(resolvePreviewPath(baseDir, href));
+      return css === undefined ? match : `<style data-codeleon-href="${escapeHtml(href)}">\n${css}\n</style>`;
+    },
+  );
+
+  html = html.replace(
+    /<script\b([^>]*?)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi,
+    (match, before: string, src: string, after: string) => {
+      const js = byPath.get(resolvePreviewPath(baseDir, src));
+      return js === undefined ? match : `<script data-codeleon-src="${escapeHtml(src)}">\n${js}\n</script>`;
+    },
+  );
+
+  return html;
+}
+
+function resolvePreviewPath(baseDir: string, rawPath: string) {
+  if (/^(https?:)?\/\//i.test(rawPath) || rawPath.startsWith("data:")) return rawPath;
+  const normalized = rawPath.startsWith("/") ? rawPath.slice(1) : `${baseDir}${rawPath}`;
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/").toLowerCase();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function detectProjectRunEnvironment(files: IndexFile[]): ProjectRunEnvironment | null {
@@ -897,17 +955,21 @@ function detectProjectRunEnvironment(files: IndexFile[]): ProjectRunEnvironment 
   if (normalizedPaths.has("pom.xml")) {
     return { label: "Generated Java/Maven", defaultCommand: "mvn test" };
   }
+  if (normalizedPaths.has("build.gradle") || normalizedPaths.has("build.gradle.kts")) {
+    return { label: "Generated Java/Gradle", defaultCommand: "gradle test" };
+  }
   const packageJson = files.find((file) => normalizeProjectPath(file.path) === "package.json")?.text;
   if (packageJson !== undefined) {
     const scripts = readPackageScripts(packageJson);
     const installCommand = normalizedPaths.has("package-lock.json") ? "npm ci" : "npm install";
+    const services = detectPackageServices(packageJson);
     if (scripts?.test) {
-      return { label: "Generated Node", defaultCommand: `${installCommand} && npm test` };
+      return { label: "Generated Node", defaultCommand: `${installCommand} && npm test`, services };
     }
     if (scripts?.build) {
-      return { label: "Generated Node", defaultCommand: `${installCommand} && npm run build` };
+      return { label: "Generated Node", defaultCommand: `${installCommand} && npm run build`, services };
     }
-    return { label: "Generated Node", defaultCommand: installCommand };
+    return { label: "Generated Node", defaultCommand: installCommand, services };
   }
   if (normalizedPaths.has("requirements.txt") || normalizedPaths.has("pyproject.toml")) {
     const pyproject = files.find((file) => normalizeProjectPath(file.path) === "pyproject.toml")?.text;
@@ -941,6 +1003,31 @@ function detectProjectRunEnvironment(files: IndexFile[]): ProjectRunEnvironment 
         : compileCommand,
     };
   }
+  if (normalizedPaths.has("cargo.toml")) {
+    return { label: "Generated Rust/Cargo", defaultCommand: "cargo test" };
+  }
+  if (normalizedPaths.has("go.mod")) {
+    return { label: "Generated Go", defaultCommand: "go test ./..." };
+  }
+  if (normalizedPaths.has("cmakelists.txt")) {
+    return { label: "Generated C/C++ CMake", defaultCommand: "cmake -S . -B build && cmake --build build" };
+  }
+  if (normalizedPaths.has("composer.json")) {
+    return { label: "Generated PHP/Composer", defaultCommand: "composer install && composer test" };
+  }
+  if (normalizedPaths.has("gemfile")) {
+    return { label: "Generated Ruby/Bundler", defaultCommand: "bundle install && ruby app.rb" };
+  }
+  if (Array.from(normalizedPaths).some((path) => path.endsWith(".csproj") || path.endsWith(".sln"))) {
+    return { label: "Generated .NET", defaultCommand: "dotnet run" };
+  }
+  const firstSql = Array.from(normalizedPaths).find((path) => path.endsWith(".sql"));
+  if (firstSql) {
+    return {
+      label: "Generated SQLite",
+      defaultCommand: normalizedPaths.has("queries.sql") ? "sqlite3 :memory: < queries.sql" : `sqlite3 :memory: < ${firstSql}`,
+    };
+  }
   return null;
 }
 
@@ -971,6 +1058,16 @@ function readPackageScripts(packageJson: string): Record<string, string> | null 
   }
 }
 
+function detectPackageServices(packageJson: string): string[] {
+  const lower = packageJson.toLowerCase();
+  const services: string[] = [];
+  if (lower.includes("\"pg\"") || lower.includes("postgres")) services.push("postgres");
+  if (lower.includes("\"mysql2\"") || lower.includes("\"mysql\"") || lower.includes("mariadb")) services.push("mysql");
+  if (lower.includes("\"mongodb\"")) services.push("mongodb");
+  if (lower.includes("\"redis\"")) services.push("redis");
+  return services;
+}
+
 function OutputPanel({
   activePath,
   isPending,
@@ -986,6 +1083,7 @@ function OutputPanel({
   result,
   projectResult,
   error,
+  staticPreviewHtml,
 }: {
   activePath: string | null;
   isPending: boolean;
@@ -1001,6 +1099,7 @@ function OutputPanel({
   result: RunResult | null;
   projectResult: ProjectRunResult | null;
   error: string | null;
+  staticPreviewHtml: string | null;
 }) {
   const exitTone = result
     ? result.timedOut
@@ -1066,7 +1165,7 @@ function OutputPanel({
         </div>
         <div className="flex min-h-0 flex-col">
           <div className="flex h-8 items-center justify-between gap-3 border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-            <span>Output</span>
+            <span>{staticPreviewHtml && !result && !error && !isPending ? "Preview" : "Output"}</span>
             <span className="min-w-0 truncate normal-case tracking-normal text-zinc-600">
               {projectResult
                 ? `${projectResult.environment} / ${projectResult.command}`
@@ -1077,6 +1176,14 @@ function OutputPanel({
                   : projectDetectionMessage ?? "No project environment"}
             </span>
           </div>
+          {staticPreviewHtml && !result && !error && !isPending ? (
+            <iframe
+              title="Static preview"
+              sandbox="allow-scripts allow-forms"
+              srcDoc={staticPreviewHtml}
+              className="min-h-0 flex-1 border-0 bg-white"
+            />
+          ) : (
           <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
             {error ? (
               <span className="text-rose-400">{error}</span>
@@ -1090,7 +1197,7 @@ function OutputPanel({
               <>
                 {projectResult && (
                   <span className="text-cyan">
-                    {`Environment: ${projectResult.environment}${projectResult.generatedEnvironment ? " (generated)" : ""}\nCommand: ${projectResult.command}\nRunner: ${projectResult.runnerImage}\nFiles: ${projectResult.fileCount} | Timeout: ${projectResult.timeoutMs} ms\nCaches: ${projectResult.cacheVolumes.join(", ")}\n\n`}
+                    {`Environment: ${projectResult.environment}${projectResult.generatedEnvironment ? " (generated)" : ""}\nCommand: ${projectResult.command}\nRunner: ${projectResult.runnerImage}\nFiles: ${projectResult.fileCount} | Timeout: ${projectResult.timeoutMs} ms\nCaches: ${projectResult.cacheVolumes.join(", ")}\nServices: ${projectResult.services.length > 0 ? projectResult.services.join(", ") : "none"}\n\n`}
                   </span>
                 )}
                 {result.stdout}
@@ -1110,6 +1217,7 @@ function OutputPanel({
               </span>
             )}
           </pre>
+          )}
         </div>
       </div>
     </div>

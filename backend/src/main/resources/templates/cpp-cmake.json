@@ -1,0 +1,18 @@
+{
+  "id": "cpp-cmake",
+  "name": "C++ with CMake",
+  "description": "A small modern C++ project with CMake build files.",
+  "language": "C++",
+  "category": "Systems",
+  "runtime": "GCC",
+  "packageManager": "CMake",
+  "defaultCommand": "cmake -S . -B build && cmake --build build && ./build/codeleon_cpp",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["cpp", "c++", "cmake"],
+  "files": [
+    { "path": "CMakeLists.txt", "content": "cmake_minimum_required(VERSION 3.20)\nproject(codeleon_cpp CXX)\nset(CMAKE_CXX_STANDARD 20)\nadd_executable(codeleon_cpp src/main.cpp)\n" },
+    { "path": "src/main.cpp", "content": "#include <iostream>\n#include <string>\n\nstd::string greeting(const std::string& name) {\n    return \"Hello, \" + name;\n}\n\nint main() {\n    std::cout << greeting(\"C++\") << '\\n';\n}\n" }
+  ]
+}

@@ -45,6 +45,8 @@ public class NixProjectRunnerService {
         int fileCount = request.files() == null ? 0 : request.files().size();
         Path workspace = null;
         String containerName = "codeleon-nix-runner-" + UUID.randomUUID();
+        String networkName = spec.services().isEmpty() ? null : "codeleon-nix-net-" + UUID.randomUUID();
+        List<ServiceRuntime> serviceRuntimes = List.of();
         try {
             workspace = Files.createTempDirectory("codeleon-nix-run-");
             materializeProject(request.files(), workspace);
@@ -53,13 +55,20 @@ public class NixProjectRunnerService {
                 Files.writeString(workspace.resolve("flake.lock"), generatedFlakeLock(), StandardCharsets.UTF_8);
             }
 
-            List<String> command = buildDockerCommand(containerName, workspace, spec);
+            if (networkName != null) {
+                createNetwork(networkName);
+                serviceRuntimes = startServices(networkName, spec.services());
+            }
+
+            List<String> command = buildDockerCommand(containerName, workspace, spec, networkName, serviceRuntimes);
             RunResult result = execute(command, containerName, props.timeoutMs());
             return ProjectRunResult.from(result, spec, fileCount, props);
         } catch (IOException ex) {
             log.error("Failed to prepare Nix workspace", ex);
             throw new BadRequestException("Could not prepare Nix project: " + ex.getMessage());
         } finally {
+            cleanupServices(serviceRuntimes);
+            deleteNetwork(networkName);
             deleteWorkspace(workspace);
         }
     }
@@ -83,16 +92,46 @@ public class NixProjectRunnerService {
 
         String command = normalizeCommand(request.command());
         if (hasPath(files, "flake.nix")) {
-            return new ProjectRunSpec(ProjectEnvironment.NIX_FLAKE, true, command == null ? "true" : command);
+            return new ProjectRunSpec(ProjectEnvironment.NIX_FLAKE, true, command == null ? "true" : command, detectServices(files));
         }
         if (hasPath(files, "pom.xml")) {
-            return new ProjectRunSpec(ProjectEnvironment.JAVA_MAVEN, false, command == null ? "mvn test" : command);
+            return new ProjectRunSpec(ProjectEnvironment.JAVA_MAVEN, false, command == null ? "mvn test" : command, detectServices(files));
+        }
+        if (hasPath(files, "build.gradle") || hasPath(files, "build.gradle.kts")) {
+            return new ProjectRunSpec(ProjectEnvironment.JAVA_GRADLE, false, command == null ? "gradle test" : command, detectServices(files));
         }
         if (hasPath(files, "package.json")) {
-            return new ProjectRunSpec(ProjectEnvironment.NODE, false, command == null ? defaultNodeCommand(files) : command);
+            return new ProjectRunSpec(ProjectEnvironment.NODE, false, command == null ? defaultNodeCommand(files) : command, detectServices(files));
         }
         if (hasPath(files, "requirements.txt") || hasPath(files, "pyproject.toml")) {
-            return new ProjectRunSpec(ProjectEnvironment.PYTHON, false, command == null ? defaultPythonCommand(files) : command);
+            return new ProjectRunSpec(ProjectEnvironment.PYTHON, false, command == null ? defaultPythonCommand(files) : command, detectServices(files));
+        }
+        if (hasPath(files, "cargo.toml")) {
+            return new ProjectRunSpec(ProjectEnvironment.RUST, false, command == null ? "cargo test" : command, detectServices(files));
+        }
+        if (hasPath(files, "go.mod")) {
+            return new ProjectRunSpec(ProjectEnvironment.GO, false, command == null ? "go test ./..." : command, detectServices(files));
+        }
+        if (hasPath(files, "cmakelists.txt")) {
+            return new ProjectRunSpec(ProjectEnvironment.CMAKE, false, command == null ? "cmake -S . -B build && cmake --build build" : command, detectServices(files));
+        }
+        if (hasPath(files, "composer.json")) {
+            return new ProjectRunSpec(ProjectEnvironment.PHP, false, command == null ? "composer install && composer test" : command, detectServices(files));
+        }
+        if (hasPath(files, "gemfile")) {
+            return new ProjectRunSpec(ProjectEnvironment.RUBY, false, command == null ? "bundle install && ruby app.rb" : command, detectServices(files));
+        }
+        if (files.stream().anyMatch(file -> {
+            String path = normalizeRunPathForCompare(file.path());
+            return path != null && (path.endsWith(".csproj") || path.endsWith(".sln"));
+        })) {
+            return new ProjectRunSpec(ProjectEnvironment.DOTNET, false, command == null ? "dotnet run" : command, detectServices(files));
+        }
+        if (files.stream().anyMatch(file -> {
+            String path = normalizeRunPathForCompare(file.path());
+            return path != null && path.endsWith(".sql");
+        })) {
+            return new ProjectRunSpec(ProjectEnvironment.SQLITE, false, command == null ? defaultSqliteCommand(files) : command, detectServices(files));
         }
         throw new BadRequestException("No Nix-compatible project environment detected");
     }
@@ -100,8 +139,16 @@ public class NixProjectRunnerService {
     String generatedFlake(ProjectEnvironment environment) {
         String packages = switch (environment) {
             case JAVA_MAVEN -> "jdk21_headless maven";
+            case JAVA_GRADLE -> "jdk21_headless gradle";
             case NODE -> "nodejs_20 python312 gnumake gcc pkg-config";
             case PYTHON -> "python312 python312Packages.pip python312Packages.pytest gcc pkg-config";
+            case RUST -> "rustc cargo rustfmt clippy";
+            case GO -> "go";
+            case CMAKE -> "gcc cmake gnumake pkg-config";
+            case PHP -> "php83 php83Packages.composer";
+            case RUBY -> "ruby bundler";
+            case DOTNET -> "dotnet-sdk_8";
+            case SQLITE -> "sqlite";
             case NIX_FLAKE -> "";
         };
         return """
@@ -159,6 +206,10 @@ public class NixProjectRunnerService {
     }
 
     List<String> buildDockerCommand(String containerName, Path workspace, ProjectRunSpec spec) {
+        return buildDockerCommand(containerName, workspace, spec, null, List.of());
+    }
+
+    List<String> buildDockerCommand(String containerName, Path workspace, ProjectRunSpec spec, String networkName, List<ServiceRuntime> services) {
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");
         cmd.add("run");
@@ -170,11 +221,16 @@ public class NixProjectRunnerService {
         cmd.add("--cpus=" + props.cpus());
         cmd.add("--pids-limit=" + props.pidsLimit());
         cmd.add("--security-opt=no-new-privileges");
+        if (networkName != null) {
+            cmd.add("--network");
+            cmd.add(networkName);
+        }
         cmd.add("-v");
         cmd.add(workspace.toAbsolutePath() + ":/workspace");
         cmd.add("-v");
         cmd.add(props.cacheVolume() + ":/nix");
         addDependencyCacheMounts(cmd, spec.environment());
+        addServiceEnvironment(cmd, services);
         cmd.add("--env=CODELEON_PROJECT_COMMAND=" + spec.command());
         cmd.add("--workdir=/workspace");
         cmd.add(props.image());
@@ -185,7 +241,9 @@ public class NixProjectRunnerService {
     }
 
     private void addDependencyCacheMounts(List<String> cmd, ProjectEnvironment environment) {
-        if (environment == ProjectEnvironment.JAVA_MAVEN || environment == ProjectEnvironment.NIX_FLAKE) {
+        if (environment == ProjectEnvironment.JAVA_MAVEN
+                || environment == ProjectEnvironment.JAVA_GRADLE
+                || environment == ProjectEnvironment.NIX_FLAKE) {
             cmd.add("-v");
             cmd.add(props.mavenCacheVolume() + ":/root/.m2");
         }
@@ -198,6 +256,154 @@ public class NixProjectRunnerService {
             cmd.add("-v");
             cmd.add(props.pipCacheVolume() + ":/root/.cache/pip");
             cmd.add("--env=PIP_CACHE_DIR=/root/.cache/pip");
+        }
+    }
+
+    private void addServiceEnvironment(List<String> cmd, List<ServiceRuntime> services) {
+        for (ServiceRuntime service : services) {
+            switch (service.kind()) {
+                case "postgres" -> {
+                    cmd.add("--env=DATABASE_URL=postgres://codeleon:codeleon@" + service.containerName() + ":5432/codeleon");
+                    cmd.add("--env=POSTGRES_HOST=" + service.containerName());
+                }
+                case "mysql" -> {
+                    cmd.add("--env=MYSQL_HOST=" + service.containerName());
+                    cmd.add("--env=MYSQL_USER=codeleon");
+                    cmd.add("--env=MYSQL_PASSWORD=codeleon");
+                    cmd.add("--env=MYSQL_DATABASE=codeleon");
+                }
+                case "mongodb" -> cmd.add("--env=MONGO_URL=mongodb://" + service.containerName() + ":27017");
+                case "redis" -> cmd.add("--env=REDIS_URL=redis://" + service.containerName() + ":6379");
+                default -> {
+                }
+            }
+        }
+    }
+
+    private void createNetwork(String networkName) {
+        runDockerControl(List.of("docker", "network", "create", networkName), "create runner network");
+    }
+
+    private void deleteNetwork(String networkName) {
+        if (networkName == null) {
+            return;
+        }
+        try {
+            new ProcessBuilder("docker", "network", "rm", networkName).start().waitFor(5, TimeUnit.SECONDS);
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.warn("Failed to remove Nix runner network {}", networkName, ex);
+        }
+    }
+
+    private List<ServiceRuntime> startServices(String networkName, List<String> services) {
+        List<ServiceRuntime> runtimes = new ArrayList<>();
+        try {
+            for (String service : services) {
+                String containerName = "codeleon-nix-" + service + "-" + UUID.randomUUID();
+                List<String> command = sidecarCommand(service, containerName, networkName);
+                if (command.isEmpty()) {
+                    continue;
+                }
+                runDockerControl(command, "start " + service + " sidecar");
+                ServiceRuntime runtime = new ServiceRuntime(service, containerName);
+                runtimes.add(runtime);
+                waitForService(runtime);
+            }
+        } catch (RuntimeException ex) {
+            cleanupServices(runtimes);
+            throw ex;
+        }
+        return List.copyOf(runtimes);
+    }
+
+    private List<String> sidecarCommand(String service, String containerName, String networkName) {
+        List<String> cmd = new ArrayList<>(List.of(
+                "docker", "run", "-d", "--rm", "--name", containerName, "--network", networkName
+        ));
+        switch (service) {
+            case "postgres" -> {
+                cmd.addAll(List.of(
+                        "-e", "POSTGRES_DB=codeleon",
+                        "-e", "POSTGRES_USER=codeleon",
+                        "-e", "POSTGRES_PASSWORD=codeleon",
+                        "postgres:16-alpine"
+                ));
+            }
+            case "mysql" -> {
+                cmd.addAll(List.of(
+                        "-e", "MYSQL_DATABASE=codeleon",
+                        "-e", "MYSQL_USER=codeleon",
+                        "-e", "MYSQL_PASSWORD=codeleon",
+                        "-e", "MYSQL_ROOT_PASSWORD=codeleon",
+                        "mysql:8"
+                ));
+            }
+            case "mongodb" -> cmd.add("mongo:7");
+            case "redis" -> cmd.add("redis:7-alpine");
+            default -> {
+                return List.of();
+            }
+        }
+        return cmd;
+    }
+
+    private void waitForService(ServiceRuntime service) {
+        List<String> check = switch (service.kind()) {
+            case "postgres" -> List.of("docker", "exec", service.containerName(), "pg_isready", "-U", "codeleon", "-d", "codeleon");
+            case "mysql" -> List.of("docker", "exec", service.containerName(), "mysqladmin", "ping", "-h", "127.0.0.1", "-ucodeleon", "-pcodeleon");
+            case "mongodb" -> List.of("docker", "exec", service.containerName(), "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok");
+            case "redis" -> List.of("docker", "exec", service.containerName(), "redis-cli", "ping");
+            default -> List.of();
+        };
+        if (check.isEmpty()) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Process process = new ProcessBuilder(check).start();
+                if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0) {
+                    return;
+                }
+                Thread.sleep(1_000);
+            } catch (IOException | InterruptedException ex) {
+                if (ex instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        throw new BadRequestException("Timed out waiting for " + service.kind() + " service");
+    }
+
+    private void cleanupServices(List<ServiceRuntime> services) {
+        for (ServiceRuntime service : services) {
+            try {
+                new ProcessBuilder("docker", "kill", service.containerName()).start().waitFor(5, TimeUnit.SECONDS);
+            } catch (IOException | InterruptedException ex) {
+                if (ex instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                log.warn("Failed to stop Nix runner service {}", service.containerName(), ex);
+            }
+        }
+    }
+
+    private void runDockerControl(List<String> command, String action) {
+        try {
+            Process process = new ProcessBuilder(command).start();
+            if (!process.waitFor(30, TimeUnit.SECONDS) || process.exitValue() != 0) {
+                String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                throw new BadRequestException("Could not " + action + ": " + stderr);
+            }
+        } catch (IOException ex) {
+            throw new BadRequestException("Docker unavailable while trying to " + action + ": " + ex.getMessage());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BadRequestException("Interrupted while trying to " + action);
         }
     }
 
@@ -256,6 +462,39 @@ public class NixProjectRunnerService {
             }
         }
         return installCommand;
+    }
+
+    private static List<String> detectServices(List<RunRequest.RunFile> files) {
+        List<String> services = new ArrayList<>();
+        String packageJson = findText(files, "package.json");
+        if (packageJson != null) {
+            String lower = packageJson.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("\"pg\"") || lower.contains("postgres")) {
+                services.add("postgres");
+            }
+            if (lower.contains("\"mysql2\"") || lower.contains("\"mysql\"")) {
+                services.add("mysql");
+            }
+            if (lower.contains("\"mongodb\"")) {
+                services.add("mongodb");
+            }
+            if (lower.contains("\"redis\"")) {
+                services.add("redis");
+            }
+        }
+        return List.copyOf(services);
+    }
+
+    private static String defaultSqliteCommand(List<RunRequest.RunFile> files) {
+        if (hasPath(files, "queries.sql")) {
+            return "sqlite3 :memory: < queries.sql";
+        }
+        String firstSql = files.stream()
+                .map(file -> normalizeRunPathForCompare(file.path()))
+                .filter(path -> path != null && path.endsWith(".sql"))
+                .findFirst()
+                .orElse("schema.sql");
+        return "sqlite3 :memory: < " + firstSql;
     }
 
     private static String defaultPythonCommand(List<RunRequest.RunFile> files) {
@@ -453,8 +692,16 @@ public class NixProjectRunnerService {
     enum ProjectEnvironment {
         NIX_FLAKE("Nix flake"),
         JAVA_MAVEN("Generated Java/Maven"),
+        JAVA_GRADLE("Generated Java/Gradle"),
         NODE("Generated Node"),
-        PYTHON("Generated Python");
+        PYTHON("Generated Python"),
+        RUST("Generated Rust/Cargo"),
+        GO("Generated Go"),
+        CMAKE("Generated C/C++ CMake"),
+        PHP("Generated PHP/Composer"),
+        RUBY("Generated Ruby/Bundler"),
+        DOTNET("Generated .NET"),
+        SQLITE("Generated SQLite");
 
         private final String label;
 
@@ -467,6 +714,9 @@ public class NixProjectRunnerService {
         }
     }
 
-    record ProjectRunSpec(ProjectEnvironment environment, boolean projectFlake, String command) {
+    record ProjectRunSpec(ProjectEnvironment environment, boolean projectFlake, String command, List<String> services) {
+    }
+
+    record ServiceRuntime(String kind, String containerName) {
     }
 }

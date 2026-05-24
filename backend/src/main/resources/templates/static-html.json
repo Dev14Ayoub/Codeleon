@@ -1,0 +1,28 @@
+{
+  "id": "static-html",
+  "name": "HTML / CSS / JS",
+  "description": "A polished static website starter with instant preview.",
+  "language": "HTML",
+  "category": "Web",
+  "runtime": "Browser",
+  "packageManager": "none",
+  "defaultCommand": "Static preview",
+  "runnable": true,
+  "preview": true,
+  "services": [],
+  "tags": ["html", "css", "javascript", "preview"],
+  "files": [
+    {
+      "path": "index.html",
+      "content": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>Codeleon Site</title>\n  <link rel=\"stylesheet\" href=\"styles.css\" />\n</head>\n<body>\n  <main class=\"shell\">\n    <p class=\"eyebrow\">Codeleon static starter</p>\n    <h1>Build a clean web page.</h1>\n    <p>HTML, CSS, and JavaScript are ready to edit and preview.</p>\n    <button id=\"action\">Click me</button>\n  </main>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n"
+    },
+    {
+      "path": "styles.css",
+      "content": ":root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }\nbody { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #09090b; color: #f4f4f5; }\n.shell { width: min(680px, calc(100vw - 32px)); }\n.eyebrow { color: #22d3ee; text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; }\nh1 { font-size: clamp(2rem, 6vw, 4rem); margin: 0 0 1rem; }\nbutton { border: 0; border-radius: 6px; padding: .75rem 1rem; background: #22d3ee; color: #082f49; font-weight: 700; }\n"
+    },
+    {
+      "path": "script.js",
+      "content": "document.querySelector('#action')?.addEventListener('click', () => {\n  alert('Hello from your Codeleon preview.');\n});\n"
+    }
+  ]
+}

@@ -178,11 +178,33 @@ export interface ProjectTemplate {
   name: string;
   description: string;
   language: string;
+  category: string;
+  runtime: string | null;
+  packageManager: string | null;
+  defaultCommand: string | null;
+  runnable: boolean;
+  preview: boolean;
+  services: string[];
+  tags: string[];
   fileCount: number;
+}
+
+export interface ProjectTemplateFile {
+  path: string;
+  content?: string | null;
+}
+
+export interface ProjectTemplateDetail extends ProjectTemplate {
+  files: ProjectTemplateFile[];
 }
 
 export async function fetchTemplates() {
   const { data } = await api.get<ProjectTemplate[]>("/templates");
+  return data;
+}
+
+export async function fetchTemplate(templateId: string) {
+  const { data } = await api.get<ProjectTemplateDetail>(`/templates/${templateId}`);
   return data;
 }
 
@@ -257,6 +279,7 @@ export interface ProjectRunResult extends RunResult {
   timeoutMs: number;
   runnerImage: string;
   cacheVolumes: string[];
+  services: string[];
 }
 
 export interface ProjectRunDetection {
@@ -264,6 +287,7 @@ export interface ProjectRunDetection {
   environment: string | null;
   command: string | null;
   generatedEnvironment: boolean;
+  services: string[];
   message: string | null;
 }
 

@@ -1,0 +1,18 @@
+{
+  "id": "redis-node",
+  "name": "Redis Starter",
+  "description": "A Node project prepared for an ephemeral Redis service.",
+  "language": "JavaScript",
+  "category": "Databases",
+  "runtime": "Node 20 + Redis",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm test",
+  "runnable": true,
+  "preview": false,
+  "services": ["redis"],
+  "tags": ["redis", "cache", "database"],
+  "files": [
+    { "path": "package.json", "content": "{\"type\":\"module\",\"scripts\":{\"test\":\"node src/smoke.js\"},\"dependencies\":{\"redis\":\"latest\"},\"devDependencies\":{}}\n" },
+    { "path": "src/smoke.js", "content": "import { createClient } from 'redis';\nconst client = createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });\nawait client.connect();\nawait client.set('codeleon', 'redis');\nconsole.log(`redis value: ${await client.get('codeleon')}`);\nawait client.quit();\n" }
+  ]
+}

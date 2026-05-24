@@ -1,0 +1,18 @@
+{
+  "id": "custom-nix",
+  "name": "Custom Nix Flake",
+  "description": "A universal project starter for advanced custom environments.",
+  "language": "Nix",
+  "category": "Custom Nix",
+  "runtime": "Nix",
+  "packageManager": "flake",
+  "defaultCommand": "echo hello from nix",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["nix", "flake", "custom"],
+  "files": [
+    { "path": "flake.nix", "content": "{\n  description = \"Codeleon custom Nix project\";\n  inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-24.11\";\n  outputs = { nixpkgs, ... }:\n    let\n      systems = [ \"x86_64-linux\" \"aarch64-linux\" ];\n      forAllSystems = nixpkgs.lib.genAttrs systems;\n    in {\n      devShells = forAllSystems (system:\n        let pkgs = import nixpkgs { inherit system; };\n        in { default = pkgs.mkShell { packages = with pkgs; [ hello ]; }; });\n    };\n}\n" },
+    { "path": "README.md", "content": "# Custom Nix Project\n\nEdit `flake.nix` to add the tools your project needs, then run with Codeleon's Nix project runner.\n" }
+  ]
+}

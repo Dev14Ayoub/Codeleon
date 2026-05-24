@@ -1,9 +1,20 @@
 {
   "id": "empty-python",
   "name": "Empty Python",
-  "description": "A blank Python project with a single main.py file ready to run.",
+  "description": "A tiny Python starter with one runnable main.py file.",
   "language": "Python",
+  "category": "CLI/Scripting",
+  "runtime": "Python 3.12",
+  "packageManager": "pip",
+  "defaultCommand": "python main.py",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["python", "script", "beginner"],
   "files": [
-    { "path": "main.py" }
+    {
+      "path": "main.py",
+      "content": "def main():\n    print(\"Hello from Codeleon Python\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+    }
   ]
 }

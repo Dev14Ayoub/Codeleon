@@ -130,7 +130,8 @@ class RunControllerTest {
                 2,
                 30000,
                 "nixos/nix:2.24.11",
-                List.of("codeleon-nix-store-test", "codeleon-maven-cache-test")
+                List.of("codeleon-nix-store-test", "codeleon-maven-cache-test"),
+                List.of()
         ));
 
         mockMvc.perform(post("/rooms/" + roomId + "/run/project")
@@ -188,6 +189,7 @@ class RunControllerTest {
                 "Generated Node",
                 "npm install && npm test",
                 true,
+                List.of(),
                 null
         ));
 

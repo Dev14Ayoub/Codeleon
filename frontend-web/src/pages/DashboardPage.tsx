@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Archive, ArrowDownAZ, Check, Clock, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Upload, Users } from "lucide-react";
+import { Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -20,6 +20,7 @@ import {
   createRoom,
   fetchGithubRepositories,
   fetchCurrentUser,
+  fetchTemplate,
   fetchMyRooms,
   fetchOAuthAccounts,
   fetchOAuthProviders,
@@ -137,6 +138,10 @@ export function DashboardPage() {
         templateId: createSource === "blank" ? values.templateId?.trim() || undefined : undefined,
       });
 
+      if (createSource === "blank" && values.templateId?.trim()) {
+        await seedTemplateFiles(room.id, values.templateId.trim());
+      }
+
       if (createSource === "local") {
         await materializeLocalImport(room.id, localImportReport!.prepared);
       }
@@ -208,8 +213,23 @@ export function DashboardPage() {
     }))));
   }
 
+  async function seedTemplateFiles(roomId: string, templateId: string) {
+    const template = await fetchTemplate(templateId);
+    const files = template.files
+      .filter((file) => file.content !== undefined && file.content !== null)
+      .map((file) => ({
+        path: file.path,
+        content: file.content ?? "",
+      }));
+    if (files.length > 0) {
+      await saveRoomSnapshot(roomId, encodeFilesSnapshot(files));
+    }
+  }
+
   const myRooms = useMemo(() => myRoomsQuery.data ?? [], [myRoomsQuery.data]);
   const publicRooms = useMemo(() => publicRoomsQuery.data ?? [], [publicRoomsQuery.data]);
+  const projectTemplates = templatesQuery.data ?? [];
+  const selectedTemplate = projectTemplates.find((template) => template.id === selectedTemplateId) ?? null;
   const githubRepositories = githubRepositoriesQuery.data ?? [];
   const filteredGithubRepositories = useMemo(
     () => filterGithubRepositories(githubRepositories, githubRepoSearch),
@@ -456,9 +476,10 @@ export function DashboardPage() {
                 />
 
                 {createSource === "blank" && (
-                  <TemplatePicker
-                    templates={templatesQuery.data ?? []}
+                  <ProjectTypePicker
+                    templates={projectTemplates}
                     isLoading={templatesQuery.isLoading}
+                    selectedTemplate={selectedTemplate}
                     selectedId={selectedTemplateId ?? ""}
                     onChange={(id) => createForm.setValue("templateId", id, { shouldDirty: true })}
                   />
@@ -1145,6 +1166,217 @@ function ProjectSourcePicker({
       </AnimatePresence>
     </div>
   );
+}
+
+function ProjectTypePicker({
+  templates,
+  isLoading,
+  selectedTemplate,
+  selectedId,
+  onChange,
+}: {
+  templates: ProjectTemplate[];
+  isLoading: boolean;
+  selectedTemplate: ProjectTemplate | null;
+  selectedId: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const filteredTemplates = useMemo(() => filterProjectTemplates(templates, query), [templates, query]);
+  const grouped = useMemo(() => groupTemplates(filteredTemplates), [filteredTemplates]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+        <Sparkles className="h-4 w-4 text-cyan" />
+        Project type
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="flex min-h-12 w-full items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-left transition hover:border-zinc-700"
+          aria-expanded={open}
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium text-zinc-100">
+              {selectedTemplate?.name ?? "Choose a project type"}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-zinc-500">
+              {selectedTemplate
+                ? `${selectedTemplate.category} / ${selectedTemplate.runtime ?? selectedTemplate.language}`
+                : "Starter files, Nix command, preview, and service metadata"}
+            </span>
+          </span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-500 transition", open && "rotate-180")} />
+        </button>
+
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="absolute z-30 mt-2 w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40"
+            >
+              <div className="border-b border-zinc-800 p-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search languages, databases, frameworks..."
+                    className="h-9 w-full rounded-md border border-zinc-800 bg-background px-3 pl-9 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto p-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange("");
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={cn(
+                    "mb-2 flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
+                    !selectedId
+                      ? "border-cyan/50 bg-cyan/10 text-zinc-50"
+                      : "border-zinc-800 bg-background text-zinc-300 hover:border-zinc-700 hover:bg-surfaceRaised",
+                  )}
+                >
+                  <span>
+                    <span className="block text-sm font-medium">Blank project</span>
+                    <span className="text-xs text-zinc-500">No starter template</span>
+                  </span>
+                  <FileCode2 className="h-4 w-4 text-zinc-500" />
+                </button>
+
+                {isLoading ? (
+                  <div className="space-y-2">
+                    {[0, 1, 2].map((index) => (
+                      <div key={index} className="codeleon-shimmer h-12 rounded-md bg-zinc-900" />
+                    ))}
+                  </div>
+                ) : grouped.length > 0 ? (
+                  grouped.map(([category, items]) => (
+                    <div key={category} className="mb-3 last:mb-0">
+                      <p className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">{category}</p>
+                      <div className="space-y-1">
+                        {items.map((template) => (
+                          <button
+                            key={template.id}
+                            type="button"
+                            onClick={() => {
+                              onChange(template.id);
+                              setOpen(false);
+                              setQuery("");
+                            }}
+                            className={cn(
+                              "flex w-full items-start justify-between gap-3 rounded-md px-3 py-2 text-left transition",
+                              selectedId === template.id
+                                ? "bg-cyan/10 text-zinc-50"
+                                : "text-zinc-300 hover:bg-surfaceRaised hover:text-zinc-50",
+                            )}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium">{template.name}</span>
+                              <span className="mt-0.5 block truncate text-xs text-zinc-500">{template.description}</span>
+                            </span>
+                            <span className="shrink-0 rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                              {template.language}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="px-3 py-5 text-center text-xs text-zinc-500">No project types match your search.</p>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <ProjectTypePreview template={selectedTemplate} />
+    </div>
+  );
+}
+
+function ProjectTypePreview({ template }: { template: ProjectTemplate | null }) {
+  if (!template) {
+    return (
+      <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+        Choose a starter to create files with content, Nix commands, preview support, and optional services.
+      </div>
+    );
+  }
+
+  return (
+    <motion.div layout className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-zinc-100">{template.name}</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">{template.description}</p>
+        </div>
+        <span className="shrink-0 rounded-md border border-cyan/30 bg-cyan/10 px-2 py-1 text-[11px] text-cyan">
+          {template.category}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+        <PreviewFact icon={<Terminal className="h-3.5 w-3.5" />} label={template.defaultCommand ?? "No command"} />
+        <PreviewFact icon={<FileCode2 className="h-3.5 w-3.5" />} label={`${template.fileCount} ${template.fileCount === 1 ? "file" : "files"}`} />
+        <PreviewFact icon={<ShieldCheck className="h-3.5 w-3.5" />} label={template.runnable ? "Runs with Nix" : "Template only"} />
+        <PreviewFact icon={<Database className="h-3.5 w-3.5" />} label={template.services.length > 0 ? template.services.join(", ") : "No services"} />
+      </div>
+      {template.preview && (
+        <p className="mt-3 rounded-md border border-emerald-800/60 bg-emerald-950/30 px-2 py-1 text-xs text-emerald-300">
+          Static preview available in the room.
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+function PreviewFact({ icon, label }: { icon: JSX.Element; label: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 rounded-md border border-zinc-800 bg-background px-2 py-1">
+      {icon}
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function filterProjectTemplates(templates: ProjectTemplate[], query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return templates;
+  return templates.filter((template) =>
+    [
+      template.name,
+      template.description,
+      template.language,
+      template.category,
+      template.runtime ?? "",
+      template.packageManager ?? "",
+      ...template.tags,
+      ...template.services,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(needle),
+  );
+}
+
+function groupTemplates(templates: ProjectTemplate[]): Array<[string, ProjectTemplate[]]> {
+  const groups = new Map<string, ProjectTemplate[]>();
+  for (const template of templates) {
+    const category = template.category || "General";
+    groups.set(category, [...(groups.get(category) ?? []), template]);
+  }
+  return Array.from(groups.entries());
 }
 
 /**

@@ -1,11 +1,28 @@
 {
   "id": "algorithms-py",
-  "name": "Algorithms playground",
+  "name": "Algorithms Playground",
   "description": "Three classic algorithm files in Python: binary search, Fibonacci, and BFS.",
   "language": "Python",
+  "category": "CLI/Scripting",
+  "runtime": "Python 3.12",
+  "packageManager": "pip",
+  "defaultCommand": "python -m py_compile $(find . -name '*.py' -type f)",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["python", "algorithms", "practice"],
   "files": [
-    { "path": "binary_search.py" },
-    { "path": "fibonacci.py" },
-    { "path": "bfs.py" }
+    {
+      "path": "binary_search.py",
+      "content": "def binary_search(items, target):\n    low, high = 0, len(items) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if items[mid] == target:\n            return mid\n        if items[mid] < target:\n            low = mid + 1\n        else:\n            high = mid - 1\n    return -1\n\n\nprint(binary_search([1, 3, 5, 7, 9], 7))\n"
+    },
+    {
+      "path": "fibonacci.py",
+      "content": "def fibonacci(n):\n    if n < 2:\n        return n\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b\n\n\nprint(fibonacci(10))\n"
+    },
+    {
+      "path": "bfs.py",
+      "content": "from collections import deque\n\n\ndef bfs(graph, start):\n    seen = {start}\n    queue = deque([start])\n    order = []\n    while queue:\n        node = queue.popleft()\n        order.append(node)\n        for neighbor in graph.get(node, []):\n            if neighbor not in seen:\n                seen.add(neighbor)\n                queue.append(neighbor)\n    return order\n\n\ngraph = {'A': ['B', 'C'], 'B': ['D'], 'C': ['E']}\nprint(bfs(graph, 'A'))\n"
+    }
   ]
 }

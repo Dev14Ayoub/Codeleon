@@ -110,7 +110,47 @@ class NixProjectRunnerServiceTest {
         assertTrue(javaFlake.contains("jdk21_headless maven"));
         assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.NODE).contains("nodejs_20 python312 gnumake gcc pkg-config"));
         assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.PYTHON).contains("python312 python312Packages.pip python312Packages.pytest gcc pkg-config"));
+        assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.RUST).contains("rustc cargo rustfmt clippy"));
+        assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.GO).contains("go"));
+        assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.CMAKE).contains("gcc cmake gnumake pkg-config"));
+        assertTrue(service.generatedFlake(NixProjectRunnerService.ProjectEnvironment.SQLITE).contains("sqlite"));
         assertTrue(service.generatedFlakeLock().contains("50ab793786d9de88ee30ec4e4c24fb4236fc2674"));
+    }
+
+    @Test
+    void detectsExpandedProjectEnvironments() {
+        assertDetected("build.gradle", "", NixProjectRunnerService.ProjectEnvironment.JAVA_GRADLE, "gradle test");
+        assertDetected("Cargo.toml", "[package]\nname='demo'", NixProjectRunnerService.ProjectEnvironment.RUST, "cargo test");
+        assertDetected("go.mod", "module demo", NixProjectRunnerService.ProjectEnvironment.GO, "go test ./...");
+        assertDetected("CMakeLists.txt", "cmake_minimum_required(VERSION 3.20)", NixProjectRunnerService.ProjectEnvironment.CMAKE, "cmake -S . -B build && cmake --build build");
+        assertDetected("composer.json", "{}", NixProjectRunnerService.ProjectEnvironment.PHP, "composer install && composer test");
+        assertDetected("Gemfile", "source 'https://rubygems.org'", NixProjectRunnerService.ProjectEnvironment.RUBY, "bundle install && ruby app.rb");
+        assertDetected("demo.csproj", "<Project />", NixProjectRunnerService.ProjectEnvironment.DOTNET, "dotnet run");
+        assertDetected("queries.sql", "select 1;", NixProjectRunnerService.ProjectEnvironment.SQLITE, "sqlite3 :memory: < queries.sql");
+    }
+
+    @Test
+    void detectsNodeDatabaseServicesAndAddsSidecarEnvironment() {
+        NixProjectRunnerService.ProjectRunSpec spec = service.detect(new ProjectRunRequest(
+                null,
+                List.of(file("package.json", "{\"dependencies\":{\"pg\":\"latest\",\"redis\":\"latest\"}}"))
+        ));
+        List<String> command = service.buildDockerCommand(
+                "codeleon-nix-node-db",
+                Path.of("C:/tmp/codeleon-nix-node-db"),
+                spec,
+                "codeleon-nix-net-test",
+                List.of(
+                        new NixProjectRunnerService.ServiceRuntime("postgres", "codeleon-postgres"),
+                        new NixProjectRunnerService.ServiceRuntime("redis", "codeleon-redis")
+                )
+        );
+
+        assertEquals(List.of("postgres", "redis"), spec.services());
+        assertTrue(command.contains("--network"));
+        assertTrue(command.contains("codeleon-nix-net-test"));
+        assertTrue(command.contains("--env=DATABASE_URL=postgres://codeleon:codeleon@codeleon-postgres:5432/codeleon"));
+        assertTrue(command.contains("--env=REDIS_URL=redis://codeleon-redis:6379"));
     }
 
     @Test
@@ -228,6 +268,20 @@ class NixProjectRunnerServiceTest {
 
     private static RunRequest.RunFile file(String path, String text) {
         return new RunRequest.RunFile(path, text);
+    }
+
+    private void assertDetected(
+            String path,
+            String text,
+            NixProjectRunnerService.ProjectEnvironment environment,
+            String command
+    ) {
+        NixProjectRunnerService.ProjectRunSpec spec = service.detect(new ProjectRunRequest(
+                null,
+                List.of(file(path, text))
+        ));
+        assertEquals(environment, spec.environment());
+        assertEquals(command, spec.command());
     }
 
     private static NixRunnerProperties testProperties() {

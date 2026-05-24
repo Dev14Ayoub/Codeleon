@@ -15,7 +15,8 @@ public record ProjectRunResult(
         int fileCount,
         int timeoutMs,
         String runnerImage,
-        List<String> cacheVolumes
+        List<String> cacheVolumes,
+        List<String> services
 ) {
     static ProjectRunResult from(RunResult result, NixProjectRunnerService.ProjectRunSpec spec, int fileCount, NixRunnerProperties props) {
         return new ProjectRunResult(
@@ -30,14 +31,16 @@ public record ProjectRunResult(
                 fileCount,
                 props.timeoutMs(),
                 props.image(),
-                cacheVolumes(spec.environment(), props)
+                cacheVolumes(spec.environment(), props),
+                spec.services()
         );
     }
 
     private static List<String> cacheVolumes(NixProjectRunnerService.ProjectEnvironment environment, NixRunnerProperties props) {
         List<String> volumes = new ArrayList<>();
         volumes.add(props.cacheVolume());
-        if (environment == NixProjectRunnerService.ProjectEnvironment.JAVA_MAVEN
+        if ((environment == NixProjectRunnerService.ProjectEnvironment.JAVA_MAVEN
+                || environment == NixProjectRunnerService.ProjectEnvironment.JAVA_GRADLE)
                 || environment == NixProjectRunnerService.ProjectEnvironment.NIX_FLAKE) {
             volumes.add(props.mavenCacheVolume());
         }

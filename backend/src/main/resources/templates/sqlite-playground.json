@@ -1,0 +1,18 @@
+{
+  "id": "sqlite-playground",
+  "name": "SQLite SQL Playground",
+  "description": "A runnable SQL starter using SQLite inside Nix.",
+  "language": "SQL",
+  "category": "Databases",
+  "runtime": "SQLite",
+  "packageManager": "none",
+  "defaultCommand": "sqlite3 :memory: < schema.sql && sqlite3 :memory: < queries.sql",
+  "runnable": true,
+  "preview": false,
+  "services": ["sqlite"],
+  "tags": ["sql", "sqlite", "database"],
+  "files": [
+    { "path": "schema.sql", "content": "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL\n);\n\nINSERT INTO users (name, email) VALUES\n  ('Ada Lovelace', 'ada@example.com'),\n  ('Grace Hopper', 'grace@example.com');\n" },
+    { "path": "queries.sql", "content": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL);\nINSERT INTO users (name, email) VALUES ('Ada Lovelace', 'ada@example.com'), ('Grace Hopper', 'grace@example.com');\nSELECT id, name, email FROM users ORDER BY name;\n" }
+  ]
+}

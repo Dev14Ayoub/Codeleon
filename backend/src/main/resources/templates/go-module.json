@@ -1,0 +1,19 @@
+{
+  "id": "go-module",
+  "name": "Go Module",
+  "description": "A Go starter module with a small test.",
+  "language": "Go",
+  "category": "Systems",
+  "runtime": "Go",
+  "packageManager": "go modules",
+  "defaultCommand": "go test ./...",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["go", "backend", "systems"],
+  "files": [
+    { "path": "go.mod", "content": "module codeleon-starter\n\ngo 1.22\n" },
+    { "path": "main.go", "content": "package main\n\nimport \"fmt\"\n\nfunc Greeting(name string) string {\n\treturn \"Hello, \" + name\n}\n\nfunc main() {\n\tfmt.Println(Greeting(\"Go\"))\n}\n" },
+    { "path": "main_test.go", "content": "package main\n\nimport \"testing\"\n\nfunc TestGreeting(t *testing.T) {\n\tif Greeting(\"Codeleon\") != \"Hello, Codeleon\" {\n\t\tt.Fatal(\"unexpected greeting\")\n\t}\n}\n" }
+  ]
+}

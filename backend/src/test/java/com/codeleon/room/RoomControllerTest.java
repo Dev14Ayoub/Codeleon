@@ -143,13 +143,25 @@ class RoomControllerTest {
         String token = register("templates.list@example.com");
         mockMvc.perform(get("/templates").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                // 4 templates ship in classpath:templates/ — empty-python,
-                // empty-java, hello-react, algorithms-py. If the count
+                // 25 templates ship in classpath:templates/. If the count
                 // drifts because a template was added or removed, update
                 // the assertion intentionally rather than auto-pass it.
-                .andExpect(jsonPath("$.length()").value(4))
+                .andExpect(jsonPath("$.length()").value(25))
                 .andExpect(jsonPath("$[?(@.id == 'empty-python')].name").value("Empty Python"))
-                .andExpect(jsonPath("$[?(@.id == 'algorithms-py')].fileCount").value(3));
+                .andExpect(jsonPath("$[?(@.id == 'algorithms-py')].fileCount").value(3))
+                .andExpect(jsonPath("$[?(@.id == 'react-vite-ts')].category").value("Frontend"))
+                .andExpect(jsonPath("$[?(@.id == 'postgres-node')].services[0]").value("postgres"));
+    }
+
+    @Test
+    void fetchTemplateReturnsSeededFileContents() throws Exception {
+        String token = register("templates.detail@example.com");
+
+        mockMvc.perform(get("/templates/react-vite-ts").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("react-vite-ts"))
+                .andExpect(jsonPath("$.defaultCommand").value("npm install && npm run build"))
+                .andExpect(jsonPath("$.files[?(@.path == 'src/App.tsx')].content").isNotEmpty());
     }
 
     @Test

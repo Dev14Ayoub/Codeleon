@@ -1,0 +1,18 @@
+{
+  "id": "mongodb-node",
+  "name": "MongoDB Starter",
+  "description": "A Node project prepared for an ephemeral MongoDB service.",
+  "language": "JavaScript",
+  "category": "Databases",
+  "runtime": "Node 20 + MongoDB",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm test",
+  "runnable": true,
+  "preview": false,
+  "services": ["mongodb"],
+  "tags": ["mongodb", "document", "database"],
+  "files": [
+    { "path": "package.json", "content": "{\"type\":\"module\",\"scripts\":{\"test\":\"node src/smoke.js\"},\"dependencies\":{\"mongodb\":\"latest\"},\"devDependencies\":{}}\n" },
+    { "path": "src/smoke.js", "content": "import { MongoClient } from 'mongodb';\nconst client = new MongoClient(process.env.MONGO_URL || 'mongodb://mongodb:27017');\nawait client.connect();\nconst collection = client.db('codeleon').collection('notes');\nawait collection.insertOne({ body: 'hello mongo' });\nconsole.log(`mongo docs: ${await collection.countDocuments()}`);\nawait client.close();\n" }
+  ]
+}

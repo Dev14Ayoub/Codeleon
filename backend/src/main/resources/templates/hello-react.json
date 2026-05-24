@@ -1,10 +1,32 @@
 {
   "id": "hello-react",
   "name": "Hello React",
-  "description": "A React skeleton with App.jsx and index.css, ready to wire up.",
-  "language": "JavaScript",
+  "description": "A React Vite starter with TypeScript-ready structure.",
+  "language": "TypeScript",
+  "category": "Frontend",
+  "runtime": "Node 20",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm run build",
+  "runnable": true,
+  "preview": false,
+  "services": [],
+  "tags": ["react", "vite", "typescript", "frontend"],
   "files": [
-    { "path": "App.jsx" },
-    { "path": "index.css" }
+    {
+      "path": "package.json",
+      "content": "{\"scripts\":{\"dev\":\"vite --host 0.0.0.0\",\"build\":\"tsc -b && vite build\",\"test\":\"npm run build\"},\"dependencies\":{\"@vitejs/plugin-react\":\"latest\",\"vite\":\"latest\",\"typescript\":\"latest\",\"react\":\"latest\",\"react-dom\":\"latest\"},\"devDependencies\":{}}\n"
+    },
+    {
+      "path": "index.html",
+      "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Codeleon React</title>\n  </head>\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.jsx\"></script>\n  </body>\n</html>\n"
+    },
+    {
+      "path": "src/main.jsx",
+      "content": "import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport './style.css';\n\nfunction App() {\n  return <main><h1>Codeleon React</h1><p>Build something sharp.</p></main>;\n}\n\ncreateRoot(document.getElementById('root')).render(<App />);\n"
+    },
+    {
+      "path": "src/style.css",
+      "content": "body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #09090b; color: #f4f4f5; }\nmain { min-height: 100vh; display: grid; place-items: center; text-align: center; }\nh1 { color: #22d3ee; }\n"
+    }
   ]
 }

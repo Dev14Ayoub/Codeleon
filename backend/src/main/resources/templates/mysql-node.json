@@ -1,0 +1,19 @@
+{
+  "id": "mysql-node",
+  "name": "MySQL / MariaDB Starter",
+  "description": "A Node project prepared for ephemeral MySQL or MariaDB.",
+  "language": "JavaScript",
+  "category": "Databases",
+  "runtime": "Node 20 + MySQL",
+  "packageManager": "npm",
+  "defaultCommand": "npm install && npm test",
+  "runnable": true,
+  "preview": false,
+  "services": ["mysql"],
+  "tags": ["mysql", "mariadb", "sql", "database"],
+  "files": [
+    { "path": "package.json", "content": "{\"type\":\"module\",\"scripts\":{\"test\":\"node src/smoke.js\"},\"dependencies\":{\"mysql2\":\"latest\"},\"devDependencies\":{}}\n" },
+    { "path": "schema.sql", "content": "CREATE TABLE IF NOT EXISTS notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT NOT NULL);\nINSERT INTO notes (body) VALUES ('hello mysql');\n" },
+    { "path": "src/smoke.js", "content": "import mysql from 'mysql2/promise';\nconst conn = await mysql.createConnection({ host: process.env.MYSQL_HOST || 'mysql', user: process.env.MYSQL_USER || 'codeleon', password: process.env.MYSQL_PASSWORD || 'codeleon', database: process.env.MYSQL_DATABASE || 'codeleon' });\nawait conn.execute('CREATE TABLE IF NOT EXISTS notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT NOT NULL)');\nawait conn.execute('INSERT INTO notes (body) VALUES (?)', ['hello mysql']);\nconst [rows] = await conn.execute('SELECT COUNT(*) AS count FROM notes');\nconsole.log(`mysql rows: ${rows[0].count}`);\nawait conn.end();\n" }
+  ]
+}
