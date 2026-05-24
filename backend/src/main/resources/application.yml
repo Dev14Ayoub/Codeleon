@@ -75,6 +75,10 @@ codeleon:
     ollama:
       url: ${OLLAMA_URL:http://localhost:11434}
       chat-model: ${OLLAMA_CHAT_MODEL:qwen2.5-coder:0.5b}
+      # Empty by default → AiProperties falls back to chat-model. Override
+      # to a tool-capable model (e.g. qwen2.5-coder:7b) when enabling
+      # agent mode in production.
+      agent-model: ${OLLAMA_AGENT_MODEL:}
       embed-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
       request-timeout: ${OLLAMA_REQUEST_TIMEOUT:60s}
     qdrant:

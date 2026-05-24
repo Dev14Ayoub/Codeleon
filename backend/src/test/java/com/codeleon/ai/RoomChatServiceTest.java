@@ -1,16 +1,19 @@
 package com.codeleon.ai;
 
+import com.codeleon.ai.retrieval.HybridRetriever;
+import com.codeleon.ai.retrieval.RetrievedChunk;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -24,19 +27,20 @@ class RoomChatServiceTest {
         return new ChatRequest(query, null, null, null, null, null);
     }
 
+    private static RetrievedChunk vectorChunk(String path, String text, int chunkIndex, double rrfScore) {
+        return new RetrievedChunk(path, null, null, null, null, chunkIndex, text,
+                0.9d, 0.0d, rrfScore, true, false);
+    }
+
     @Test
     void buildSystemPromptInjectsExcerpts() {
-        List<QdrantClient.ScoredPoint> hits = List.of(
-                new QdrantClient.ScoredPoint(UUID.randomUUID(), 0.91d, Map.of(
-                        "path", "main",
-                        "text", "public int fibonacci(int n) { return n <= 1 ? n : fibonacci(n-1) + fibonacci(n-2); }",
-                        "chunkIndex", 0
-                )),
-                new QdrantClient.ScoredPoint(UUID.randomUUID(), 0.87d, Map.of(
-                        "path", "main",
-                        "text", "public static void main(String[] args) { System.out.println(fibonacci(10)); }",
-                        "chunkIndex", 1
-                ))
+        List<RetrievedChunk> hits = List.of(
+                vectorChunk("main",
+                        "public int fibonacci(int n) { return n <= 1 ? n : fibonacci(n-1) + fibonacci(n-2); }",
+                        0, 0.91d),
+                vectorChunk("main",
+                        "public static void main(String[] args) { System.out.println(fibonacci(10)); }",
+                        1, 0.87d)
         );
 
         String prompt = RoomChatService.buildSystemPrompt(hits, queryOnly("how does fibonacci work?"));
@@ -80,18 +84,28 @@ class RoomChatServiceTest {
     }
 
     @Test
+    void buildSystemPromptSurfacesRetrievalProvenance() {
+        // A chunk surfaced by both back-ends should advertise it so the
+        // model can weight exact-identifier matches alongside semantic ones.
+        RetrievedChunk hybrid = new RetrievedChunk("auth/User.java", "User.refreshToken",
+                "METHOD", 12, 28, 0, "public String refreshToken() {}",
+                0.7d, 4.2d, 0.05d, true, true);
+        String prompt = RoomChatService.buildSystemPrompt(List.of(hybrid), queryOnly("refresh token?"));
+        assertThat(prompt).contains("source=vector+bm25");
+        assertThat(prompt).contains("symbol=User.refreshToken");
+        assertThat(prompt).contains("lines 12-28");
+    }
+
+    @Test
     void contextPayloadTruncatesLongText() {
         String longText = "x".repeat(500);
-        List<QdrantClient.ScoredPoint> hits = List.of(
-                new QdrantClient.ScoredPoint(UUID.randomUUID(), 0.5d, Map.of(
-                        "path", "main",
-                        "text", longText,
-                        "chunkIndex", 0
-                ))
+        List<RetrievedChunk> hits = List.of(
+                new RetrievedChunk("main", null, null, null, null, 0, longText,
+                        0.0d, 0.0d, 0.5d, true, false)
         );
 
-        List<Map<String, Object>> payload = RoomChatService.toContextPayload(hits);
-        String preview = (String) payload.get(0).get("preview");
+        @SuppressWarnings("unchecked")
+        String preview = (String) RoomChatService.toContextPayload(hits).get(0).get("preview");
 
         assertThat(preview).hasSize(203); // 200 + "..."
         assertThat(preview).endsWith("...");
@@ -99,19 +113,13 @@ class RoomChatServiceTest {
 
     @Test
     void streamChatPushesContextThenTokensThenDone() throws Exception {
-        OllamaClient ollama = mock(OllamaClient.class);
         OllamaStreamer streamer = mock(OllamaStreamer.class);
-        QdrantClient qdrant = mock(QdrantClient.class);
+        HybridRetriever retriever = mock(HybridRetriever.class);
         SseEmitter emitter = mock(SseEmitter.class);
 
         UUID roomId = UUID.randomUUID();
-        when(ollama.embed("how does fibonacci work?")).thenReturn(new float[]{0.1f, 0.2f, 0.3f});
-        when(qdrant.search(any(), eq(5), any())).thenReturn(List.of(
-                new QdrantClient.ScoredPoint(UUID.randomUUID(), 0.9d, Map.of(
-                        "path", "main",
-                        "text", "int fibonacci(int n) { ... }",
-                        "chunkIndex", 0
-                ))
+        when(retriever.retrieve(eq(roomId), anyString(), anyInt(), any())).thenReturn(List.of(
+                vectorChunk("main", "int fibonacci(int n) { ... }", 0, 0.9d)
         ));
 
         // Simulate the streamer emitting two tokens then completing
@@ -123,7 +131,7 @@ class RoomChatServiceTest {
             return "Fibonacci is recursive.";
         });
 
-        RoomChatService service = new RoomChatService(ollama, streamer, qdrant, null);
+        RoomChatService service = new RoomChatService(streamer, retriever, null);
         // null user: this test focuses on the streaming pipeline; the
         // 3-arg test constructor disables history persistence so the
         // user reference is irrelevant here.
@@ -141,15 +149,18 @@ class RoomChatServiceTest {
 
     @Test
     void streamChatPropagatesErrorEvent() throws Exception {
-        OllamaClient ollama = mock(OllamaClient.class);
         OllamaStreamer streamer = mock(OllamaStreamer.class);
-        QdrantClient qdrant = mock(QdrantClient.class);
+        HybridRetriever retriever = mock(HybridRetriever.class);
         SseEmitter emitter = mock(SseEmitter.class);
 
         UUID roomId = UUID.randomUUID();
-        when(ollama.embed(any())).thenThrow(new IllegalStateException("Ollama unreachable"));
+        // Retrieval failures are swallowed inside HybridRetriever — what
+        // we still want to surface as an error event is a streamer crash
+        // (LLM unreachable, network error mid-tokens).
+        when(retriever.retrieve(any(), anyString(), anyInt(), any())).thenReturn(List.of());
+        when(streamer.streamChat(any(), any())).thenThrow(new IllegalStateException("Ollama unreachable"));
 
-        RoomChatService service = new RoomChatService(ollama, streamer, qdrant, null);
+        RoomChatService service = new RoomChatService(streamer, retriever, null);
         service.streamChat(roomId, null, queryOnly("hi"), emitter);
 
         verify(emitter, atLeastOnce()).send(any(SseEmitter.SseEventBuilder.class));

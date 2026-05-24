@@ -14,6 +14,19 @@ export interface ChatContextChunk {
   chunkIndex: number;
   preview: string;
   score: number;
+  /** Dotted symbol path emitted by the AST chunker, e.g. "AuthService.refreshToken". */
+  symbol?: string;
+  /** Backend SymbolKind enum (CLASS, METHOD, FUNCTION, BLOCK, ...). Omitted on text-only chunks. */
+  symbolKind?: string;
+  /** 1-indexed inclusive line range — present whenever the chunker could attribute one. */
+  startLine?: number;
+  endLine?: number;
+  /** Detected language code (JAVA, JAVASCRIPT, ...) from the dispatcher. */
+  language?: string;
+  /** Retrieval provenance: any subset of "vector", "bm25". A chunk surfaced
+   *  by both back-ends is a strong signal — both lexical and semantic
+   *  matching agreed it is relevant. */
+  source?: string[];
 }
 
 export interface ChatDoneStats {
@@ -21,6 +34,12 @@ export interface ChatDoneStats {
   characters: number;
   durationMs: number;
   contextChunks: number;
+  /** Agent-mode only — number of loop iterations the agent took. */
+  iterations?: number;
+  /** Agent-mode only — total number of tool calls executed. */
+  toolCalls?: number;
+  /** "chat" | "agent" — present on agent turns so the UI can label them. */
+  mode?: string;
 }
 
 /**
@@ -33,11 +52,30 @@ export interface ChatSendContext {
   activeFilePath?: string;
   activeFileContent?: string;
   lastRunStderr?: string;
+  /** "chat" (default) → classic RAG one-shot; "agent" → tool-using loop. */
+  mode?: "chat" | "agent";
+}
+
+export type ToolCallStatus = "running" | "done" | "error";
+
+/**
+ * One tool invocation surfaced by the agent loop. {@code result} is set
+ * once the backend's {@code tool_result} event arrives — until then the
+ * call is rendered in a "running" state.
+ */
+export interface ToolCallEntry {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+  status: ToolCallStatus;
 }
 
 interface UseRoomChatResult {
   messages: ChatMessage[];
   context: ChatContextChunk[];
+  /** Tool calls observed for the current turn (cleared on each send). */
+  toolCalls: ToolCallEntry[];
   streaming: boolean;
   /**
    * True while we're hydrating the caller's persisted conversation
@@ -65,6 +103,7 @@ interface UseRoomChatResult {
 export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [context, setContext] = useState<ChatContextChunk[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +147,7 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
   const clear = useCallback(() => {
     setMessages([]);
     setContext([]);
+    setToolCalls([]);
     setError(null);
     setLastStats(null);
   }, []);
@@ -123,6 +163,7 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
       if (!roomId || !query.trim() || streaming) return;
       setError(null);
       setContext([]);
+      setToolCalls([]);
       setLastStats(null);
 
       const trimmed = query.trim();
@@ -163,6 +204,7 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
             activeFilePath: sendContext?.activeFilePath || undefined,
             activeFileContent: sendContext?.activeFileContent || undefined,
             lastRunStderr: sendContext?.lastRunStderr || undefined,
+            mode: sendContext?.mode || undefined,
           }),
           signal: ctrl.signal,
         });
@@ -236,6 +278,48 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
           } catch {
             // ignore malformed context
           }
+        } else if (eventName === "tool_call") {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string;
+              name: string;
+              arguments?: Record<string, unknown>;
+            };
+            setToolCalls((prev) => [
+              ...prev,
+              {
+                id: parsed.id,
+                name: parsed.name,
+                arguments: parsed.arguments ?? {},
+                status: "running",
+              },
+            ]);
+          } catch {
+            // ignore malformed tool_call — non-fatal, the model just
+            // doesn't get the satisfaction of seeing it rendered.
+          }
+        } else if (eventName === "tool_result") {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string;
+              name: string;
+              content?: string;
+              error?: boolean;
+            };
+            setToolCalls((prev) =>
+              prev.map((tc) =>
+                tc.id === parsed.id
+                  ? {
+                      ...tc,
+                      result: parsed.content ?? "",
+                      status: parsed.error ? "error" : "done",
+                    }
+                  : tc,
+              ),
+            );
+          } catch {
+            // ignore malformed tool_result
+          }
         } else if (eventName === "done") {
           // Mark the turn as successfully completed BEFORE parsing stats,
           // so even a malformed done payload still suppresses the spurious
@@ -270,5 +354,5 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
     [roomId, messages, streaming],
   );
 
-  return { messages, context, streaming, loadingHistory, error, lastStats, send, clear, cancel };
+  return { messages, context, toolCalls, streaming, loadingHistory, error, lastStats, send, clear, cancel };
 }

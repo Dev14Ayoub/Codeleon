@@ -1,26 +1,32 @@
 package com.codeleon.ai;
 
+import com.codeleon.ai.agent.AgentLoop;
+import com.codeleon.ai.agent.AgentLoopResult;
 import com.codeleon.ai.history.RoomChatHistoryService;
 import com.codeleon.ai.history.RoomChatRole;
+import com.codeleon.ai.retrieval.HybridRetriever;
+import com.codeleon.ai.retrieval.RetrievedChunk;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Orchestrates RAG chat: embeds the query, retrieves top-K chunks for the room, builds a
- * grounded prompt, and streams Ollama's response into the provided {@link SseEmitter}.
+ * Orchestrates RAG chat: runs hybrid retrieval (vector + BM25 fused with RRF)
+ * for the room, builds a grounded prompt, and streams Ollama's response into
+ * the provided {@link SseEmitter}.
  */
 @Service
-@RequiredArgsConstructor
 public class RoomChatService {
 
     private static final Logger log = LoggerFactory.getLogger(RoomChatService.class);
@@ -35,16 +41,32 @@ public class RoomChatService {
             this is an editor sidebar, not a documentation page.
             """;
 
-    private final OllamaClient ollama;
     private final OllamaStreamer streamer;
-    private final QdrantClient qdrant;
+    private final HybridRetriever retriever;
     /**
      * Nullable so unit tests that mock only the streaming pipeline can
-     * pass {@code null} via the constructor. Production wiring always
-     * supplies a real instance through {@code @RequiredArgsConstructor}.
-     * When null, persistence is skipped silently.
+     * pass {@code null} via the constructor. When null, persistence is
+     * skipped silently.
      */
     private final RoomChatHistoryService history;
+    /** Nullable for the same reason — legacy unit tests pre-date the loop. */
+    private final AgentLoop agentLoop;
+
+    // @Autowired pins Spring to this constructor; the legacy 3-arg ctor
+    // below exists for unit tests that pre-date the agent loop.
+    @Autowired
+    public RoomChatService(OllamaStreamer streamer, HybridRetriever retriever,
+                            RoomChatHistoryService history, AgentLoop agentLoop) {
+        this.streamer = streamer;
+        this.retriever = retriever;
+        this.history = history;
+        this.agentLoop = agentLoop;
+    }
+
+    /** Backward-compatible constructor for tests that pre-date the agent loop. */
+    public RoomChatService(OllamaStreamer streamer, HybridRetriever retriever, RoomChatHistoryService history) {
+        this(streamer, retriever, history, null);
+    }
 
     public void streamChat(UUID roomId, User user, ChatRequest request, SseEmitter emitter) {
         long startedAt = System.currentTimeMillis();
@@ -54,26 +76,38 @@ public class RoomChatService {
         if (history != null) {
             history.record(roomId, user, RoomChatRole.USER, request.query());
         }
+
+        // Agent mode short-circuit: the tool-using loop handles its own
+        // prompt assembly and SSE events. The classic RAG flow below is
+        // untouched so {@code mode="chat"} keeps the exact behaviour the
+        // current frontend relies on.
+        if (request.isAgentMode() && agentLoop != null) {
+            runAgentMode(roomId, user, request, emitter, startedAt);
+            return;
+        }
+
         try {
-            // 1. Embed the query
-            float[] queryVector = ollama.embed(request.query());
+            // 1. Hybrid retrieval: vector + BM25 fused with RRF and biased
+            // toward the file the user currently has open. The retriever
+            // owns embedding, vector search, and BM25 — RoomChatService
+            // stays focused on prompt assembly and streaming.
+            List<RetrievedChunk> hits = retriever.retrieve(
+                    roomId,
+                    request.query(),
+                    request.topKOrDefault(),
+                    request.hasActiveFile() ? request.activeFilePath() : null
+            );
 
-            // 2. Search top-K chunks scoped to this room
-            Map<String, Object> filter = Map.of("must", List.of(
-                    Map.of("key", "roomId", "match", Map.of("value", roomId.toString()))
-            ));
-            List<QdrantClient.ScoredPoint> hits = qdrant.search(queryVector, request.topKOrDefault(), filter);
-
-            // 3. Push the context event so the UI can display retrieved chunks early
+            // 2. Push the context event so the UI can display retrieved chunks early
             emitter.send(SseEmitter.event().name("context").data(toContextPayload(hits)));
 
-            // 4. Assemble messages: system + history + user
+            // 3. Assemble messages: system + history + user
             List<OllamaClient.ChatMessage> messages = new ArrayList<>();
             messages.add(OllamaClient.ChatMessage.system(buildSystemPrompt(hits, request)));
             messages.addAll(request.historyOrEmpty());
             messages.add(OllamaClient.ChatMessage.user(request.query()));
 
-            // 5. Stream tokens. Wrapped in {"t": ...} so the SSE 'data:' line is
+            // 4. Stream tokens. Wrapped in {"t": ...} so the SSE 'data:' line is
             // always JSON — avoids the spec's leading-space stripping eating
             // whitespace at token boundaries.
             int[] tokenCount = {0};
@@ -118,6 +152,57 @@ public class RoomChatService {
     }
 
     /**
+     * Agent-mode driver: delegates to {@link AgentLoop} and translates its
+     * stream of {@code tool_call} / {@code tool_result} events into SSE
+     * events on the wire, then emits the final answer in one block as a
+     * pseudo-token so the existing frontend renderer needs no changes.
+     */
+    private void runAgentMode(UUID roomId, User user, ChatRequest request, SseEmitter emitter, long startedAt) {
+        try {
+            AgentLoopResult result = agentLoop.run(roomId, request, (name, payload) -> {
+                try {
+                    emitter.send(SseEmitter.event().name(name).data(payload));
+                } catch (IOException ex) {
+                    throw new IllegalStateException("Client disconnected during agent step", ex);
+                }
+            });
+
+            // Emit the final answer as one token chunk so the frontend's
+            // existing token-handling code path renders it without a
+            // dedicated "agent answer" event.
+            emitter.send(SseEmitter.event().name("token").data(Map.of("t", result.answer())));
+
+            if (history != null) {
+                history.record(roomId, user, RoomChatRole.ASSISTANT, result.answer());
+            }
+
+            long durationMs = System.currentTimeMillis() - startedAt;
+            log.info("Agent chat for room {} completed in {} iterations, {} tool calls, {} ms",
+                    roomId, result.iterations(), result.toolCalls(), durationMs);
+            emitter.send(SseEmitter.event().name("done").data(Map.of(
+                    "tokens", 0,
+                    "characters", result.answer().length(),
+                    "durationMs", durationMs,
+                    "contextChunks", 0,
+                    "iterations", result.iterations(),
+                    "toolCalls", result.toolCalls(),
+                    "mode", "agent"
+            )));
+            emitter.complete();
+        } catch (Exception ex) {
+            log.warn("Agent chat for room {} failed: {}", roomId, ex.getMessage());
+            try {
+                emitter.send(SseEmitter.event().name("error").data(Map.of(
+                        "message", ex.getMessage() == null ? "Agent failed" : ex.getMessage()
+                )));
+            } catch (IOException ignored) {
+                // client already gone
+            }
+            emitter.completeWithError(ex);
+        }
+    }
+
+    /**
      * Builds the system prompt from three context layers, most-specific
      * first: the file the user currently has open, the error from their
      * last run, then the RAG excerpts retrieved from the wider project.
@@ -125,7 +210,7 @@ public class RoomChatService {
      * RAG index can be stale or miss unsaved edits — they are what let
      * the assistant answer "why is THIS broken" instead of guessing.
      */
-    static String buildSystemPrompt(List<QdrantClient.ScoredPoint> hits, ChatRequest request) {
+    static String buildSystemPrompt(List<RetrievedChunk> hits, ChatRequest request) {
         StringBuilder sb = new StringBuilder(SYSTEM_PROMPT_PREFIX);
 
         if (request.hasActiveFile()) {
@@ -152,28 +237,60 @@ public class RoomChatService {
 
         sb.append("\n--- retrieved project excerpts ---\n");
         for (int i = 0; i < hits.size(); i++) {
-            QdrantClient.ScoredPoint h = hits.get(i);
-            String path = String.valueOf(h.payload().getOrDefault("path", "unknown"));
-            String text = String.valueOf(h.payload().getOrDefault("text", ""));
+            RetrievedChunk h = hits.get(i);
+
             sb.append("\n--- excerpt ").append(i + 1)
-                    .append(" (path=").append(path)
-                    .append(", score=").append(String.format("%.2f", h.score()))
+                    .append(" (path=").append(h.path());
+            if (h.symbol() != null) {
+                sb.append(", symbol=").append(h.symbol());
+            }
+            if (h.hasLineRange()) {
+                sb.append(", lines ").append(h.startLine()).append('-').append(h.endLine());
+            }
+            // Surface the retrieval provenance so the model can weigh
+            // exact-identifier matches (BM25) versus semantic matches
+            // (vector) when reasoning about how relevant an excerpt is.
+            sb.append(", score=").append(String.format("%.2f", h.finalScore()))
+                    .append(", source=").append(provenance(h))
                     .append(") ---\n")
-                    .append(text)
+                    .append(h.text())
                     .append("\n--- end excerpt ").append(i + 1).append(" ---\n");
         }
         return sb.toString();
     }
 
-    static List<Map<String, Object>> toContextPayload(List<QdrantClient.ScoredPoint> hits) {
+    private static String provenance(RetrievedChunk h) {
+        if (h.fromVector() && h.fromBm25()) return "vector+bm25";
+        if (h.fromVector()) return "vector";
+        if (h.fromBm25()) return "bm25";
+        return "unknown";
+    }
+
+    static List<Map<String, Object>> toContextPayload(List<RetrievedChunk> hits) {
         List<Map<String, Object>> out = new ArrayList<>(hits.size());
-        for (QdrantClient.ScoredPoint h : hits) {
-            out.add(Map.of(
-                    "path", h.payload().getOrDefault("path", "unknown"),
-                    "score", h.score(),
-                    "chunkIndex", h.payload().getOrDefault("chunkIndex", -1),
-                    "preview", truncate(String.valueOf(h.payload().getOrDefault("text", "")), 200)
-            ));
+        for (RetrievedChunk h : hits) {
+            // LinkedHashMap because optional fields (symbol, lines) are
+            // written only when present — Map.of cannot hold null values
+            // and stops at 10 pairs, neither of which is acceptable here.
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("path", h.path());
+            entry.put("score", h.finalScore());
+            entry.put("chunkIndex", h.chunkIndex());
+            entry.put("preview", truncate(h.text() == null ? "" : h.text(), 200));
+
+            if (h.symbol() != null) entry.put("symbol", h.symbol());
+            if (h.symbolKind() != null) entry.put("symbolKind", h.symbolKind());
+            if (h.startLine() != null) entry.put("startLine", h.startLine());
+            if (h.endLine() != null) entry.put("endLine", h.endLine());
+
+            // Expose retrieval provenance to the UI so the context drawer
+            // can show why a chunk surfaced (vector / bm25 / both).
+            List<String> source = new ArrayList<>(2);
+            if (h.fromVector()) source.add("vector");
+            if (h.fromBm25()) source.add("bm25");
+            entry.put("source", source);
+
+            out.add(entry);
         }
         return out;
     }

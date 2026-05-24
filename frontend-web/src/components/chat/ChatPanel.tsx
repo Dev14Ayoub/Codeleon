@@ -1,9 +1,9 @@
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users, Wrench, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { useRoomChat, type ChatContextChunk, type ChatMessage } from "@/lib/chat/useRoomChat";
+import { useRoomChat, type ChatContextChunk, type ChatMessage, type ToolCallEntry } from "@/lib/chat/useRoomChat";
 import {
   fetchChatHistory,
   fetchChatThreads,
@@ -44,6 +44,10 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
   const [indexStatus, setIndexStatus] = useState<IndexStatus>("idle");
   const [indexInfo, setIndexInfo] = useState<string | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
+  // Agent mode is opt-in: it routes each turn through the tool-using
+  // loop instead of the one-shot RAG pipeline. Default off so existing
+  // muscle memory is preserved.
+  const [agentMode, setAgentMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Signature of the project the last successful index covered. Lets us
   // skip re-indexing on a chat send when nothing changed since last time.
@@ -179,6 +183,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
       activeFilePath: activeFilePath ?? undefined,
       activeFileContent: editorText.trim() ? editorText : undefined,
       lastRunStderr: lastRunStderr ?? undefined,
+      mode: agentMode ? "agent" : "chat",
     });
   };
 
@@ -198,16 +203,36 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           <Bot className="h-4 w-4 text-cyan" />
           AI assistant
         </div>
-        {chat.messages.length > 0 && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
-            onClick={chat.clear}
-            aria-label="Clear conversation"
+        <div className="flex items-center gap-3">
+          {/* Agent mode toggle: routes turns through the tool-using loop.
+              Hidden when the panel is in read-only review mode below. */}
+          <label
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-1.5 text-[11px]",
+              agentMode ? "text-cyan" : "text-zinc-500 hover:text-zinc-300",
+            )}
+            title="When on, the assistant uses tools (search, read_file, list_files) to ground its answer."
           >
-            <Trash2 className="h-3 w-3" /> clear
-          </button>
-        )}
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={agentMode}
+              onChange={(e) => setAgentMode(e.target.checked)}
+            />
+            <Zap className={cn("h-3.5 w-3.5", agentMode ? "fill-cyan text-cyan" : "")} />
+            agent
+          </label>
+          {chat.messages.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
+              onClick={chat.clear}
+              aria-label="Clear conversation"
+            >
+              <Trash2 className="h-3 w-3" /> clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Privacy disclosure — invited members must know the room owner
@@ -304,6 +329,16 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
             />
           ))}
         </AnimatePresence>
+
+        {/* Agent-mode tool trace — rendered between the user's question
+            and the eventual assistant answer, in the order calls arrived. */}
+        {!isReviewing && chat.toolCalls.length > 0 && (
+          <div className="space-y-1.5">
+            {chat.toolCalls.map((tc) => (
+              <ToolCallBubble key={tc.id} call={tc} />
+            ))}
+          </div>
+        )}
 
         {chat.error && !isReviewing && (
           <div className="rounded-md border border-rose-900 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
@@ -485,7 +520,121 @@ function ChatBubble({
   );
 }
 
+/**
+ * Inline trace of one agent tool call. Renders the function name + a
+ * one-line summary of the arguments, with a status icon that flips from
+ * spinner → check (or alert) when the {@code tool_result} event arrives.
+ * Expanding the bubble shows the full arguments + the tool's returned
+ * text so a curious user (or a jury) can audit what the agent actually saw.
+ */
+function ToolCallBubble({ call }: { call: ToolCallEntry }) {
+  const [open, setOpen] = useState(false);
+  const isError = call.status === "error";
+  const isRunning = call.status === "running";
+  const argPreview = formatArgsPreview(call.arguments);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className={cn(
+        "rounded-md border px-2.5 py-1.5 text-[11px] font-mono",
+        isError
+          ? "border-rose-900 bg-rose-950/30 text-rose-300"
+          : isRunning
+            ? "border-cyan/40 bg-cyan/5 text-cyan"
+            : "border-zinc-800 bg-zinc-950 text-zinc-400",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-1.5 truncate">
+          {isRunning ? (
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+          ) : isError ? (
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+          ) : (
+            <Wrench className="h-3 w-3 shrink-0" />
+          )}
+          <span className="font-semibold">{call.name}</span>
+          {argPreview && <span className="truncate text-zinc-500">({argPreview})</span>}
+        </span>
+        {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5 border-t border-zinc-800 pt-2 text-zinc-400">
+          <div>
+            <span className="text-zinc-600">arguments</span>
+            <pre className="mt-0.5 max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-zinc-300">
+              {JSON.stringify(call.arguments, null, 2)}
+            </pre>
+          </div>
+          {call.result !== undefined && (
+            <div>
+              <span className="text-zinc-600">result</span>
+              <pre className="mt-0.5 max-h-48 overflow-auto whitespace-pre-wrap text-[10px] text-zinc-300">
+                {call.result}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function formatArgsPreview(args: Record<string, unknown>): string {
+  const entries = Object.entries(args).slice(0, 2);
+  if (entries.length === 0) return "";
+  return entries
+    .map(([k, v]) => {
+      const value = typeof v === "string" ? `"${v.length > 40 ? v.slice(0, 40) + "..." : v}"` : String(v);
+      return `${k}: ${value}`;
+    })
+    .join(", ");
+}
+
+/**
+ * Compact two-letter badge advertising which retrieval back-ends found
+ * the chunk. "V+B" (both vector and BM25 agreed) is a strong signal and
+ * is styled accent; "V" or "B" alone use neutral colours.
+ */
+function ProvenanceBadge({ source }: { source: string[] }) {
+  const hasVector = source.includes("vector");
+  const hasBm25 = source.includes("bm25");
+  const label = hasVector && hasBm25 ? "V+B" : hasVector ? "V" : hasBm25 ? "B" : null;
+  if (!label) return null;
+  const both = hasVector && hasBm25;
+  const title = both
+    ? "Surfaced by both vector and BM25 — strong signal"
+    : hasVector
+      ? "Semantic match (vector embedding)"
+      : "Lexical match (BM25 keyword)";
+  return (
+    <span
+      title={title}
+      className={cn(
+        "rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+        both ? "bg-cyan/15 text-cyan" : "bg-zinc-800 text-zinc-400",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
+  // Prefer the symbol-attributed label when the AST chunker found one
+  // ("AuthService.refreshToken · L87–L112"); fall back to the legacy
+  // path#chunkN label so older payloads keep rendering as before.
+  const hasRange = typeof chunk.startLine === "number" && typeof chunk.endLine === "number";
+  const lineLabel = hasRange
+    ? chunk.startLine === chunk.endLine
+      ? `L${chunk.startLine}`
+      : `L${chunk.startLine}–L${chunk.endLine}`
+    : null;
   return (
     <motion.li
       initial={{ opacity: 0, y: 6 }}
@@ -493,11 +642,27 @@ function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
       whileHover={{ y: -2 }}
       className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 transition-colors hover:border-cyan/40"
     >
-      <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500">
-        <span className="font-mono">
-          {chunk.path}#chunk{chunk.chunkIndex}
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-zinc-500">
+        <span className="truncate font-mono">
+          {chunk.symbol ? (
+            <>
+              <span className="text-zinc-300">{chunk.symbol}</span>
+              <span className="text-zinc-600"> · {chunk.path}</span>
+              {lineLabel && <span className="text-zinc-600"> · {lineLabel}</span>}
+            </>
+          ) : (
+            <>
+              {chunk.path}
+              {lineLabel ? <span className="text-zinc-600"> · {lineLabel}</span> : `#chunk${chunk.chunkIndex}`}
+            </>
+          )}
         </span>
-        <span className="font-mono">score {chunk.score.toFixed(2)}</span>
+        <span className="flex shrink-0 items-center gap-1 font-mono">
+          {chunk.source && chunk.source.length > 0 && (
+            <ProvenanceBadge source={chunk.source} />
+          )}
+          <span>score {chunk.score.toFixed(2)}</span>
+        </span>
       </div>
       <pre className="overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-4 text-zinc-300">
         {chunk.preview}

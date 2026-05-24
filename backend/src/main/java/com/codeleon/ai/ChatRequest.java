@@ -28,11 +28,25 @@ public record ChatRequest(
         List<OllamaClient.ChatMessage> history,
         @Size(max = 255) String activeFilePath,
         String activeFileContent,
-        String lastRunStderr
+        String lastRunStderr,
+        /** "chat" (default) → classic RAG; "agent" → tool-using loop. */
+        String mode
 ) {
     /** Server-side caps applied by RoomChatService before prompting. */
     public static final int MAX_ACTIVE_FILE_CHARS = 16_000;
     public static final int MAX_RUN_STDERR_CHARS = 4_000;
+
+    public static final String MODE_CHAT = "chat";
+    public static final String MODE_AGENT = "agent";
+
+    /**
+     * Backward-compatible 6-arg ctor: callers that pre-date the agent
+     * loop default to {@code mode="chat"} so behaviour is unchanged.
+     */
+    public ChatRequest(String query, Integer topK, List<OllamaClient.ChatMessage> history,
+                       String activeFilePath, String activeFileContent, String lastRunStderr) {
+        this(query, topK, history, activeFilePath, activeFileContent, lastRunStderr, null);
+    }
 
     public int topKOrDefault() {
         if (topK == null || topK <= 0) return 5;
@@ -50,5 +64,9 @@ public record ChatRequest(
 
     public boolean hasRunError() {
         return lastRunStderr != null && !lastRunStderr.isBlank();
+    }
+
+    public boolean isAgentMode() {
+        return mode != null && MODE_AGENT.equalsIgnoreCase(mode);
     }
 }
