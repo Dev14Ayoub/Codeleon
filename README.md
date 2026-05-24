@@ -162,7 +162,10 @@ nix develop --command npm --prefix frontend-web run build
 
 The application itself still runs through Docker/Postgres/Redis as
 usual. Imported user projects can also be run through the Docker-contained
-Nix project runner from the room workspace.
+Nix project runner from the room workspace. The runner keeps separate
+Docker volumes for the Nix store plus Maven, npm, and pip caches, so
+cold first runs can be slower while later runs reuse downloaded
+toolchains and dependencies.
 
 ---
 

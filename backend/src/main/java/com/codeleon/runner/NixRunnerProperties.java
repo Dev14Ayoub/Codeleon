@@ -7,6 +7,9 @@ public record NixRunnerProperties(
         boolean enabled,
         String image,
         String cacheVolume,
+        String mavenCacheVolume,
+        String npmCacheVolume,
+        String pipCacheVolume,
         int timeoutMs,
         int memoryMb,
         double cpus,
@@ -16,6 +19,9 @@ public record NixRunnerProperties(
     public NixRunnerProperties {
         if (image == null || image.isBlank()) image = "nixos/nix:2.24.11";
         if (cacheVolume == null || cacheVolume.isBlank()) cacheVolume = "codeleon-nix-store";
+        if (mavenCacheVolume == null || mavenCacheVolume.isBlank()) mavenCacheVolume = "codeleon-maven-cache";
+        if (npmCacheVolume == null || npmCacheVolume.isBlank()) npmCacheVolume = "codeleon-npm-cache";
+        if (pipCacheVolume == null || pipCacheVolume.isBlank()) pipCacheVolume = "codeleon-pip-cache";
         if (timeoutMs <= 0) timeoutMs = 180_000;
         if (memoryMb <= 0) memoryMb = 1024;
         if (cpus <= 0) cpus = 1.0;

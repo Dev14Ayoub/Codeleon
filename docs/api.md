@@ -268,7 +268,11 @@ generates a temporary flake for common manifests:
 
 - `pom.xml` -> Java 21 + Maven, default command `mvn test`
 - `package.json` -> Node + npm, default command installs dependencies with `npm install` or `npm ci`, then runs `test`/`build` when present
-- `requirements.txt` / `pyproject.toml` -> Python 3.12 + pip/pytest, default command installs dependencies before running tests/main/compile
+- `requirements.txt` / `pyproject.toml` -> Python 3.12 + pip/pytest, default command creates a local `.codeleon-venv` before installing dependencies for tests/main/compile
+
+The runner uses persistent Docker volumes for `/nix`, Maven, npm, and
+pip caches. First runs may need to download toolchains and dependencies;
+later runs reuse those volumes.
 
 ```json
 {
@@ -293,7 +297,9 @@ Response:
   "command": "mvn test",
   "generatedEnvironment": true,
   "fileCount": 2,
-  "timeoutMs": 180000
+  "timeoutMs": 180000,
+  "runnerImage": "nixos/nix:2.24.11",
+  "cacheVolumes": ["codeleon-nix-store", "codeleon-maven-cache"]
 }
 ```
 

@@ -255,6 +255,8 @@ export interface ProjectRunResult extends RunResult {
   generatedEnvironment: boolean;
   fileCount: number;
   timeoutMs: number;
+  runnerImage: string;
+  cacheVolumes: string[];
 }
 
 export interface ProjectRunDetection {

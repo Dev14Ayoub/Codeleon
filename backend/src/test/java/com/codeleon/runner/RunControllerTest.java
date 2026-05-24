@@ -128,7 +128,9 @@ class RunControllerTest {
                 "mvn test",
                 true,
                 2,
-                30000
+                30000,
+                "nixos/nix:2.24.11",
+                List.of("codeleon-nix-store-test", "codeleon-maven-cache-test")
         ));
 
         mockMvc.perform(post("/rooms/" + roomId + "/run/project")
@@ -146,7 +148,10 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.exitCode").value(0))
                 .andExpect(jsonPath("$.environment").value("Generated Java/Maven"))
                 .andExpect(jsonPath("$.command").value("mvn test"))
-                .andExpect(jsonPath("$.generatedEnvironment").value(true));
+                .andExpect(jsonPath("$.generatedEnvironment").value(true))
+                .andExpect(jsonPath("$.runnerImage").value("nixos/nix:2.24.11"))
+                .andExpect(jsonPath("$.cacheVolumes[0]").value("codeleon-nix-store-test"))
+                .andExpect(jsonPath("$.cacheVolumes[1]").value("codeleon-maven-cache-test"));
 
         ArgumentCaptor<ProjectRunRequest> requestCaptor = ArgumentCaptor.forClass(ProjectRunRequest.class);
         verify(nixProjectRunnerService).run(requestCaptor.capture());

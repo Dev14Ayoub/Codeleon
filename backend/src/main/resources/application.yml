@@ -62,6 +62,9 @@ codeleon:
       enabled: ${RUNNER_NIX_ENABLED:true}
       image: ${RUNNER_NIX_IMAGE:nixos/nix:2.24.11}
       cache-volume: ${RUNNER_NIX_CACHE_VOLUME:codeleon-nix-store}
+      maven-cache-volume: ${RUNNER_NIX_MAVEN_CACHE_VOLUME:codeleon-maven-cache}
+      npm-cache-volume: ${RUNNER_NIX_NPM_CACHE_VOLUME:codeleon-npm-cache}
+      pip-cache-volume: ${RUNNER_NIX_PIP_CACHE_VOLUME:codeleon-pip-cache}
       timeout-ms: ${RUNNER_NIX_TIMEOUT_MS:180000}
       memory-mb: ${RUNNER_NIX_MEMORY_MB:1024}
       cpus: ${RUNNER_NIX_CPUS:1.0}

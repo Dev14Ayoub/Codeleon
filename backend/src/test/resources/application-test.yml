@@ -39,6 +39,9 @@ codeleon:
       enabled: true
       image: nixos/nix:2.24.11
       cache-volume: codeleon-nix-store-test
+      maven-cache-volume: codeleon-maven-cache-test
+      npm-cache-volume: codeleon-npm-cache-test
+      pip-cache-volume: codeleon-pip-cache-test
       timeout-ms: 30000
       memory-mb: 512
       cpus: 0.5

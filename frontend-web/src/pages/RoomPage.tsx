@@ -920,18 +920,40 @@ function detectProjectRunEnvironment(files: IndexFile[]): ProjectRunEnvironment 
       (path) => path.startsWith("test_") || path.includes("/test_") || path.startsWith("tests/"),
     );
     if (hasTests) {
-      return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "pytest") };
+      return {
+        label: "Generated Python",
+        defaultCommand: pythonVenvCommand(installCommand, "python -m pytest", true),
+      };
     }
     if (normalizedPaths.has("main.py")) {
-      return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "python main.py") };
+      return {
+        label: "Generated Python",
+        defaultCommand: installCommand
+          ? pythonVenvCommand(installCommand, "python main.py", false)
+          : "python main.py",
+      };
     }
-    return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "python -m py_compile $(find . -name '*.py' -type f)") };
+    const compileCommand = "python -m py_compile $(find . -name '*.py' -type f)";
+    return {
+      label: "Generated Python",
+      defaultCommand: installCommand
+        ? pythonVenvCommand(installCommand, compileCommand, false)
+        : compileCommand,
+    };
   }
   return null;
 }
 
-function joinShellCommands(first: string | null, second: string) {
-  return first ? `${first} && ${second}` : second;
+function pythonVenvCommand(installCommand: string | null, runCommand: string, installPytest: boolean) {
+  return [
+    "python -m venv .codeleon-venv",
+    ". .codeleon-venv/bin/activate",
+    installCommand,
+    installPytest ? "python -m pip install pytest" : null,
+    runCommand,
+  ]
+    .filter(Boolean)
+    .join(" && ");
 }
 
 function normalizeProjectPath(path: string) {
@@ -987,6 +1009,12 @@ function OutputPanel({
         ? "text-emerald-400"
         : "text-rose-400"
     : "text-zinc-500";
+  const isProjectPending = isPending && runContext?.kind === "project";
+  const pendingMessage = isProjectPending
+    ? `Preparing ${runContext.environment ?? projectEnvironment?.label ?? "Nix environment"} and running ${
+        (runContext.command ?? projectCommandForDisplay) || "the project command"
+      }...`
+    : "Running...";
 
   return (
     <div className="h-64 border-t border-zinc-800 bg-zinc-950">
@@ -997,11 +1025,13 @@ function OutputPanel({
         </div>
         <div className={`font-mono text-xs ${exitTone}`}>
           {isPending
-            ? "Running..."
+            ? isProjectPending
+              ? "Preparing Nix..."
+              : "Running..."
             : result
               ? result.timedOut
                 ? `timed out after ${result.durationMs} ms`
-                : `exit ${result.exitCode} • ${result.durationMs} ms`
+                : `exit ${result.exitCode} - ${result.durationMs} ms`
               : error
                 ? "error"
                 : "idle"}
@@ -1050,11 +1080,17 @@ function OutputPanel({
           <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
             {error ? (
               <span className="text-rose-400">{error}</span>
+            ) : isPending ? (
+              <span className="text-zinc-500">
+                {pendingMessage}
+                {isProjectPending &&
+                  "\nFirst run may download the Nix toolchain and project dependencies. Later runs reuse Docker cache volumes."}
+              </span>
             ) : result ? (
               <>
                 {projectResult && (
                   <span className="text-cyan">
-                    {`Environment: ${projectResult.environment}${projectResult.generatedEnvironment ? " (generated)" : ""}\nCommand: ${projectResult.command}\nFiles: ${projectResult.fileCount} | Timeout: ${projectResult.timeoutMs} ms\n\n`}
+                    {`Environment: ${projectResult.environment}${projectResult.generatedEnvironment ? " (generated)" : ""}\nCommand: ${projectResult.command}\nRunner: ${projectResult.runnerImage}\nFiles: ${projectResult.fileCount} | Timeout: ${projectResult.timeoutMs} ms\nCaches: ${projectResult.cacheVolumes.join(", ")}\n\n`}
                   </span>
                 )}
                 {result.stdout}

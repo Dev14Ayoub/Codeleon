@@ -53,9 +53,9 @@ public class NixProjectRunnerService {
                 Files.writeString(workspace.resolve("flake.lock"), generatedFlakeLock(), StandardCharsets.UTF_8);
             }
 
-            List<String> command = buildDockerCommand(containerName, workspace, spec.command());
+            List<String> command = buildDockerCommand(containerName, workspace, spec);
             RunResult result = execute(command, containerName, props.timeoutMs());
-            return ProjectRunResult.from(result, spec, fileCount, props.timeoutMs());
+            return ProjectRunResult.from(result, spec, fileCount, props);
         } catch (IOException ex) {
             log.error("Failed to prepare Nix workspace", ex);
             throw new BadRequestException("Could not prepare Nix project: " + ex.getMessage());
@@ -158,7 +158,7 @@ public class NixProjectRunnerService {
                 """;
     }
 
-    List<String> buildDockerCommand(String containerName, Path workspace, String projectCommand) {
+    List<String> buildDockerCommand(String containerName, Path workspace, ProjectRunSpec spec) {
         List<String> cmd = new ArrayList<>();
         cmd.add("docker");
         cmd.add("run");
@@ -174,13 +174,31 @@ public class NixProjectRunnerService {
         cmd.add(workspace.toAbsolutePath() + ":/workspace");
         cmd.add("-v");
         cmd.add(props.cacheVolume() + ":/nix");
-        cmd.add("--env=CODELEON_PROJECT_COMMAND=" + projectCommand);
+        addDependencyCacheMounts(cmd, spec.environment());
+        cmd.add("--env=CODELEON_PROJECT_COMMAND=" + spec.command());
         cmd.add("--workdir=/workspace");
         cmd.add(props.image());
         cmd.add("sh");
         cmd.add("-lc");
         cmd.add("nix --extra-experimental-features 'nix-command flakes' develop --command sh -lc \"$CODELEON_PROJECT_COMMAND\"");
         return cmd;
+    }
+
+    private void addDependencyCacheMounts(List<String> cmd, ProjectEnvironment environment) {
+        if (environment == ProjectEnvironment.JAVA_MAVEN || environment == ProjectEnvironment.NIX_FLAKE) {
+            cmd.add("-v");
+            cmd.add(props.mavenCacheVolume() + ":/root/.m2");
+        }
+        if (environment == ProjectEnvironment.NODE || environment == ProjectEnvironment.NIX_FLAKE) {
+            cmd.add("-v");
+            cmd.add(props.npmCacheVolume() + ":/root/.npm");
+            cmd.add("--env=NPM_CONFIG_CACHE=/root/.npm");
+        }
+        if (environment == ProjectEnvironment.PYTHON || environment == ProjectEnvironment.NIX_FLAKE) {
+            cmd.add("-v");
+            cmd.add(props.pipCacheVolume() + ":/root/.cache/pip");
+            cmd.add("--env=PIP_CACHE_DIR=/root/.cache/pip");
+        }
     }
 
     private void materializeProject(List<RunRequest.RunFile> files, Path workspace) throws IOException {
@@ -249,12 +267,17 @@ public class NixProjectRunnerService {
                         || path.contains("/test_")
                         || path.startsWith("tests/")));
         if (hasTests) {
-            return withDependencyInstall(dependencyInstall, "pytest");
+            return withPythonVenv(dependencyInstall, "python -m pytest", true);
         }
         if (hasPath(files, "main.py")) {
-            return withDependencyInstall(dependencyInstall, "python main.py");
+            return dependencyInstall == null
+                    ? "python main.py"
+                    : withPythonVenv(dependencyInstall, "python main.py", false);
         }
-        return withDependencyInstall(dependencyInstall, "python -m py_compile $(find . -name '*.py' -type f)");
+        String compileCommand = "python -m py_compile $(find . -name '*.py' -type f)";
+        return dependencyInstall == null
+                ? compileCommand
+                : withPythonVenv(dependencyInstall, compileCommand, false);
     }
 
     private static String pythonDependencyInstallCommand(List<RunRequest.RunFile> files) {
@@ -268,8 +291,18 @@ public class NixProjectRunnerService {
         return null;
     }
 
-    private static String withDependencyInstall(String installCommand, String runCommand) {
-        return installCommand == null ? runCommand : installCommand + " && " + runCommand;
+    private static String withPythonVenv(String installCommand, String runCommand, boolean installPytest) {
+        List<String> commands = new ArrayList<>();
+        commands.add("python -m venv .codeleon-venv");
+        commands.add(". .codeleon-venv/bin/activate");
+        if (installCommand != null) {
+            commands.add(installCommand);
+        }
+        if (installPytest) {
+            commands.add("python -m pip install pytest");
+        }
+        commands.add(runCommand);
+        return String.join(" && ", commands);
     }
 
     private static String normalizeCommand(String command) {

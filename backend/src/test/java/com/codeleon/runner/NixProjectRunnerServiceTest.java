@@ -13,7 +13,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NixProjectRunnerServiceTest {
 
     private final NixProjectRunnerService service = new NixProjectRunnerService(
-            new NixRunnerProperties(true, "nixos/nix:2.24.11", "codeleon-nix-store-test", 30_000, 512, 0.5, 64, 8_192)
+            new NixRunnerProperties(
+                    true,
+                    "nixos/nix:2.24.11",
+                    "codeleon-nix-store-test",
+                    "codeleon-maven-cache-test",
+                    "codeleon-npm-cache-test",
+                    "codeleon-pip-cache-test",
+                    30_000,
+                    512,
+                    0.5,
+                    64,
+                    8_192
+            )
     );
 
     @Test
@@ -84,8 +96,8 @@ class NixProjectRunnerServiceTest {
         ));
 
         assertEquals(NixProjectRunnerService.ProjectEnvironment.PYTHON, testSpec.environment());
-        assertEquals("python -m pip install -r requirements.txt && pytest", testSpec.command());
-        assertEquals("python -m pip install . && python main.py", mainSpec.command());
+        assertEquals("python -m venv .codeleon-venv && . .codeleon-venv/bin/activate && python -m pip install -r requirements.txt && python -m pip install pytest && python -m pytest", testSpec.command());
+        assertEquals("python -m venv .codeleon-venv && . .codeleon-venv/bin/activate && python -m pip install . && python main.py", mainSpec.command());
         assertEquals("python main.py", toolOnlySpec.command());
     }
 
@@ -112,7 +124,7 @@ class NixProjectRunnerServiceTest {
                 new RunResult("ok", "", 0, 10L, false),
                 spec,
                 1,
-                30_000
+                testProperties()
         );
 
         assertEquals("Generated Java/Maven", result.environment());
@@ -120,6 +132,9 @@ class NixProjectRunnerServiceTest {
         assertTrue(result.generatedEnvironment());
         assertEquals(1, result.fileCount());
         assertEquals(30_000, result.timeoutMs());
+        assertEquals("nixos/nix:2.24.11", result.runnerImage());
+        assertTrue(result.cacheVolumes().contains("codeleon-nix-store-test"));
+        assertTrue(result.cacheVolumes().contains("codeleon-maven-cache-test"));
     }
 
     @Test
@@ -135,10 +150,14 @@ class NixProjectRunnerServiceTest {
 
     @Test
     void buildsDockerCommandWithSandboxLimitsAndWorkspace() {
+        NixProjectRunnerService.ProjectRunSpec spec = service.detect(new ProjectRunRequest(
+                null,
+                List.of(file("pom.xml", "<project></project>"))
+        ));
         List<String> command = service.buildDockerCommand(
                 "codeleon-nix-test",
                 Path.of("C:/tmp/codeleon-nix-workspace"),
-                "mvn test"
+                spec
         );
 
         assertTrue(command.contains("--memory=512m"));
@@ -147,9 +166,37 @@ class NixProjectRunnerServiceTest {
         assertTrue(command.contains("--pids-limit=64"));
         assertTrue(command.contains("--security-opt=no-new-privileges"));
         assertTrue(command.contains("codeleon-nix-store-test:/nix"));
+        assertTrue(command.contains("codeleon-maven-cache-test:/root/.m2"));
         assertTrue(command.contains("nixos/nix:2.24.11"));
         assertTrue(command.contains("--env=CODELEON_PROJECT_COMMAND=mvn test"));
         assertTrue(command.stream().anyMatch(part -> part.endsWith(":/workspace")));
+    }
+
+    @Test
+    void mountsDependencyCachesForDetectedEnvironment() {
+        List<String> nodeCommand = service.buildDockerCommand(
+                "codeleon-nix-node",
+                Path.of("C:/tmp/codeleon-nix-node"),
+                service.detect(new ProjectRunRequest(null, List.of(file("package.json", "{}"))))
+        );
+        List<String> pythonCommand = service.buildDockerCommand(
+                "codeleon-nix-python",
+                Path.of("C:/tmp/codeleon-nix-python"),
+                service.detect(new ProjectRunRequest(null, List.of(file("requirements.txt", ""))))
+        );
+        List<String> flakeCommand = service.buildDockerCommand(
+                "codeleon-nix-flake",
+                Path.of("C:/tmp/codeleon-nix-flake"),
+                service.detect(new ProjectRunRequest(null, List.of(file("flake.nix", "{}"))))
+        );
+
+        assertTrue(nodeCommand.contains("codeleon-npm-cache-test:/root/.npm"));
+        assertTrue(nodeCommand.contains("--env=NPM_CONFIG_CACHE=/root/.npm"));
+        assertTrue(pythonCommand.contains("codeleon-pip-cache-test:/root/.cache/pip"));
+        assertTrue(pythonCommand.contains("--env=PIP_CACHE_DIR=/root/.cache/pip"));
+        assertTrue(flakeCommand.contains("codeleon-maven-cache-test:/root/.m2"));
+        assertTrue(flakeCommand.contains("codeleon-npm-cache-test:/root/.npm"));
+        assertTrue(flakeCommand.contains("codeleon-pip-cache-test:/root/.cache/pip"));
     }
 
     @Test
@@ -181,5 +228,21 @@ class NixProjectRunnerServiceTest {
 
     private static RunRequest.RunFile file(String path, String text) {
         return new RunRequest.RunFile(path, text);
+    }
+
+    private static NixRunnerProperties testProperties() {
+        return new NixRunnerProperties(
+                true,
+                "nixos/nix:2.24.11",
+                "codeleon-nix-store-test",
+                "codeleon-maven-cache-test",
+                "codeleon-npm-cache-test",
+                "codeleon-pip-cache-test",
+                30_000,
+                512,
+                0.5,
+                64,
+                8_192
+        );
     }
 }
