@@ -127,6 +127,40 @@ export function RoomPage() {
       text: collab.ydoc.getText(file.path).toString(),
     }));
   }, [roomFilesQuery.data, collab.ydoc]);
+
+  /**
+   * Applies an agent-proposed {find → replace} patch to the Y.Text bound
+   * to {@code path}. Re-validates that {@code find} is still present and
+   * unambiguous at click time — the file may have changed between the
+   * agent's proposal and the user's click. On success the CRDT update
+   * propagates to every collaborator via the existing y-websocket
+   * provider; no separate save is required.
+   */
+  const applyPatch = useCallback(
+    (path: string, find: string, replace: string): { ok: boolean; reason?: string } => {
+      if (!canEdit) {
+        return { ok: false, reason: "You do not have edit rights in this room." };
+      }
+      const yText = collab.ydoc.getText(path);
+      const current = yText.toString();
+      const first = current.indexOf(find);
+      if (first < 0) {
+        return { ok: false, reason: "The target text is no longer in the file — the agent's proposal is stale." };
+      }
+      const last = current.lastIndexOf(find);
+      if (first !== last) {
+        return { ok: false, reason: "The target text now appears multiple times — refusing to apply." };
+      }
+      // Single CRDT transaction so collaborators see one atomic update,
+      // not a delete followed by an insert at the same position.
+      collab.ydoc.transact(() => {
+        yText.delete(first, find.length);
+        yText.insert(first, replace);
+      });
+      return { ok: true };
+    },
+    [canEdit, collab.ydoc],
+  );
   const staticPreviewHtml = buildStaticPreviewHtml(getAllFiles());
   const localProjectEnvironment = detectProjectRunEnvironment(getAllFiles());
   const projectDetectionQuery = useQuery({
@@ -807,6 +841,7 @@ export function RoomPage() {
               getAllFiles={getAllFiles}
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
+              onApplyPatch={applyPatch}
             />
           </aside>
         )}
@@ -846,6 +881,7 @@ export function RoomPage() {
               getAllFiles={getAllFiles}
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
+              onApplyPatch={applyPatch}
             />
           </aside>
         )}
@@ -1308,6 +1344,7 @@ function RoomRightPanel({
   activePath,
   lastRunStderr,
   isOwner,
+  onApplyPatch,
 }: {
   tab: RightPanelTab;
   onTabChange: (tab: RightPanelTab) => void;
@@ -1319,6 +1356,7 @@ function RoomRightPanel({
   activePath: string | null;
   lastRunStderr: string | null;
   isOwner: boolean;
+  onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
 }) {
   const tabs: { id: RightPanelTab; label: string; icon: JSX.Element }[] = [
     { id: "ai", label: "AI", icon: <Bot className="h-3.5 w-3.5" /> },
@@ -1390,6 +1428,7 @@ function RoomRightPanel({
                 activeFilePath={activePath}
                 lastRunStderr={lastRunStderr}
                 isOwner={isOwner}
+                onApplyPatch={onApplyPatch}
               />
             </motion.section>
           )}

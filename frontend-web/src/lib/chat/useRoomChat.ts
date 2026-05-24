@@ -59,9 +59,30 @@ export interface ChatSendContext {
 export type ToolCallStatus = "running" | "done" | "error";
 
 /**
+ * A parsed patch proposal — emitted by the {@code propose_patch} tool as
+ * a JSON-encoded result. The chat panel detects this shape and renders a
+ * dedicated Apply / Reject card instead of the generic tool-call bubble.
+ */
+export interface PatchProposal {
+  patchId: string;
+  path: string;
+  find: string;
+  replace: string;
+  rationale?: string;
+  /** Set to true once the user clicks Apply and it succeeds. */
+  applied?: boolean;
+  /** Set when Apply fails — populated by the page-level handler. */
+  applyError?: string;
+}
+
+/**
  * One tool invocation surfaced by the agent loop. {@code result} is set
  * once the backend's {@code tool_result} event arrives — until then the
  * call is rendered in a "running" state.
+ *
+ * <p>For {@code propose_patch} tools the result content is JSON; we
+ * parse it once on arrival into {@code patchProposal} so the renderer
+ * doesn't have to deal with strings.
  */
 export interface ToolCallEntry {
   id: string;
@@ -69,6 +90,33 @@ export interface ToolCallEntry {
   arguments: Record<string, unknown>;
   result?: string;
   status: ToolCallStatus;
+  /** Populated when the tool is {@code propose_patch} and the result
+   *  parsed cleanly. The UI uses this to render the Apply card. */
+  patchProposal?: PatchProposal;
+}
+
+/**
+ * Parses a {@code propose_patch} tool result string. The backend emits
+ * a fixed JSON shape; anything else (legacy callers, malformed model
+ * output) just returns {@code undefined} so the renderer falls back to
+ * the generic tool-call bubble.
+ */
+function tryParsePatchProposal(content: string | undefined): PatchProposal | undefined {
+  if (!content) return undefined;
+  try {
+    const parsed = JSON.parse(content) as Partial<PatchProposal> & { kind?: string };
+    if (parsed.kind !== "patch_proposal") return undefined;
+    if (!parsed.patchId || !parsed.path || typeof parsed.find !== "string") return undefined;
+    return {
+      patchId: parsed.patchId,
+      path: parsed.path,
+      find: parsed.find,
+      replace: parsed.replace ?? "",
+      rationale: parsed.rationale,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 interface UseRoomChatResult {
@@ -76,6 +124,9 @@ interface UseRoomChatResult {
   context: ChatContextChunk[];
   /** Tool calls observed for the current turn (cleared on each send). */
   toolCalls: ToolCallEntry[];
+  /** Updates the applied/applyError state of a previously-seen patch
+   *  proposal — called by the chat panel once the user clicks Apply. */
+  markPatchApplied: (patchId: string, applied: boolean, error?: string) => void;
   streaming: boolean;
   /**
    * True while we're hydrating the caller's persisted conversation
@@ -150,6 +201,19 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
     setToolCalls([]);
     setError(null);
     setLastStats(null);
+  }, []);
+
+  const markPatchApplied = useCallback((patchId: string, applied: boolean, error?: string) => {
+    setToolCalls((prev) =>
+      prev.map((tc) =>
+        tc.patchProposal?.patchId === patchId
+          ? {
+              ...tc,
+              patchProposal: { ...tc.patchProposal, applied, applyError: error },
+            }
+          : tc,
+      ),
+    );
   }, []);
 
   const cancel = useCallback(() => {
@@ -306,6 +370,10 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
               content?: string;
               error?: boolean;
             };
+            const proposal =
+              !parsed.error && parsed.name === "propose_patch"
+                ? tryParsePatchProposal(parsed.content)
+                : undefined;
             setToolCalls((prev) =>
               prev.map((tc) =>
                 tc.id === parsed.id
@@ -313,6 +381,7 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
                       ...tc,
                       result: parsed.content ?? "",
                       status: parsed.error ? "error" : "done",
+                      patchProposal: proposal ?? tc.patchProposal,
                     }
                   : tc,
               ),
@@ -354,5 +423,17 @@ export function useRoomChat(roomId: string | undefined): UseRoomChatResult {
     [roomId, messages, streaming],
   );
 
-  return { messages, context, toolCalls, streaming, loadingHistory, error, lastStats, send, clear, cancel };
+  return {
+    messages,
+    context,
+    toolCalls,
+    markPatchApplied,
+    streaming,
+    loadingHistory,
+    error,
+    lastStats,
+    send,
+    clear,
+    cancel,
+  };
 }

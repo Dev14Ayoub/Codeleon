@@ -1,9 +1,9 @@
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users, Wrench, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users, Wrench, X, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { useRoomChat, type ChatContextChunk, type ChatMessage, type ToolCallEntry } from "@/lib/chat/useRoomChat";
+import { useRoomChat, type ChatContextChunk, type ChatMessage, type PatchProposal, type ToolCallEntry } from "@/lib/chat/useRoomChat";
 import {
   fetchChatHistory,
   fetchChatThreads,
@@ -25,6 +25,14 @@ interface ChatPanelProps {
   lastRunStderr: string | null;
   /** Whether the caller is the room owner — drives the privacy disclosure. */
   isOwner: boolean;
+  /**
+   * Applies a {find → replace} patch to the Y.Text bound to {@code path}.
+   * Returns {@code {ok:true}} on success, or {@code {ok:false, reason}}
+   * when the find string is missing/ambiguous (e.g. the file changed
+   * between proposal and apply). Optional — the chat panel hides the
+   * Apply button when not provided.
+   */
+  onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
 }
 
 /** Cheap change-detection key for a project snapshot. */
@@ -36,7 +44,7 @@ const MAX_INDEX_FILES = 1_000;
 const MAX_INDEX_TEXT_CHARS = 200_000;
 type IndexStatus = "idle" | "indexing" | "indexed" | "failed" | "blocked" | "empty";
 
-export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner }: ChatPanelProps) {
+export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch }: ChatPanelProps) {
   const chat = useRoomChat(roomId);
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -331,12 +339,37 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
         </AnimatePresence>
 
         {/* Agent-mode tool trace — rendered between the user's question
-            and the eventual assistant answer, in the order calls arrived. */}
+            and the eventual assistant answer, in the order calls arrived.
+            A propose_patch tool with a parsed proposal renders as a
+            dedicated Apply card instead of the generic bubble. */}
         {!isReviewing && chat.toolCalls.length > 0 && (
           <div className="space-y-1.5">
-            {chat.toolCalls.map((tc) => (
-              <ToolCallBubble key={tc.id} call={tc} />
-            ))}
+            {chat.toolCalls.map((tc) =>
+              tc.patchProposal ? (
+                <PatchProposalCard
+                  key={tc.id}
+                  proposal={tc.patchProposal}
+                  onApply={
+                    onApplyPatch
+                      ? () => {
+                          const outcome = onApplyPatch(
+                            tc.patchProposal!.path,
+                            tc.patchProposal!.find,
+                            tc.patchProposal!.replace,
+                          );
+                          chat.markPatchApplied(
+                            tc.patchProposal!.patchId,
+                            outcome.ok,
+                            outcome.ok ? undefined : outcome.reason,
+                          );
+                        }
+                      : undefined
+                  }
+                />
+              ) : (
+                <ToolCallBubble key={tc.id} call={tc} />
+              ),
+            )}
           </div>
         )}
 
@@ -518,6 +551,114 @@ function ChatBubble({
       </div>
     </motion.div>
   );
+}
+
+/**
+ * Renders an agent-proposed file edit as a reviewable card with Apply /
+ * Reject controls. The body shows a minimal red/green diff of the find
+ * and replace blocks — no full file context, the agent's job is to
+ * propose tight changes the user can audit at a glance.
+ *
+ * <p>{@code onApply} is optional so the panel can render the card in
+ * read-only contexts (e.g. owner-reviewing-a-thread mode) without
+ * pretending Apply is wired up.
+ */
+function PatchProposalCard({
+  proposal,
+  onApply,
+}: {
+  proposal: PatchProposal;
+  onApply?: () => void;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const applied = proposal.applied === true;
+  const failed = proposal.applied === false && proposal.applyError !== undefined;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className={cn(
+        "rounded-md border bg-zinc-950 text-[11px]",
+        applied
+          ? "border-emerald-800"
+          : failed
+            ? "border-rose-900"
+            : "border-amber-700/60",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2.5 py-1.5">
+        <span className="flex min-w-0 items-center gap-1.5 truncate font-mono">
+          <Wrench className="h-3 w-3 shrink-0 text-amber-400" />
+          <span className="font-semibold text-zinc-200">propose_patch</span>
+          <span className="truncate text-zinc-500">{proposal.path}</span>
+        </span>
+        {!applied && !failed && (
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="text-zinc-600 hover:text-zinc-300"
+            aria-label="Dismiss patch"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+      {proposal.rationale && (
+        <p className="border-b border-zinc-900 px-2.5 py-1.5 text-zinc-400">{proposal.rationale}</p>
+      )}
+      <div className="space-y-0 px-2.5 py-1.5 font-mono">
+        {proposal.find && (
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-sm bg-rose-950/30 px-2 py-1 text-[10px] text-rose-200">
+            - {prefixLines(proposal.find, "- ")}
+          </pre>
+        )}
+        {proposal.replace && (
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-emerald-950/30 px-2 py-1 text-[10px] text-emerald-200">
+            + {prefixLines(proposal.replace, "+ ")}
+          </pre>
+        )}
+        {!proposal.replace && (
+          <p className="mt-1 text-zinc-500 italic">(deletes the matched region)</p>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-zinc-800 px-2.5 py-1.5">
+        {applied ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+            <CheckCircle2 className="h-3 w-3" /> applied
+          </span>
+        ) : failed ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-rose-300">
+            <AlertTriangle className="h-3 w-3" /> {proposal.applyError}
+          </span>
+        ) : (
+          <span className="text-[11px] text-zinc-500">awaiting your decision</span>
+        )}
+        {!applied && onApply && (
+          <div className="flex items-center gap-1.5">
+            <Button type="button" variant="secondary" onClick={() => setDismissed(true)}>
+              Reject
+            </Button>
+            <Button type="button" onClick={onApply}>
+              Apply
+            </Button>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/** First-pass line prefix for the diff blocks — used only for visual
+ *  weight in the rendered diff. The actual replace string is unmodified. */
+function prefixLines(text: string, _prefix: string): string {
+  // Keep the prefix-free body visible to the user — the leading "- "/"+ "
+  // in the JSX wraps each block, not each line. This helper exists in
+  // case we want per-line prefixing later (e.g. multi-line diffs in
+  // monospaced columns); for now it's a passthrough so the inserted
+  // code stays copy-pasteable.
+  return text;
 }
 
 /**
