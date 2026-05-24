@@ -4,6 +4,7 @@ import com.codeleon.ai.agent.AgentLoop;
 import com.codeleon.ai.agent.AgentLoopResult;
 import com.codeleon.ai.history.RoomChatHistoryService;
 import com.codeleon.ai.history.RoomChatRole;
+import com.codeleon.ai.metrics.AiMetricsService;
 import com.codeleon.ai.retrieval.HybridRetriever;
 import com.codeleon.ai.retrieval.RetrievedChunk;
 import com.codeleon.user.User;
@@ -51,21 +52,31 @@ public class RoomChatService {
     private final RoomChatHistoryService history;
     /** Nullable for the same reason — legacy unit tests pre-date the loop. */
     private final AgentLoop agentLoop;
+    /** Nullable so unit tests can ignore metrics; production wiring supplies it. */
+    private final AiMetricsService metrics;
 
-    // @Autowired pins Spring to this constructor; the legacy 3-arg ctor
-    // below exists for unit tests that pre-date the agent loop.
+    // @Autowired pins Spring to this constructor; the legacy 3-/4-arg
+    // ctors below exist for unit tests that pre-date metrics/agent loop.
     @Autowired
     public RoomChatService(OllamaStreamer streamer, HybridRetriever retriever,
-                            RoomChatHistoryService history, AgentLoop agentLoop) {
+                            RoomChatHistoryService history, AgentLoop agentLoop,
+                            AiMetricsService metrics) {
         this.streamer = streamer;
         this.retriever = retriever;
         this.history = history;
         this.agentLoop = agentLoop;
+        this.metrics = metrics;
     }
 
-    /** Backward-compatible constructor for tests that pre-date the agent loop. */
+    /** Backward-compatible constructor for tests pre-dating metrics. */
+    public RoomChatService(OllamaStreamer streamer, HybridRetriever retriever,
+                            RoomChatHistoryService history, AgentLoop agentLoop) {
+        this(streamer, retriever, history, agentLoop, null);
+    }
+
+    /** Backward-compatible constructor for tests pre-dating the agent loop. */
     public RoomChatService(OllamaStreamer streamer, HybridRetriever retriever, RoomChatHistoryService history) {
-        this(streamer, retriever, history, null);
+        this(streamer, retriever, history, null, null);
     }
 
     public void streamChat(UUID roomId, User user, ChatRequest request, SseEmitter emitter) {
@@ -137,9 +148,14 @@ public class RoomChatService {
                     "durationMs", durationMs,
                     "contextChunks", hits.size()
             )));
+            if (metrics != null) metrics.recordTurn("chat", request.query(), durationMs, false);
             emitter.complete();
         } catch (Exception ex) {
             log.warn("Chat for room {} failed: {}", roomId, ex.getMessage());
+            if (metrics != null) {
+                metrics.recordTurn("chat", request.query(),
+                        System.currentTimeMillis() - startedAt, true);
+            }
             try {
                 emitter.send(SseEmitter.event().name("error").data(Map.of(
                         "message", ex.getMessage() == null ? "Chat failed" : ex.getMessage()
@@ -160,6 +176,9 @@ public class RoomChatService {
     private void runAgentMode(UUID roomId, User user, ChatRequest request, SseEmitter emitter, long startedAt) {
         try {
             AgentLoopResult result = agentLoop.run(roomId, request, (name, payload) -> {
+                if (metrics != null && "tool_call".equals(name) && payload.get("name") != null) {
+                    metrics.recordToolCall(payload.get("name").toString());
+                }
                 try {
                     emitter.send(SseEmitter.event().name(name).data(payload));
                 } catch (IOException ex) {
@@ -179,6 +198,10 @@ public class RoomChatService {
             long durationMs = System.currentTimeMillis() - startedAt;
             log.info("Agent chat for room {} completed in {} iterations, {} tool calls, {} ms",
                     roomId, result.iterations(), result.toolCalls(), durationMs);
+            if (metrics != null) {
+                metrics.recordTurn("agent", request.query(), durationMs, false);
+                metrics.recordAgentIterations(result.iterations());
+            }
             emitter.send(SseEmitter.event().name("done").data(Map.of(
                     "tokens", 0,
                     "characters", result.answer().length(),
@@ -191,6 +214,10 @@ public class RoomChatService {
             emitter.complete();
         } catch (Exception ex) {
             log.warn("Agent chat for room {} failed: {}", roomId, ex.getMessage());
+            if (metrics != null) {
+                metrics.recordTurn("agent", request.query(),
+                        System.currentTimeMillis() - startedAt, true);
+            }
             try {
                 emitter.send(SseEmitter.event().name("error").data(Map.of(
                         "message", ex.getMessage() == null ? "Agent failed" : ex.getMessage()

@@ -4,6 +4,8 @@ import com.codeleon.admin.dto.AdminRoomResponse;
 import com.codeleon.admin.dto.AdminStatsResponse;
 import com.codeleon.admin.dto.AdminUserResponse;
 import com.codeleon.ai.QdrantClient;
+import com.codeleon.ai.metrics.AiMetricsService;
+import com.codeleon.ai.metrics.AiMetricsSnapshot;
 import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.Room;
@@ -39,6 +41,7 @@ public class AdminService {
     private final RoomMemberRepository roomMemberRepository;
     private final RoomFileRepository roomFileRepository;
     private final ObjectProvider<QdrantClient> qdrantClientProvider;
+    private final AiMetricsService aiMetrics;
 
     // -----------------------------------------------------------------
     // Users
@@ -165,6 +168,21 @@ public class AdminService {
                 ragChunks,
                 ragUp
         );
+    }
+
+    // -----------------------------------------------------------------
+    // AI metrics
+    // -----------------------------------------------------------------
+
+    /** Live snapshot of the AI pipeline: turn counts, latency percentiles,
+     *  per-tool call counts, last 50 queries. Used by /admin/ai-metrics. */
+    public AiMetricsSnapshot aiMetricsSnapshot() {
+        return aiMetrics.snapshot();
+    }
+
+    /** Resets every AI counter and the recent-queries buffer. */
+    public void resetAiMetrics() {
+        aiMetrics.reset();
     }
 
     // -----------------------------------------------------------------

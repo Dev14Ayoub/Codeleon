@@ -4,6 +4,7 @@ import com.codeleon.admin.dto.AdminRoomResponse;
 import com.codeleon.admin.dto.AdminStatsResponse;
 import com.codeleon.admin.dto.AdminUserResponse;
 import com.codeleon.admin.dto.UpdateRoleRequest;
+import com.codeleon.ai.metrics.AiMetricsSnapshot;
 import com.codeleon.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -85,5 +87,20 @@ public class AdminController {
     @GetMapping("/stats")
     public AdminStatsResponse stats() {
         return adminService.stats();
+    }
+
+    // ---------------------------------------------------------------
+    // AI observability — counters, latency, recent queries
+    // ---------------------------------------------------------------
+
+    @GetMapping("/ai-metrics")
+    public AiMetricsSnapshot aiMetrics() {
+        return adminService.aiMetricsSnapshot();
+    }
+
+    @PostMapping("/ai-metrics/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetAiMetrics() {
+        adminService.resetAiMetrics();
     }
 }

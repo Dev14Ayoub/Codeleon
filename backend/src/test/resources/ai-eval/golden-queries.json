@@ -1,0 +1,62 @@
+[
+  {
+    "query": "refreshToken",
+    "expectedPaths": ["AuthService.java"],
+    "kind": "exact-symbol"
+  },
+  {
+    "query": "tryAcquire",
+    "expectedPaths": ["RateLimiter.java"],
+    "kind": "exact-symbol"
+  },
+  {
+    "query": "createCharge",
+    "expectedPaths": ["PaymentProcessor.java"],
+    "kind": "exact-symbol"
+  },
+  {
+    "query": "MAX_RETRIES",
+    "expectedPaths": ["PaymentProcessor.java"],
+    "kind": "exact-symbol"
+  },
+  {
+    "query": "sendWelcomeEmail",
+    "expectedPaths": ["EmailNotifier.java"],
+    "kind": "exact-symbol"
+  },
+  {
+    "query": "token expires bucket",
+    "expectedPaths": ["RateLimiter.java", "AuthService.java"],
+    "kind": "natural-language"
+  },
+  {
+    "query": "stripe retry transient failure",
+    "expectedPaths": ["PaymentProcessor.java"],
+    "kind": "natural-language"
+  },
+  {
+    "query": "password reset email template",
+    "expectedPaths": ["EmailNotifier.java"],
+    "kind": "natural-language"
+  },
+  {
+    "query": "upload file mime type allowlist",
+    "expectedPaths": ["FileUploadController.java"],
+    "kind": "natural-language"
+  },
+  {
+    "query": "findByEmail user repository",
+    "expectedPaths": ["UserRepository.java", "AuthService.java"],
+    "kind": "mixed"
+  },
+  {
+    "query": "S3 streaming upload large file",
+    "expectedPaths": ["FileUploadController.java"],
+    "kind": "natural-language"
+  },
+  {
+    "query": "card declined error message",
+    "expectedPaths": ["PaymentProcessor.java"],
+    "kind": "natural-language"
+  }
+]
