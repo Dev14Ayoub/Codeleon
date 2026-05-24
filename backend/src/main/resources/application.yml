@@ -58,6 +58,15 @@ codeleon:
     cpus: ${RUNNER_CPUS:0.5}
     pids-limit: ${RUNNER_PIDS_LIMIT:64}
     max-output-bytes: ${RUNNER_MAX_OUTPUT_BYTES:65536}
+    nix:
+      enabled: ${RUNNER_NIX_ENABLED:true}
+      image: ${RUNNER_NIX_IMAGE:nixos/nix:2.24.11}
+      cache-volume: ${RUNNER_NIX_CACHE_VOLUME:codeleon-nix-store}
+      timeout-ms: ${RUNNER_NIX_TIMEOUT_MS:180000}
+      memory-mb: ${RUNNER_NIX_MEMORY_MB:1024}
+      cpus: ${RUNNER_NIX_CPUS:1.0}
+      pids-limit: ${RUNNER_NIX_PIDS_LIMIT:128}
+      max-output-bytes: ${RUNNER_NIX_MAX_OUTPUT_BYTES:131072}
   ai:
     enabled: ${AI_ENABLED:false}
     ollama:

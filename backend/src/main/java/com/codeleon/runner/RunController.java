@@ -23,6 +23,7 @@ import java.util.UUID;
 public class RunController {
 
     private final CodeRunnerService runnerService;
+    private final NixProjectRunnerService nixProjectRunnerService;
     private final RoomFileService roomFileService;
     private final RoomEventService roomEventService;
 
@@ -37,12 +38,43 @@ public class RunController {
         }
         RunResult result = runnerService.run(request);
         // Record the run in the activity feed. We log the language and the
-        // exit code so the feed line can read "ran code (exit 0)" — useful
+        // exit code so the feed line can read "ran code (exit 0)" - useful
         // signal without storing the whole stdout/stderr blob.
         roomEventService.emit(roomId, user, RoomEventType.CODE_RAN, Map.of(
                 "language", request.language().name(),
                 "exitCode", String.valueOf(result.exitCode())
         ));
         return result;
+    }
+
+    @PostMapping("/project")
+    public ProjectRunResult runProject(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody ProjectRunRequest request
+    ) {
+        if (!roomFileService.canEdit(roomId, user)) {
+            throw new NotFoundException("Room not found");
+        }
+        ProjectRunResult result = nixProjectRunnerService.run(request);
+        roomEventService.emit(roomId, user, RoomEventType.CODE_RAN, Map.of(
+                "language", "NIX",
+                "environment", result.environment(),
+                "command", result.command(),
+                "exitCode", String.valueOf(result.exitCode())
+        ));
+        return result;
+    }
+
+    @PostMapping("/project/detect")
+    public ProjectRunDetection detectProject(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody ProjectRunRequest request
+    ) {
+        if (!roomFileService.canEdit(roomId, user)) {
+            throw new NotFoundException("Room not found");
+        }
+        return nixProjectRunnerService.detectRunnable(request);
     }
 }

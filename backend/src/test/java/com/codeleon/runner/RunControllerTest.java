@@ -38,6 +38,9 @@ class RunControllerTest {
     @MockBean
     private CodeRunnerService codeRunnerService;
 
+    @MockBean
+    private NixProjectRunnerService nixProjectRunnerService;
+
     @Test
     void runReturnsRunnerOutputForRoomMember() throws Exception {
         String token = register("runner.owner@example.com");
@@ -107,6 +110,93 @@ class RunControllerTest {
                 .andExpect(status().isNotFound());
 
         verify(codeRunnerService, never()).run(any());
+    }
+
+    @Test
+    void runProjectReturnsNixRunnerOutputForRoomMember() throws Exception {
+        String token = register("runner.project.owner@example.com");
+        JsonNode room = createRoom(token, "Project Runner Room");
+        String roomId = room.get("id").asText();
+
+        when(nixProjectRunnerService.run(any())).thenReturn(new ProjectRunResult(
+                "project ok\n",
+                "",
+                0,
+                123L,
+                false,
+                "Generated Java/Maven",
+                "mvn test",
+                true,
+                2,
+                30000
+        ));
+
+        mockMvc.perform(post("/rooms/" + roomId + "/run/project")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "command", "mvn test",
+                                "files", List.of(
+                                        Map.of("path", "pom.xml", "text", "<project></project>"),
+                                        Map.of("path", "src/main/java/App.java", "text", "class App {}")
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stdout").value("project ok\n"))
+                .andExpect(jsonPath("$.exitCode").value(0))
+                .andExpect(jsonPath("$.environment").value("Generated Java/Maven"))
+                .andExpect(jsonPath("$.command").value("mvn test"))
+                .andExpect(jsonPath("$.generatedEnvironment").value(true));
+
+        ArgumentCaptor<ProjectRunRequest> requestCaptor = ArgumentCaptor.forClass(ProjectRunRequest.class);
+        verify(nixProjectRunnerService).run(requestCaptor.capture());
+        assertEquals("mvn test", requestCaptor.getValue().command());
+        assertEquals(2, requestCaptor.getValue().files().size());
+    }
+
+    @Test
+    void runProjectRejectsNonMember() throws Exception {
+        String ownerToken = register("runner.project.owner.private@example.com");
+        String outsiderToken = register("runner.project.outsider@example.com");
+        JsonNode room = createRoom(ownerToken, "Private Project Runner Room");
+        String roomId = room.get("id").asText();
+
+        mockMvc.perform(post("/rooms/" + roomId + "/run/project")
+                        .header("Authorization", "Bearer " + outsiderToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "files", List.of(Map.of("path", "package.json", "text", "{}"))
+                        ))))
+                .andExpect(status().isNotFound());
+
+        verify(nixProjectRunnerService, never()).run(any());
+    }
+
+    @Test
+    void detectProjectReturnsResolvedNixEnvironmentForRoomMember() throws Exception {
+        String token = register("runner.project.detect.owner@example.com");
+        JsonNode room = createRoom(token, "Project Detect Room");
+        String roomId = room.get("id").asText();
+
+        when(nixProjectRunnerService.detectRunnable(any())).thenReturn(new ProjectRunDetection(
+                true,
+                "Generated Node",
+                "npm install && npm test",
+                true,
+                null
+        ));
+
+        mockMvc.perform(post("/rooms/" + roomId + "/run/project/detect")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "files", List.of(Map.of("path", "package.json", "text", "{\"scripts\":{\"test\":\"vitest\"}}"))
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.runnable").value(true))
+                .andExpect(jsonPath("$.environment").value("Generated Node"))
+                .andExpect(jsonPath("$.command").value("npm install && npm test"))
+                .andExpect(jsonPath("$.generatedEnvironment").value(true));
     }
 
     private String register(String email) throws Exception {

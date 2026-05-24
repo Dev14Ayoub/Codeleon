@@ -238,7 +238,7 @@ The service skips binary files, oversized files, ignored directories, and invali
 
 ### `POST /rooms/{roomId}/run`
 
-Runs the current editor buffer in the Docker sandbox. Currently only Python is supported.
+Runs the current editor buffer in the Docker sandbox. Python and Java active-file runs are supported.
 
 ```json
 {
@@ -257,6 +257,70 @@ Response:
   "exitCode": 0,
   "durationMs": 420,
   "timedOut": false
+}
+```
+
+### `POST /rooms/{roomId}/run/project`
+
+Runs a whole imported project through the Docker-contained Nix runner. If
+the project has `flake.nix`, Codeleon uses it directly. Otherwise it
+generates a temporary flake for common manifests:
+
+- `pom.xml` -> Java 21 + Maven, default command `mvn test`
+- `package.json` -> Node + npm, default command installs dependencies with `npm install` or `npm ci`, then runs `test`/`build` when present
+- `requirements.txt` / `pyproject.toml` -> Python 3.12 + pip/pytest, default command installs dependencies before running tests/main/compile
+
+```json
+{
+  "command": "mvn test",
+  "files": [
+    { "path": "pom.xml", "text": "<project>...</project>" },
+    { "path": "src/main/java/App.java", "text": "class App {}" }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "stdout": "",
+  "stderr": "",
+  "exitCode": 0,
+  "durationMs": 12500,
+  "timedOut": false,
+  "environment": "Generated Java/Maven",
+  "command": "mvn test",
+  "generatedEnvironment": true,
+  "fileCount": 2,
+  "timeoutMs": 180000
+}
+```
+
+### `POST /rooms/{roomId}/run/project/detect`
+
+Returns the Nix environment and default command Codeleon would use
+without executing anything. The frontend uses this for the room status
+strip and run panel. Request body is the same as project run; `command`
+is optional.
+
+```json
+{
+  "files": [
+    { "path": "package.json", "text": "{\"scripts\":{\"test\":\"vitest\"}}" }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "runnable": true,
+  "environment": "Generated Node",
+  "command": "npm install && npm test",
+  "generatedEnvironment": true,
+  "message": null
 }
 ```
 

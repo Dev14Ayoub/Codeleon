@@ -15,11 +15,13 @@ export interface MenuBarActions {
   onToggleFileExplorer: () => void;
   onToggleAiPanel: () => void;
   onRunFile: () => void;
+  onRunProject: () => void;
   isFileExplorerVisible: boolean;
   isAiPanelVisible: boolean;
   hasActiveTab: boolean;
   hasOpenTabs: boolean;
   canRunActiveFile: boolean;
+  canRunProject: boolean;
   canEdit: boolean;
 }
 
@@ -154,7 +156,7 @@ function ViewMenu({
   );
 }
 
-function RunMenu({ onRunFile, canRunActiveFile }: MenuBarActions) {
+function RunMenu({ onRunFile, onRunProject, canRunActiveFile, canRunProject }: MenuBarActions) {
   return (
     <Menubar.Menu>
       <MenuTrigger>Run</MenuTrigger>
@@ -166,10 +168,17 @@ function RunMenu({ onRunFile, canRunActiveFile }: MenuBarActions) {
         >
           Run Active File
         </MenuItem>
+        <MenuItem
+          onSelect={onRunProject}
+          disabled={!canRunProject}
+        >
+          Run Project
+        </MenuItem>
         <MenuSeparator />
         <MenuLabel>Supported runtimes</MenuLabel>
         <MenuItem disabled>Python 3.12 (sandbox)</MenuItem>
         <MenuItem disabled>Java 21 (sandbox)</MenuItem>
+        <MenuItem disabled>Nix project shell (Docker)</MenuItem>
       </MenuContent>
     </Menubar.Menu>
   );
@@ -351,7 +360,7 @@ function AboutDialog({
             <Row label="Editor">CodeMirror 6 + Yjs (multi-cursor)</Row>
             <Row label="Backend">Spring Boot 3 · PostgreSQL · Flyway</Row>
             <Row label="AI">Ollama · Qdrant · local CPU inference</Row>
-            <Row label="Sandbox">Docker (Python 3.12)</Row>
+            <Row label="Sandbox">Docker (Python 3.12, Java 21, Nix project shells)</Row>
           </dl>
 
           <p className="mt-6 text-[11px] text-zinc-500">

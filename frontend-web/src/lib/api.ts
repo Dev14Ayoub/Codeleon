@@ -236,6 +236,11 @@ export interface RunProjectFile {
   text: string;
 }
 
+export interface ProjectRunRequest {
+  command?: string;
+  files: RunProjectFile[];
+}
+
 export interface RunResult {
   stdout: string;
   stderr: string;
@@ -244,8 +249,37 @@ export interface RunResult {
   timedOut: boolean;
 }
 
+export interface ProjectRunResult extends RunResult {
+  environment: string;
+  command: string;
+  generatedEnvironment: boolean;
+  fileCount: number;
+  timeoutMs: number;
+}
+
+export interface ProjectRunDetection {
+  runnable: boolean;
+  environment: string | null;
+  command: string | null;
+  generatedEnvironment: boolean;
+  message: string | null;
+}
+
 export async function runCode(roomId: string, payload: RunRequest) {
   const { data } = await api.post<RunResult>(`/rooms/${roomId}/run`, payload);
+  return data;
+}
+
+export async function runProject(roomId: string, payload: ProjectRunRequest) {
+  const { data } = await api.post<ProjectRunResult>(`/rooms/${roomId}/run/project`, payload);
+  return data;
+}
+
+export async function detectProjectRun(roomId: string, payload: ProjectRunRequest) {
+  const { data } = await api.post<ProjectRunDetection>(
+    `/rooms/${roomId}/run/project/detect`,
+    payload,
+  );
   return data;
 }
 

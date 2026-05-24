@@ -4,7 +4,7 @@
 > multi-cursor editing, sandboxed code execution, and a local
 > retrieval-augmented AI assistant.
 
-[![Tests](https://img.shields.io/badge/tests-85%20passing-brightgreen)](#running-the-tests)
+[![Tests](https://img.shields.io/badge/tests-100%2B%20passing-brightgreen)](#running-the-tests)
 [![Backend](https://img.shields.io/badge/backend-Spring%20Boot%203.2-6DB33F)](backend/pom.xml)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite%205-61DAFB)](frontend-web/package.json)
 [![Editor](https://img.shields.io/badge/editor-CodeMirror%206%20%2B%20Yjs-007ACC)](frontend-web/src/lib/collab)
@@ -25,7 +25,7 @@ cloud, and run it in a Docker sandbox with one click.
 |---|---|
 | **Real-time collaborative editor** with multi-cursor + presence | Yjs CRDT + y-codemirror.next + WebSocket binary relay |
 | **Multi-file workspace** with VS Code-style tabs, file explorer, right-click menus, menubar | React + Radix Context Menu / Menubar / Dialog |
-| **Code execution sandbox** | Docker `python:3.12-slim`, `eclipse-temurin:21-jdk`, Maven dependency builds, no-network runtime sandbox |
+| **Code execution sandbox** | Docker `python:3.12-slim`, `eclipse-temurin:21-jdk`, Maven dependency builds, and Nix project environments |
 | **Local RAG AI assistant** with streaming SSE, auto-indexing, chat history, and retrieved context drawer | Ollama (`qwen2.5-coder:0.5b` + `nomic-embed-text`) + Qdrant 1.11 |
 | **Project import** from local folder or public GitHub repo | `webkitdirectory` picker / GitHub archive ZIP fetch + filter |
 | **Project dashboard** with cards, templates, pin/archive, activity feed, and admin view | React Query + Spring REST + Flyway events/pins |
@@ -94,6 +94,7 @@ Detailed views in [`docs/uml/`](docs/uml/) and [`docs/merise/mcd.md`](docs/meris
 | Maven | 3.9+ | Backend build |
 | Node | 20+ | Frontend build |
 | Git | latest | obvious |
+| Nix | optional | Reproducible contributor shell via `nix develop` |
 
 ### 2. Clone + env
 
@@ -147,6 +148,24 @@ Open `http://localhost:5173`.
 
 ---
 
+## Optional Nix development shell
+
+Codeleon includes a repo-level `flake.nix` for contributors who want a
+reproducible toolchain instead of installing Java, Maven, Node, Docker
+CLI, Git, and PostgreSQL client tools by hand.
+
+```bash
+nix develop
+nix develop --command mvn -f backend/pom.xml test
+nix develop --command npm --prefix frontend-web run build
+```
+
+The application itself still runs through Docker/Postgres/Redis as
+usual. Imported user projects can also be run through the Docker-contained
+Nix project runner from the room workspace.
+
+---
+
 ## 🧪 Running the tests
 
 ```bash
@@ -154,13 +173,13 @@ cd backend
 mvn test
 ```
 
-Currently **90 backend tests** covering auth, OAuth, rooms,
+Currently **100+ backend tests** covering auth, OAuth, rooms,
 multi-files, dashboard events, admin actions, GitHub import,
-runner, Java/Maven execution, RAG indexing, RAG chat, chat history,
+runner, Java/Maven execution, Nix project environments, RAG indexing, RAG chat, chat history,
 embeddings + chunker.
 
 ```
-Tests run: 90, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 100+, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -192,7 +211,7 @@ Done:
 - [x] Auth (JWT, refresh tokens, OAuth2 GitHub + Google)
 - [x] Rooms, members, invite codes
 - [x] Real-time collaborative editing (Yjs, multi-cursor, snapshot persistence)
-- [x] Code runner (Python + Java sandbox)
+- [x] Code runner (Python + Java active-file sandbox + Nix project runner)
 - [x] RAG infrastructure (Qdrant + Ollama, file indexing, chat endpoint, ChatPanel UI)
 - [x] AI chat history per user/room + owner read-only review of member chats
 - [x] Multi-file workspace (file explorer, tabs, menubar, local + GitHub import)
@@ -213,7 +232,7 @@ Pending (PFE timeline):
 Out of scope for this PFE:
 
 - Mobile app (no `frontend-mobile/` planned)
-- Additional runtimes beyond Python/Java
+- Full interactive terminals and deployment-style runtimes
 - Inherited file-tree folders inside the explorer (flat list only)
 
 ---
@@ -228,7 +247,7 @@ Codeleon/
 │   │   ├── ai/               # Ollama + Qdrant clients, RAG chat, indexer, chat panel
 │   │   ├── config/           # SecurityConfig, JwtAuthenticationFilter
 │   │   ├── room/             # Room CRUD, files, WebSocket, GitHub import
-│   │   ├── runner/           # Python + Java Docker sandbox
+│   │   ├── runner/           # Python/Java Docker sandbox + Nix project runner
 │   │   └── user/             # User entity + service (incl. findOrCreateByOAuth)
 │   └── src/main/resources/db/migration/  # V1..V7 (Flyway)
 ├── frontend-web/             # React 18 + Vite 5 + Tailwind 3 + TypeScript 5.4

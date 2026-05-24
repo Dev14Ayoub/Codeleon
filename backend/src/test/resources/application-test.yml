@@ -35,6 +35,15 @@ codeleon:
     cpus: 0.5
     pids-limit: 64
     max-output-bytes: 65536
+    nix:
+      enabled: true
+      image: nixos/nix:2.24.11
+      cache-volume: codeleon-nix-store-test
+      timeout-ms: 30000
+      memory-mb: 512
+      cpus: 0.5
+      pids-limit: 128
+      max-output-bytes: 65536
   ai:
     enabled: false
     ollama:

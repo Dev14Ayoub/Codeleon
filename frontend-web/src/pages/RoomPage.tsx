@@ -35,8 +35,11 @@ import {
   fetchRoom,
   listRoomFiles,
   runCode,
+  runProject,
   type GithubImportResponse,
   type IndexFile,
+  detectProjectRun,
+  type ProjectRunResult,
   type RoomFile,
   type RunLanguage,
   type RunProjectFile,
@@ -48,6 +51,18 @@ import { useCollabRoom, type CollabPeer } from "@/lib/collab/useCollabRoom";
 import { useAuthStore } from "@/stores/auth-store";
 
 type RightPanelTab = "ai" | "participants" | "review";
+
+interface ProjectRunEnvironment {
+  label: string;
+  defaultCommand: string;
+}
+
+interface RunContext {
+  kind: "file" | "project";
+  label: string;
+  command?: string;
+  environment?: string;
+}
 
 export function RoomPage() {
   const { roomId } = useParams();
@@ -77,8 +92,11 @@ export function RoomPage() {
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [runStdin, setRunStdin] = useState("");
+  const [projectRunCommand, setProjectRunCommand] = useState("");
   const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [projectRunResult, setProjectRunResult] = useState<ProjectRunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const [showAiPanel, setShowAiPanel] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -101,6 +119,46 @@ export function RoomPage() {
   const activeRunLanguageLabel = activeRunLanguage ? runLanguageLabel(activeRunLanguage) : null;
   const canRunActiveFile = Boolean(activePath && editorReady && activeRunLanguage);
 
+  const getAllFiles = useCallback((): IndexFile[] => {
+    const files = roomFilesQuery.data ?? [];
+    return files.map((file) => ({
+      path: file.path,
+      text: collab.ydoc.getText(file.path).toString(),
+    }));
+  }, [roomFilesQuery.data, collab.ydoc]);
+  const localProjectEnvironment = detectProjectRunEnvironment(getAllFiles());
+  const projectDetectionQuery = useQuery({
+    queryKey: [
+      "rooms",
+      roomId,
+      "run-project-detect",
+      roomFilesQuery.data?.map((file) => `${file.path}:${file.updatedAt}`).join("|") ?? "",
+    ],
+    queryFn: () =>
+      detectProjectRun(roomId ?? "", {
+        files: buildProjectDetectionFiles(getAllFiles()),
+      }),
+    enabled: Boolean(roomId && canEdit && roomFilesQuery.data && roomFilesQuery.data.length > 0),
+    staleTime: 5_000,
+  });
+  const backendProjectEnvironment =
+    projectDetectionQuery.data?.runnable &&
+    projectDetectionQuery.data.environment &&
+    projectDetectionQuery.data.command
+      ? {
+          label: projectDetectionQuery.data.environment,
+          defaultCommand: projectDetectionQuery.data.command,
+        }
+      : null;
+  const projectEnvironment =
+    projectDetectionQuery.data && !projectDetectionQuery.data.runnable
+      ? null
+      : backendProjectEnvironment ?? localProjectEnvironment;
+  const projectDetectionMessage = projectDetectionQuery.data?.message ?? null;
+  const projectCommandForDisplay =
+    projectRunCommand.trim() || projectEnvironment?.defaultCommand || "";
+  const canRunProject = Boolean(projectEnvironment && getAllFiles().length > 0);
+
   const runMutation = useMutation({
     mutationFn: () => {
       const language = runLanguageFromPath(activePath);
@@ -108,6 +166,10 @@ export function RoomPage() {
         throw new Error("Codeleon can run Python and Java files right now.");
       }
       const code = editorRef.current?.getValue() ?? "";
+      setRunContext({
+        kind: "file",
+        label: activeRunLanguage ? runLanguageLabel(activeRunLanguage) : "File",
+      });
       return runCode(roomId ?? "", {
         language,
         code,
@@ -118,10 +180,12 @@ export function RoomPage() {
     },
     onSuccess: (data) => {
       setRunResult(data);
+      setProjectRunResult(null);
       setRunError(null);
     },
     onError: (error: unknown) => {
       setRunResult(null);
+      setProjectRunResult(null);
       if (error instanceof AxiosError) {
         const message =
           (error.response?.data as { message?: string } | undefined)?.message ?? error.message;
@@ -131,6 +195,50 @@ export function RoomPage() {
       }
     },
   });
+
+  const projectRunMutation = useMutation({
+    mutationFn: () => {
+      if (!projectEnvironment) {
+        throw new Error("No Nix-compatible project environment detected.");
+      }
+      const activeCode = editorRef.current?.getValue() ?? "";
+      const command = projectRunCommand.trim();
+      setRunContext({
+        kind: "project",
+        label: "Project",
+        command: command || projectEnvironment.defaultCommand,
+        environment: projectEnvironment.label,
+      });
+      return runProject(roomId ?? "", {
+        command: command || undefined,
+        files: buildRunProjectFiles(getAllFiles(), activePath, activeCode),
+      });
+    },
+    onSuccess: (data) => {
+      setRunResult(data);
+      setProjectRunResult(data);
+      setRunContext({
+        kind: "project",
+        label: "Project",
+        command: data.command,
+        environment: data.environment,
+      });
+      setRunError(null);
+    },
+    onError: (error: unknown) => {
+      setRunResult(null);
+      setProjectRunResult(null);
+      if (error instanceof AxiosError) {
+        const message =
+          (error.response?.data as { message?: string } | undefined)?.message ?? error.message;
+        setRunError(message);
+      } else {
+        setRunError(error instanceof Error ? error.message : "Failed to run project");
+      }
+    },
+  });
+
+  const isRunPending = runMutation.isPending || projectRunMutation.isPending;
 
   // Open a file as a tab (idempotent) and make it active.
   const openFile = useCallback((path: string) => {
@@ -171,11 +279,16 @@ export function RoomPage() {
   const onRunFile = useCallback(() => {
     if (!activeRunLanguage) {
       setRunResult(null);
+      setProjectRunResult(null);
       setRunError("Codeleon can run Python and Java files right now.");
+      setRunContext(null);
       return;
     }
     runMutation.mutate();
   }, [activeRunLanguage, runMutation]);
+  const onRunProject = useCallback(() => {
+    projectRunMutation.mutate();
+  }, [projectRunMutation]);
   const onEditorReadyChange = useCallback((ready: boolean) => {
     setEditorReady(ready);
   }, []);
@@ -434,20 +547,6 @@ export function RoomPage() {
 
   const getEditorText = useCallback(() => editorRef.current?.getValue() ?? "", []);
 
-  // Snapshot every file's current content for whole-project indexing.
-  // Content is read from the Y.Doc. The CodeMirror Yjs binding keeps each
-  // Y.Text in sync with its editor in real time, so even files with no
-  // open tab carry their up-to-date text here. Empty files are included so
-  // the backend can clear stale chunks when a project is renamed, deleted,
-  // or emptied after an earlier index.
-  const getAllFiles = useCallback((): IndexFile[] => {
-    const files = roomFilesQuery.data ?? [];
-    return files.map((file) => ({
-      path: file.path,
-      text: collab.ydoc.getText(file.path).toString(),
-    }));
-  }, [roomFilesQuery.data, collab.ydoc]);
-
   useEffect(() => {
     setCollabActivePath(activePath);
   }, [activePath, setCollabActivePath]);
@@ -520,7 +619,7 @@ export function RoomPage() {
           </Button>
           <Button
             onClick={() => runMutation.mutate()}
-            disabled={!canRunActiveFile || runMutation.isPending}
+            disabled={!canRunActiveFile || isRunPending}
             title={
               activePath && !activeRunLanguage
                 ? "Codeleon can run Python and Java files right now."
@@ -534,7 +633,24 @@ export function RoomPage() {
             ) : (
               <Play className="h-4 w-4" />
             )}
-            Run
+            Run file
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => projectRunMutation.mutate()}
+            disabled={!canRunProject || isRunPending}
+            title={
+              projectEnvironment
+                ? `Run project with ${projectEnvironment.label}`
+                : "Add a flake.nix, pom.xml, package.json, requirements.txt, or pyproject.toml"
+            }
+          >
+            {projectRunMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Terminal className="h-4 w-4" />
+            )}
+            Run project
           </Button>
         </div>
       </header>
@@ -550,11 +666,13 @@ export function RoomPage() {
         onToggleFileExplorer={() => setShowFileExplorer((v) => !v)}
         onToggleAiPanel={() => setShowAiPanel((v) => !v)}
         onRunFile={onRunFile}
+        onRunProject={onRunProject}
         isFileExplorerVisible={showFileExplorer}
         isAiPanelVisible={showAiPanel}
         hasActiveTab={activePath !== null}
         hasOpenTabs={openPaths.length > 0}
-        canRunActiveFile={canRunActiveFile && !runMutation.isPending}
+        canRunActiveFile={canRunActiveFile && !isRunPending}
+        canRunProject={canRunProject && !isRunPending}
         canEdit={canEdit}
       />
 
@@ -631,8 +749,10 @@ export function RoomPage() {
             isReady={collab.isReady}
             activePath={activePath}
             peersCount={collab.peers.length}
-            runPending={runMutation.isPending}
+            runPending={isRunPending}
             runLanguageLabel={activeRunLanguageLabel}
+            projectEnvironmentLabel={projectEnvironment?.label ?? null}
+            projectDetectionMessage={projectDetectionMessage}
           />
           <div className="flex-1 min-h-0">
             <CodeMirrorEditor
@@ -645,13 +765,20 @@ export function RoomPage() {
             />
           </div>
           <OutputPanel
-            isPending={runMutation.isPending}
+            isPending={isRunPending}
             result={runResult}
+            projectResult={projectRunResult}
             error={runError}
             activePath={activePath}
             languageLabel={activeRunLanguageLabel}
+            runContext={runContext}
             stdin={runStdin}
             onStdinChange={setRunStdin}
+            projectEnvironment={projectEnvironment}
+            projectDetectionMessage={projectDetectionMessage}
+            projectCommand={projectRunCommand}
+            projectCommandForDisplay={projectCommandForDisplay}
+            onProjectCommandChange={setProjectRunCommand}
           />
         </section>
 
@@ -754,21 +881,103 @@ function buildRunProjectFiles(
   return Array.from(byPath, ([path, text]) => ({ path, text }));
 }
 
+function buildProjectDetectionFiles(files: IndexFile[]): RunProjectFile[] {
+  return files.map((file) => {
+    const path = normalizeProjectPath(file.path);
+    const needsContent = path === "package.json" || path === "pyproject.toml";
+    return { path: file.path, text: needsContent ? file.text : "" };
+  });
+}
+
+function detectProjectRunEnvironment(files: IndexFile[]): ProjectRunEnvironment | null {
+  const normalizedPaths = new Set(files.map((file) => normalizeProjectPath(file.path)));
+  if (normalizedPaths.has("flake.nix")) {
+    return { label: "Nix flake", defaultCommand: "true" };
+  }
+  if (normalizedPaths.has("pom.xml")) {
+    return { label: "Generated Java/Maven", defaultCommand: "mvn test" };
+  }
+  const packageJson = files.find((file) => normalizeProjectPath(file.path) === "package.json")?.text;
+  if (packageJson !== undefined) {
+    const scripts = readPackageScripts(packageJson);
+    const installCommand = normalizedPaths.has("package-lock.json") ? "npm ci" : "npm install";
+    if (scripts?.test) {
+      return { label: "Generated Node", defaultCommand: `${installCommand} && npm test` };
+    }
+    if (scripts?.build) {
+      return { label: "Generated Node", defaultCommand: `${installCommand} && npm run build` };
+    }
+    return { label: "Generated Node", defaultCommand: installCommand };
+  }
+  if (normalizedPaths.has("requirements.txt") || normalizedPaths.has("pyproject.toml")) {
+    const pyproject = files.find((file) => normalizeProjectPath(file.path) === "pyproject.toml")?.text;
+    const installCommand = normalizedPaths.has("requirements.txt")
+      ? "python -m pip install -r requirements.txt"
+      : pyproject && (pyproject.includes("[project]") || pyproject.includes("[build-system]"))
+        ? "python -m pip install ."
+        : null;
+    const hasTests = Array.from(normalizedPaths).some(
+      (path) => path.startsWith("test_") || path.includes("/test_") || path.startsWith("tests/"),
+    );
+    if (hasTests) {
+      return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "pytest") };
+    }
+    if (normalizedPaths.has("main.py")) {
+      return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "python main.py") };
+    }
+    return { label: "Generated Python", defaultCommand: joinShellCommands(installCommand, "python -m py_compile $(find . -name '*.py' -type f)") };
+  }
+  return null;
+}
+
+function joinShellCommands(first: string | null, second: string) {
+  return first ? `${first} && ${second}` : second;
+}
+
+function normalizeProjectPath(path: string) {
+  return path.replace(/\\/g, "/").trim().toLowerCase();
+}
+
+function readPackageScripts(packageJson: string): Record<string, string> | null {
+  try {
+    const parsed = JSON.parse(packageJson) as { scripts?: unknown };
+    return parsed.scripts && typeof parsed.scripts === "object"
+      ? (parsed.scripts as Record<string, string>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function OutputPanel({
   activePath,
   isPending,
   languageLabel,
+  runContext,
   stdin,
   onStdinChange,
+  projectEnvironment,
+  projectDetectionMessage,
+  projectCommand,
+  projectCommandForDisplay,
+  onProjectCommandChange,
   result,
+  projectResult,
   error,
 }: {
   activePath: string | null;
   isPending: boolean;
   languageLabel: string | null;
+  runContext: RunContext | null;
   stdin: string;
   onStdinChange: (value: string) => void;
+  projectEnvironment: ProjectRunEnvironment | null;
+  projectDetectionMessage: string | null;
+  projectCommand: string;
+  projectCommandForDisplay: string;
+  onProjectCommandChange: (value: string) => void;
   result: RunResult | null;
+  projectResult: ProjectRunResult | null;
   error: string | null;
 }) {
   const exitTone = result
@@ -784,7 +993,7 @@ function OutputPanel({
       <div className="flex h-9 items-center justify-between border-b border-zinc-800 bg-surface px-4">
         <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
           <Terminal className="h-3.5 w-3.5 text-zinc-500" />
-          Run
+          {runContext?.kind === "project" ? "Run project" : "Run file"}
         </div>
         <div className={`font-mono text-xs ${exitTone}`}>
           {isPending
@@ -800,36 +1009,68 @@ function OutputPanel({
       </div>
       <div className="grid h-[calc(100%-2.25rem)] min-h-0 grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.5fr)] divide-x divide-zinc-800">
         <div className="flex min-h-0 flex-col">
-          <label className="flex h-8 items-center border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-            Stdin
-          </label>
-          <textarea
-            value={stdin}
-            onChange={(event) => onStdinChange(event.target.value)}
-            placeholder="Input for Scanner, input(), etc."
-            spellCheck={false}
-            className="min-h-0 flex-1 resize-none bg-zinc-950 px-4 py-3 font-mono text-xs leading-5 text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-zinc-950/80"
-          />
+          <div className="border-b border-zinc-800">
+            <label className="flex h-8 items-center px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+              Project command
+            </label>
+            <input
+              value={projectCommand}
+              onChange={(event) => onProjectCommandChange(event.target.value)}
+              placeholder={projectEnvironment?.defaultCommand ?? "Detect a project manifest first"}
+              spellCheck={false}
+              className="h-9 w-full border-t border-zinc-900 bg-zinc-950 px-4 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-zinc-950/80"
+            />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <label className="flex h-8 items-center border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+              Stdin
+            </label>
+            <textarea
+              value={stdin}
+              onChange={(event) => onStdinChange(event.target.value)}
+              placeholder="Input for Scanner, input(), etc."
+              spellCheck={false}
+              className="min-h-0 flex-1 resize-none bg-zinc-950 px-4 py-3 font-mono text-xs leading-5 text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-zinc-950/80"
+            />
+          </div>
         </div>
         <div className="flex min-h-0 flex-col">
-          <div className="flex h-8 items-center border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-            Output
+          <div className="flex h-8 items-center justify-between gap-3 border-b border-zinc-800 px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+            <span>Output</span>
+            <span className="min-w-0 truncate normal-case tracking-normal text-zinc-600">
+              {projectResult
+                ? `${projectResult.environment} / ${projectResult.command}`
+                : runContext?.kind === "project"
+                  ? `${runContext.environment ?? "Project"} / ${runContext.command ?? projectCommandForDisplay}`
+                : projectEnvironment
+                  ? `${projectEnvironment.label} / ${projectCommandForDisplay}`
+                  : projectDetectionMessage ?? "No project environment"}
+            </span>
           </div>
           <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-zinc-200">
             {error ? (
               <span className="text-rose-400">{error}</span>
             ) : result ? (
               <>
+                {projectResult && (
+                  <span className="text-cyan">
+                    {`Environment: ${projectResult.environment}${projectResult.generatedEnvironment ? " (generated)" : ""}\nCommand: ${projectResult.command}\nFiles: ${projectResult.fileCount} | Timeout: ${projectResult.timeoutMs} ms\n\n`}
+                  </span>
+                )}
                 {result.stdout}
                 {result.stderr && <span className="text-rose-400">{result.stderr}</span>}
               </>
             ) : (
               <span className="text-zinc-600">
                 {!activePath
-                  ? "Open a Python or Java file to run it."
+                  ? projectEnvironment
+                    ? `Press Run project to execute ${projectCommandForDisplay}.`
+                    : projectDetectionMessage ?? "Open a Python or Java file to run it."
                   : languageLabel
-                    ? `Press Run to execute the current ${languageLabel} file.`
-                    : "Codeleon can run Python and Java files right now."}
+                    ? `Press Run file for the current ${languageLabel} file, or Run project for the detected environment.`
+                    : projectEnvironment
+                      ? `Press Run project to execute ${projectCommandForDisplay}.`
+                      : projectDetectionMessage ?? "Codeleon can run Python and Java files right now."}
               </span>
             )}
           </pre>
@@ -846,6 +1087,8 @@ function WorkspaceStatusStrip({
   peersCount,
   runPending,
   runLanguageLabel,
+  projectEnvironmentLabel,
+  projectDetectionMessage,
 }: {
   connected: boolean;
   isReady: boolean;
@@ -853,6 +1096,8 @@ function WorkspaceStatusStrip({
   peersCount: number;
   runPending: boolean;
   runLanguageLabel: string | null;
+  projectEnvironmentLabel: string | null;
+  projectDetectionMessage: string | null;
 }) {
   return (
     <div className="flex h-9 items-center gap-2 overflow-x-auto border-b border-zinc-800 bg-background/80 px-4 text-[11px] text-zinc-500">
@@ -867,6 +1112,9 @@ function WorkspaceStatusStrip({
       </StatusItem>
       <StatusItem tone="cyan" icon={<Database className="h-3 w-3" />}>
         Private AI
+      </StatusItem>
+      <StatusItem tone={projectEnvironmentLabel ? "success" : "muted"} icon={<Terminal className="h-3 w-3" />}>
+        {projectEnvironmentLabel ?? projectDetectionMessage ?? "No project env"}
       </StatusItem>
       <StatusItem tone={runPending ? "warning" : runLanguageLabel ? "success" : "muted"} icon={<ShieldCheck className="h-3 w-3" />}>
         {runPending
