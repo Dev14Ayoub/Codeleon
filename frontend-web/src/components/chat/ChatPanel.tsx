@@ -684,12 +684,12 @@ function PatchProposalCard({
       <div className="space-y-0 px-2.5 py-1.5 font-mono">
         {proposal.find && (
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-sm bg-rose-950/30 px-2 py-1 text-[10px] text-rose-200">
-            - {prefixLines(proposal.find, "- ")}
+            - {proposal.find}
           </pre>
         )}
         {proposal.replace && (
           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-emerald-950/30 px-2 py-1 text-[10px] text-emerald-200">
-            + {prefixLines(proposal.replace, "+ ")}
+            + {proposal.replace}
           </pre>
         )}
         {!proposal.replace && (
@@ -721,17 +721,6 @@ function PatchProposalCard({
       </div>
     </motion.div>
   );
-}
-
-/** First-pass line prefix for the diff blocks — used only for visual
- *  weight in the rendered diff. The actual replace string is unmodified. */
-function prefixLines(text: string, _prefix: string): string {
-  // Keep the prefix-free body visible to the user — the leading "- "/"+ "
-  // in the JSX wraps each block, not each line. This helper exists in
-  // case we want per-line prefixing later (e.g. multi-line diffs in
-  // monospaced columns); for now it's a passthrough so the inserted
-  // code stays copy-pasteable.
-  return text;
 }
 
 /**
