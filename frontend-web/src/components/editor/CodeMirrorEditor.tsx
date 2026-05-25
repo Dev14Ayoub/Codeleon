@@ -52,6 +52,12 @@ export interface CodeMirrorEditorHandle {
   openFind: () => void;
   openReplace: () => void;
   formatDocument: () => void;
+  /**
+   * Moves the caret to the given 1-indexed line and scrolls it into the
+   * middle of the viewport. Called when the user clicks a citation in
+   * the chat context drawer to jump to the cited code.
+   */
+  gotoLine: (line: number) => void;
 }
 
 interface CodeMirrorEditorProps {
@@ -94,6 +100,19 @@ export const CodeMirrorEditor = forwardRef<
       },
       formatDocument: () => {
         viewRef.current?.focus();
+      },
+      gotoLine: (line: number) => {
+        const view = viewRef.current;
+        if (!view || line <= 0) return;
+        const target = Math.min(Math.max(1, Math.floor(line)), view.state.doc.lines);
+        const pos = view.state.doc.line(target).from;
+        view.dispatch({
+          selection: { anchor: pos, head: pos },
+          // EditorView.scrollIntoView centres the position; useful when
+          // jumping from a citation since the user has lost their place.
+          effects: EditorView.scrollIntoView(pos, { y: "center" }),
+        });
+        view.focus();
       },
     }),
     [],

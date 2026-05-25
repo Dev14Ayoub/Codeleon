@@ -3,10 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ArrowLeft,
+  Bot,
   ChevronUp,
   ChevronDown,
   Copy,
   DoorOpen,
+  Loader2,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   Users as UsersIcon,
@@ -21,18 +24,21 @@ import {
   type AdminRoom,
   type AdminStats,
   type AdminUser,
+  type AiMetricsSnapshot,
   deleteAdminRoom,
   deleteAdminUser,
   fetchAdminRooms,
   fetchAdminStats,
   fetchAdminUsers,
+  fetchAiMetrics,
+  resetAiMetrics,
   updateAdminUserRole,
   type UserRole,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 
-type Tab = "users" | "rooms" | "stats";
+type Tab = "users" | "rooms" | "stats" | "ai";
 
 export function AdminPage() {
   const me = useAuthStore((s) => s.user);
@@ -74,6 +80,9 @@ export function AdminPage() {
           <TabButton active={tab === "stats"} onClick={() => setTab("stats")}>
             <ChevronUp className="h-4 w-4" /> Stats
           </TabButton>
+          <TabButton active={tab === "ai"} onClick={() => setTab("ai")}>
+            <Bot className="h-4 w-4" /> AI
+          </TabButton>
         </nav>
       </header>
 
@@ -81,6 +90,7 @@ export function AdminPage() {
         {tab === "users" && <UsersTab meId={me.id} />}
         {tab === "rooms" && <RoomsTab />}
         {tab === "stats" && <StatsTab />}
+        {tab === "ai" && <AiMetricsTab />}
       </section>
     </main>
   );
@@ -649,6 +659,142 @@ function Kpi({ label, value, sub }: { label: string; value: number; sub?: string
       {sub && <p className="mt-1 text-xs text-zinc-500">{sub}</p>}
     </div>
   );
+}
+
+// ===========================================================================
+// AI metrics tab — process-local counters + latency + recent queries
+// ===========================================================================
+
+function AiMetricsTab() {
+  const queryClient = useQueryClient();
+  // Auto-refresh every 10 s so an operator demoing the dashboard sees
+  // the chat traffic land without a manual reload.
+  const query = useQuery({
+    queryKey: ["admin", "ai-metrics"],
+    queryFn: fetchAiMetrics,
+    refetchInterval: 10_000,
+  });
+  const reset = useMutation({
+    mutationFn: resetAiMetrics,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "ai-metrics"] }),
+  });
+
+  if (query.isLoading) return <p className="text-sm text-zinc-500">Loading AI metrics...</p>;
+  if (query.isError || !query.data) return <p className="text-sm text-rose-400">Failed to load AI metrics.</p>;
+
+  const s: AiMetricsSnapshot = query.data;
+  const sinceLabel = new Date(s.since).toLocaleString();
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-zinc-500">
+          Metrics since <span className="text-zinc-300">{sinceLabel}</span>
+        </p>
+        <Button
+          variant="secondary"
+          onClick={() => reset.mutate()}
+          disabled={reset.isPending}
+          aria-label="Reset AI metrics"
+        >
+          {reset.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+          Reset
+        </Button>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Kpi label="Total turns" value={s.totalTurns} sub={`${s.chatTurns} chat · ${s.agentTurns} agent`} />
+        <Kpi label="Tool calls" value={s.totalToolCalls} sub={`${Object.keys(s.toolCallsByName).length} distinct tools`} />
+        <Kpi label="Agent iterations" value={s.agentIterations} sub={iterationsPerTurn(s)} />
+        <Kpi
+          label="Failed turns"
+          value={s.recentQueries.filter((q) => q.failed).length}
+          sub={`of ${s.recentQueries.length} most recent`}
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Panel title="Chat latency (ms)">
+          <LatencyRow lat={s.chatLatencyMs} mean={s.meanChatLatencyMs} />
+        </Panel>
+        <Panel title="Agent latency (ms)">
+          <LatencyRow lat={s.agentLatencyMs} mean={s.meanAgentLatencyMs} />
+        </Panel>
+      </div>
+
+      <Panel title="Tool calls by name">
+        <Distribution data={s.toolCallsByName} />
+      </Panel>
+
+      <Panel title={`Recent queries · last ${s.recentQueries.length}`}>
+        {s.recentQueries.length === 0 ? (
+          <p className="text-sm text-zinc-500">No turns recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-zinc-500">
+                <tr>
+                  <th className="px-2 py-1 font-normal">when</th>
+                  <th className="px-2 py-1 font-normal">mode</th>
+                  <th className="px-2 py-1 font-normal">query</th>
+                  <th className="px-2 py-1 font-normal text-right">duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.recentQueries.map((q, i) => (
+                  <tr key={`${q.at}-${i}`} className="border-t border-zinc-800">
+                    <td className="px-2 py-1 font-mono text-zinc-500">
+                      {new Date(q.at).toLocaleTimeString()}
+                    </td>
+                    <td className="px-2 py-1">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                          q.mode === "agent" ? "bg-cyan/15 text-cyan" : "bg-zinc-800 text-zinc-400",
+                        )}
+                      >
+                        {q.mode}
+                      </span>
+                    </td>
+                    <td className={cn("max-w-xl truncate px-2 py-1", q.failed ? "text-rose-300" : "text-zinc-200")}>
+                      {q.query}
+                    </td>
+                    <td className="px-2 py-1 text-right font-mono text-zinc-400">{q.durationMs} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function LatencyRow({ lat, mean }: { lat: { p50Ms: number; p95Ms: number; maxMs: number }; mean: number }) {
+  return (
+    <div className="grid grid-cols-4 gap-2 text-center">
+      <LatencyCell label="p50" value={lat.p50Ms} />
+      <LatencyCell label="p95" value={lat.p95Ms} accent />
+      <LatencyCell label="max" value={lat.maxMs} />
+      <LatencyCell label="mean" value={Math.round(mean)} />
+    </div>
+  );
+}
+
+function LatencyCell({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className={cn("mt-1 font-mono text-base", accent ? "text-cyan" : "text-zinc-200")}>{value}</p>
+    </div>
+  );
+}
+
+function iterationsPerTurn(s: AiMetricsSnapshot): string {
+  if (s.agentTurns === 0) return "no agent turns yet";
+  const ratio = s.agentIterations / s.agentTurns;
+  return `~${ratio.toFixed(1)} per agent turn`;
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {

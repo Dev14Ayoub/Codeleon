@@ -136,6 +136,31 @@ export function RoomPage() {
    * propagates to every collaborator via the existing y-websocket
    * provider; no separate save is required.
    */
+  /**
+   * Opens a file in the editor and (optionally) scrolls to a given line.
+   * Wired to the chat panel's context drawer so a citation chip jumps
+   * the editor straight to the cited code. The scroll runs in a
+   * {@code requestAnimationFrame} because the editor remounts when the
+   * active path changes — we need the new EditorView to be ready
+   * before we issue the dispatch.
+   */
+  const jumpToFile = useCallback(
+    (path: string, line?: number) => {
+      if (!path) return;
+      setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
+      setActivePath(path);
+      if (line && line > 0) {
+        const tryScroll = (retries: number) => {
+          const handle = editorRef.current;
+          if (handle) handle.gotoLine(line);
+          else if (retries > 0) requestAnimationFrame(() => tryScroll(retries - 1));
+        };
+        requestAnimationFrame(() => tryScroll(10));
+      }
+    },
+    [],
+  );
+
   const applyPatch = useCallback(
     (path: string, find: string, replace: string): { ok: boolean; reason?: string } => {
       if (!canEdit) {
@@ -842,6 +867,7 @@ export function RoomPage() {
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
+              onJumpToFile={jumpToFile}
             />
           </aside>
         )}
@@ -882,6 +908,7 @@ export function RoomPage() {
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
+              onJumpToFile={jumpToFile}
             />
           </aside>
         )}
@@ -1345,6 +1372,7 @@ function RoomRightPanel({
   lastRunStderr,
   isOwner,
   onApplyPatch,
+  onJumpToFile,
 }: {
   tab: RightPanelTab;
   onTabChange: (tab: RightPanelTab) => void;
@@ -1357,6 +1385,7 @@ function RoomRightPanel({
   lastRunStderr: string | null;
   isOwner: boolean;
   onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
+  onJumpToFile?: (path: string, line?: number) => void;
 }) {
   const tabs: { id: RightPanelTab; label: string; icon: JSX.Element }[] = [
     { id: "ai", label: "AI", icon: <Bot className="h-3.5 w-3.5" /> },
@@ -1429,6 +1458,7 @@ function RoomRightPanel({
                 lastRunStderr={lastRunStderr}
                 isOwner={isOwner}
                 onApplyPatch={onApplyPatch}
+                onJumpToFile={onJumpToFile}
               />
             </motion.section>
           )}

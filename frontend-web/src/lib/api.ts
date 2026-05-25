@@ -539,3 +539,45 @@ export async function fetchAdminStats() {
   const { data } = await api.get<AdminStats>("/admin/stats");
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// AI metrics — counters, latency, recent queries observed since process start
+// ---------------------------------------------------------------------------
+
+export interface AiLatencyPercentiles {
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+}
+
+export interface AiRecentQuery {
+  at: string; // ISO instant
+  mode: "chat" | "agent";
+  query: string;
+  durationMs: number;
+  failed: boolean;
+}
+
+export interface AiMetricsSnapshot {
+  since: string; // ISO instant
+  totalTurns: number;
+  chatTurns: number;
+  agentTurns: number;
+  agentIterations: number;
+  totalToolCalls: number;
+  toolCallsByName: Record<string, number>;
+  chatLatencyMs: AiLatencyPercentiles;
+  agentLatencyMs: AiLatencyPercentiles;
+  meanChatLatencyMs: number;
+  meanAgentLatencyMs: number;
+  recentQueries: AiRecentQuery[];
+}
+
+export async function fetchAiMetrics() {
+  const { data } = await api.get<AiMetricsSnapshot>("/admin/ai-metrics");
+  return data;
+}
+
+export async function resetAiMetrics() {
+  await api.post("/admin/ai-metrics/reset");
+}

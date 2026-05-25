@@ -33,6 +33,13 @@ interface ChatPanelProps {
    * Apply button when not provided.
    */
   onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
+  /**
+   * Opens {@code path} in the editor and (when provided) scrolls to
+   * {@code line}. Wired in by RoomPage so a citation chip becomes a
+   * one-click jump to the cited code. Optional — the chip falls back
+   * to a non-interactive label when missing.
+   */
+  onJumpToFile?: (path: string, line?: number) => void;
 }
 
 /** Cheap change-detection key for a project snapshot. */
@@ -44,7 +51,54 @@ const MAX_INDEX_FILES = 1_000;
 const MAX_INDEX_TEXT_CHARS = 200_000;
 type IndexStatus = "idle" | "indexing" | "indexed" | "failed" | "blocked" | "empty";
 
-export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch }: ChatPanelProps) {
+/**
+ * Slash-command shortcuts shown above the input when it is empty. Each
+ * one is a thin template — the textarea is pre-filled with the prompt,
+ * and the user can edit it before sending. Templates reference the
+ * active file by path so the assistant has a concrete target.
+ */
+interface SlashCommand {
+  label: string;
+  hint: string;
+  template: (activeFilePath: string | null) => string;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  {
+    label: "/explain",
+    hint: "what this file does",
+    template: (p) => p
+      ? `Explain what \`${p}\` does and how it fits into the project. Cite specific lines.`
+      : `Explain the purpose of the current code. Cite specific lines.`,
+  },
+  {
+    label: "/fix",
+    hint: "fix the last error",
+    template: (p) => p
+      ? `Find and fix the bug in \`${p}\` based on the last run's error. Propose a precise patch.`
+      : `Find and fix the bug based on the last run's error. Propose a precise patch.`,
+  },
+  {
+    label: "/test",
+    hint: "write a unit test",
+    template: (p) => p
+      ? `Write a focused unit test for the most important function in \`${p}\`. Cover the happy path and one edge case.`
+      : `Write a focused unit test for the current code. Cover the happy path and one edge case.`,
+  },
+  {
+    label: "/refactor",
+    hint: "suggest improvements",
+    template: (p) => p
+      ? `Review \`${p}\` for clarity, naming, and duplication. Suggest concrete refactors with code excerpts.`
+      : `Review the current code for clarity, naming, and duplication. Suggest concrete refactors.`,
+  },
+];
+
+function buildSlashTemplate(cmd: SlashCommand, activeFilePath: string | null): string {
+  return cmd.template(activeFilePath);
+}
+
+export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile }: ChatPanelProps) {
   const chat = useRoomChat(roomId);
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -401,7 +455,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           {contextOpen && (
             <ul className="space-y-2 border-t border-zinc-800 px-3 py-2">
               {chat.context.map((c, i) => (
-                <ContextItem key={i} chunk={c} />
+                <ContextItem key={i} chunk={c} onJump={onJumpToFile} />
               ))}
             </ul>
           )}
@@ -439,6 +493,25 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
       {/* Input */}
       {!isReviewing && (
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
+        {/* Slash-command chips: pre-fill the textarea with a templated
+            prompt scoped to the file the user has open. Hidden once the
+            user starts typing so they don't compete for screen room. */}
+        {draft.length === 0 && !chat.streaming && (
+          <div className="flex flex-wrap gap-1.5">
+            {SLASH_COMMANDS.map((cmd) => (
+              <button
+                key={cmd.label}
+                type="button"
+                onClick={() => setDraft(buildSlashTemplate(cmd, activeFilePath))}
+                className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-cyan/40 hover:text-cyan"
+                title={cmd.hint}
+              >
+                <span className="font-mono text-cyan">{cmd.label}</span>
+                <span className="ml-1 text-zinc-500">{cmd.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -766,7 +839,13 @@ function ProvenanceBadge({ source }: { source: string[] }) {
   );
 }
 
-function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
+function ContextItem({
+  chunk,
+  onJump,
+}: {
+  chunk: ChatContextChunk;
+  onJump?: (path: string, line?: number) => void;
+}) {
   // Prefer the symbol-attributed label when the AST chunker found one
   // ("AuthService.refreshToken · L87–L112"); fall back to the legacy
   // path#chunkN label so older payloads keep rendering as before.
@@ -776,12 +855,34 @@ function ContextItem({ chunk }: { chunk: ChatContextChunk }) {
       ? `L${chunk.startLine}`
       : `L${chunk.startLine}–L${chunk.endLine}`
     : null;
+  const jumpable = onJump !== undefined;
+  const handleJump = () => {
+    if (!onJump) return;
+    onJump(chunk.path, chunk.startLine);
+  };
   return (
     <motion.li
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 transition-colors hover:border-cyan/40"
+      onClick={jumpable ? handleJump : undefined}
+      onKeyDown={
+        jumpable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleJump();
+              }
+            }
+          : undefined
+      }
+      role={jumpable ? "button" : undefined}
+      tabIndex={jumpable ? 0 : undefined}
+      title={jumpable ? `Jump to ${chunk.path}${lineLabel ? " · " + lineLabel : ""}` : undefined}
+      className={cn(
+        "rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 transition-colors hover:border-cyan/40",
+        jumpable && "cursor-pointer focus:border-cyan focus:outline-none",
+      )}
     >
       <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-zinc-500">
         <span className="truncate font-mono">
