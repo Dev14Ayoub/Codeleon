@@ -971,17 +971,21 @@ function buildStaticPreviewHtml(files: IndexFile[]): string | null {
   const baseDir = htmlPath.includes("/") ? htmlPath.slice(0, htmlPath.lastIndexOf("/") + 1) : "";
   let html = byPath.get(htmlPath) ?? "";
 
+  // Non-capturing groups for the surrounding attributes — the callback
+  // only needs `match` (for the no-replace fallback) and the href/src,
+  // never the bytes before or after. Capturing them would keep three
+  // positional args alive and trip @typescript-eslint/no-unused-vars.
   html = html.replace(
-    /<link\b([^>]*?)href=["']([^"']+\.css)["']([^>]*)>/gi,
-    (match, before: string, href: string, after: string) => {
+    /<link\b(?:[^>]*?)href=["']([^"']+\.css)["'](?:[^>]*)>/gi,
+    (match, href: string) => {
       const css = byPath.get(resolvePreviewPath(baseDir, href));
       return css === undefined ? match : `<style data-codeleon-href="${escapeHtml(href)}">\n${css}\n</style>`;
     },
   );
 
   html = html.replace(
-    /<script\b([^>]*?)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi,
-    (match, before: string, src: string, after: string) => {
+    /<script\b(?:[^>]*?)src=["']([^"']+\.js)["'](?:[^>]*)><\/script>/gi,
+    (match, src: string) => {
       const js = byPath.get(resolvePreviewPath(baseDir, src));
       return js === undefined ? match : `<script data-codeleon-src="${escapeHtml(src)}">\n${js}\n</script>`;
     },
