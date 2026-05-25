@@ -93,6 +93,30 @@ class Bm25SearcherTest {
     }
 
     @Test
+    void searchAndUpsertAfterDeleteRoomDegradeGracefully() {
+        UUID room = UUID.randomUUID();
+        searcher.upsertFile(room, "A.java", List.of(
+                new CodeChunk("class A {}", "A", CodeChunk.SymbolKind.CLASS, 1, 1)
+        ));
+        searcher.deleteRoom(room);
+
+        // After deleteRoom the state is gone — a search on the same room
+        // must return empty rather than touching the closed writer
+        // (anti-regression for the race where a thread held a stale
+        // RoomState reference past the rooms.remove call).
+        assertThat(searcher.search(room, "A", 5)).isEmpty();
+
+        // An upsert right after a delete re-creates the room cleanly.
+        // Without the closed-flag check, the stale state would still be
+        // visible to a thread that captured it before the remove and
+        // would explode on its closed writer.
+        searcher.upsertFile(room, "B.java", List.of(
+                new CodeChunk("class B {}", "B", CodeChunk.SymbolKind.CLASS, 1, 1)
+        ));
+        assertThat(searcher.search(room, "B", 5)).hasSize(1);
+    }
+
+    @Test
     void deleteRoomWipesEverything() {
         UUID room = UUID.randomUUID();
         searcher.upsertFile(room, "A.java", List.of(

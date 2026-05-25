@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * In-memory BM25 index, one Lucene directory per room. Lives next to the
@@ -85,6 +86,13 @@ public class Bm25Searcher {
     public void upsertFile(UUID roomId, String path, List<CodeChunk> chunks) {
         RoomState state = rooms.computeIfAbsent(roomId, this::createState);
         synchronized (state) {
+            // Re-check the closed flag inside the lock — a concurrent
+            // deleteRoom may have already torn down this state's writer
+            // between computeIfAbsent and our acquiring the monitor.
+            if (state.closed.get()) {
+                log.debug("Skipping BM25 upsert for room {} path {}: room was just deleted", roomId, path);
+                return;
+            }
             try {
                 state.writer.deleteDocuments(new Term(FIELD_PATH, path));
                 for (int i = 0; i < chunks.size(); i++) {
@@ -122,6 +130,7 @@ public class Bm25Searcher {
         RoomState state = rooms.get(roomId);
         if (state == null) return;
         synchronized (state) {
+            if (state.closed.get()) return;
             try {
                 state.writer.deleteDocuments(new Term(FIELD_PATH, path));
                 state.writer.commit();
@@ -135,6 +144,11 @@ public class Bm25Searcher {
         RoomState state = rooms.remove(roomId);
         if (state == null) return;
         synchronized (state) {
+            // Flag first so any thread waiting on this monitor (e.g. a
+            // concurrent search that captured the state ref before our
+            // rooms.remove call) bails out instead of touching the
+            // closed writer.
+            state.closed.set(true);
             closeQuietly(state);
         }
     }
@@ -145,6 +159,7 @@ public class Bm25Searcher {
         if (state == null) return List.of();
 
         synchronized (state) {
+            if (state.closed.get()) return List.of();
             try (DirectoryReader reader = DirectoryReader.open(state.writer)) {
                 if (reader.numDocs() == 0) return List.of();
                 IndexSearcher searcher = new IndexSearcher(reader);
@@ -255,6 +270,20 @@ public class Bm25Searcher {
             double score
     ) {}
 
-    /** Per-room mutable state. Package-private only for tests; never leaked outside. */
-    private record RoomState(StandardAnalyzer analyzer, ByteBuffersDirectory directory, IndexWriter writer) {}
+    /**
+     * Per-room mutable state. Holds the Lucene plumbing plus a {@code closed}
+     * flag that {@link #deleteRoom} flips inside the lock so any concurrent
+     * search or upsert that still has a stale reference bails out rather
+     * than touching an already-closed writer.
+     */
+    private record RoomState(
+            StandardAnalyzer analyzer,
+            ByteBuffersDirectory directory,
+            IndexWriter writer,
+            AtomicBoolean closed
+    ) {
+        RoomState(StandardAnalyzer analyzer, ByteBuffersDirectory directory, IndexWriter writer) {
+            this(analyzer, directory, writer, new AtomicBoolean(false));
+        }
+    }
 }
