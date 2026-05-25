@@ -28,6 +28,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -219,7 +220,10 @@ public class Bm25Searcher {
             // Final safety net — even with escaping a pathological query
             // could fail; fall back to a term query so we always return
             // *something* rather than throwing into the chat pipeline.
-            return new org.apache.lucene.search.TermQuery(new Term(FIELD_TEXT, userQuery.toLowerCase()));
+            // Locale.ROOT guarantees the lowercasing matches what
+            // StandardAnalyzer applies at index time, regardless of the
+            // server's locale (Turkish 'I' → 'ı' would not match).
+            return new org.apache.lucene.search.TermQuery(new Term(FIELD_TEXT, userQuery.toLowerCase(Locale.ROOT)));
         }
     }
 
