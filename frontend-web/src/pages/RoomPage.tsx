@@ -129,14 +129,6 @@ export function RoomPage() {
   }, [roomFilesQuery.data, collab.ydoc]);
 
   /**
-   * Applies an agent-proposed {find → replace} patch to the Y.Text bound
-   * to {@code path}. Re-validates that {@code find} is still present and
-   * unambiguous at click time — the file may have changed between the
-   * agent's proposal and the user's click. On success the CRDT update
-   * propagates to every collaborator via the existing y-websocket
-   * provider; no separate save is required.
-   */
-  /**
    * Opens a file in the editor and (optionally) scrolls to a given line.
    * Wired to the chat panel's context drawer so a citation chip jumps
    * the editor straight to the cited code. The scroll runs in a
@@ -161,6 +153,14 @@ export function RoomPage() {
     [],
   );
 
+  /**
+   * Applies an agent-proposed {find → replace} patch to the Y.Text bound
+   * to {@code path}. Re-validates that {@code find} is still present and
+   * unambiguous at click time — the file may have changed between the
+   * agent's proposal and the user's click. On success the CRDT update
+   * propagates to every collaborator via the existing y-websocket
+   * provider; no separate save is required.
+   */
   const applyPatch = useCallback(
     (path: string, find: string, replace: string): { ok: boolean; reason?: string } => {
       if (!canEdit) {
