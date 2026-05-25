@@ -149,13 +149,16 @@ backend/src/test/java/com/codeleon/ai/
 
 ## Key project facts to remember
 
-- **JAVA_HOME points to JDK 17 which fails to build** — must export
-  `JAVA_HOME=C:\Users\pc\.jdks\openjdk-23.0.1` before any `mvn` command.
+- **`JAVA_HOME` is set (User scope) to `C:\Users\pc\.jdks\openjdk-23.0.1`**
+  and the same `\bin` is prepended to the User PATH, so `mvn` and `java`
+  resolve to JDK 23 without any preface. The Machine PATH still has
+  JDK 17 hardcoded — left untouched on purpose so other tools that
+  expect JDK 17 keep working; User PATH wins for the dev shell.
 - **Postgres host port = 5433** (not the default 5432) to avoid the native
   Windows Postgres install conflict. `POSTGRES_PORT=5433` is in `.env` and
   the default in `docker-compose.yml`.
-- **Surefire needs `-Dnet.bytebuddy.experimental=true`** for Mockito on JDK 23
-  (already wired in `pom.xml`).
+- **Surefire passes `-Dnet.bytebuddy.experimental=true`** to let Mockito's
+  ByteBuddy accept JDK 23 (wired in `pom.xml`). Harmless on JDK 21.
 - **Codeleon AI flag** is `codeleon.ai.enabled=false` by default. Set
   `AI_ENABLED=true` env var to bootstrap the Qdrant collection at startup.
 - **Launcher**: `.\scripts\start.ps1 -Ai` does docker + backend + frontend + browser.
