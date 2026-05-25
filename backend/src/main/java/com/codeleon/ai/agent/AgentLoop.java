@@ -55,7 +55,7 @@ public class AgentLoop {
             3. Call tools one step at a time. Read the result before deciding the next call. Do not guess paths or symbols.
             4. When you have enough context, answer concisely with concrete code excerpts and cite file paths + line numbers.
 
-            Be efficient: fewer tool calls is better. Five calls maximum per turn.
+            Be efficient: fewer tool calls is better. Five tool-using iterations maximum per turn.
             """;
 
     private final OllamaClient ollama;
