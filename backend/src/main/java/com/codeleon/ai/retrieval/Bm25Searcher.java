@@ -52,7 +52,6 @@ public class Bm25Searcher {
 
     private static final Logger log = LoggerFactory.getLogger(Bm25Searcher.class);
 
-    private static final String FIELD_ID = "id";
     private static final String FIELD_PATH = "path";
     private static final String FIELD_SYMBOL = "symbol";
     private static final String FIELD_SYMBOL_RAW = "symbolRaw";
@@ -99,7 +98,6 @@ public class Bm25Searcher {
                 for (int i = 0; i < chunks.size(); i++) {
                     CodeChunk c = chunks.get(i);
                     Document doc = new Document();
-                    doc.add(new StringField(FIELD_ID, path + ":" + i, Field.Store.NO));
                     doc.add(new StringField(FIELD_PATH, path, Field.Store.YES));
                     if (c.symbol() != null) {
                         // Two complementary representations:
