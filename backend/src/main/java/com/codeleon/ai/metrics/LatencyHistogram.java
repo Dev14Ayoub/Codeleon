@@ -62,10 +62,21 @@ public final class LatencyHistogram {
         long[] copy = new long[size];
         System.arraycopy(samples, 0, copy, 0, size);
         Arrays.sort(copy);
-        long p50 = copy[(int) Math.floor(size * 0.50d)];
-        long p95 = copy[Math.min(size - 1, (int) Math.floor(size * 0.95d))];
+        // Nearest-rank method: position = ceil(p*n), 1-indexed → 0-indexed.
+        // Standard percentile definition (NIST). Floor(p*n) would put p50
+        // on the larger of two samples when size=2 — visibly wrong on a
+        // small window.
+        long p50 = copy[rank(0.50d, size)];
+        long p95 = copy[rank(0.95d, size)];
         long max = copy[size - 1];
         return new Percentiles(p50, p95, max);
+    }
+
+    private static int rank(double percentile, int size) {
+        int pos = (int) Math.ceil(percentile * size) - 1;
+        if (pos < 0) return 0;
+        if (pos >= size) return size - 1;
+        return pos;
     }
 
     public synchronized void reset() {
