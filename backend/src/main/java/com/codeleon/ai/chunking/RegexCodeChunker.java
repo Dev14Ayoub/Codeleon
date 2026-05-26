@@ -140,9 +140,11 @@ public final class RegexCodeChunker implements CodeChunker {
             buf.append(line).append('\n');
             lineNum++;
         }
-        if (buf.length() > 0) {
-            out.add(new CodeChunk(buf.toString().stripTrailing(), symbol, kind, chunkStart, lineNum - 1));
-        }
+        // Use JavaCodeChunker's helper so the residue-slicing logic lives
+        // in one place — covers the case where a single line in `body`
+        // itself exceeds MAX_CHUNK_CHARS (minified JS, etc.) which the
+        // line-loop above cannot split.
+        JavaCodeChunker.flushOversized(buf, symbol, kind, chunkStart, lineNum - 1, out);
     }
 
     private CodeChunk.SymbolKind kindOf(Matcher m, String name) {

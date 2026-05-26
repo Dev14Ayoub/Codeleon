@@ -178,8 +178,31 @@ public final class JavaCodeChunker implements CodeChunker {
             buf.append(line).append('\n');
             lineNum++;
         }
-        if (buf.length() > 0) {
-            out.add(new CodeChunk(buf.toString().stripTrailing(), symbol, kind, chunkStartLine, lineNum - 1));
+        flushOversized(buf, symbol, kind, chunkStartLine, lineNum - 1, out);
+    }
+
+    /**
+     * Drains a {@code splitOversized} buffer into the output list, hard-
+     * slicing by character count for any residue that itself exceeds
+     * MAX_CHUNK_CHARS. The line-based loop in {@link #splitOversized}
+     * cannot break a single line, so a minified Java file (one giant
+     * method on one line) used to ship past the budget; this guards it.
+     */
+    static void flushOversized(StringBuilder buf, String symbol, CodeChunk.SymbolKind kind,
+                                int startLine, int endLine, List<CodeChunk> out) {
+        if (buf.length() == 0) return;
+        String body = buf.toString().stripTrailing();
+        if (body.isEmpty()) return;
+        if (body.length() <= MAX_CHUNK_CHARS) {
+            out.add(new CodeChunk(body, symbol, kind, startLine, endLine));
+            return;
+        }
+        // Single line longer than the budget — slice it by chars and
+        // attribute every slice to the same symbol + line range, since
+        // we cannot pinpoint a sub-line location.
+        for (int i = 0; i < body.length(); i += MAX_CHUNK_CHARS) {
+            int end = Math.min(i + MAX_CHUNK_CHARS, body.length());
+            out.add(new CodeChunk(body.substring(i, end), symbol, kind, startLine, endLine));
         }
     }
 

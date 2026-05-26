@@ -96,6 +96,25 @@ class JavaCodeChunkerTest {
     }
 
     @Test
+    void minifiedSingleLineBodyIsSlicedByCharBudget() {
+        // A single line longer than MAX_CHUNK_CHARS — the line-based
+        // splitOversized loop cannot break it, so before the flush fix
+        // it shipped past the budget in one giant chunk.
+        StringBuilder body = new StringBuilder("class Big{void huge(){");
+        // Pad to ~3500 chars on a single line.
+        while (body.length() < 3500) {
+            body.append("doSomething();");
+        }
+        body.append("}}");
+
+        List<CodeChunk> chunks = chunker.chunk(body.toString());
+        assertThat(chunks).isNotEmpty();
+        for (CodeChunk c : chunks) {
+            assertThat(c.text().length()).isLessThanOrEqualTo(CodeChunker.MAX_CHUNK_CHARS);
+        }
+    }
+
+    @Test
     void recordAndEnumProduceChunksWithMatchingKinds() {
         String source = """
                 public record Point(int x, int y) {
