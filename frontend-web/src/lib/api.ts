@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/stores/auth-store";
 
 export type UserRole = "USER" | "ADMIN";
@@ -91,6 +91,86 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// -----------------------------------------------------------------------------
+// 401 response interceptor — silent refresh + retry, logout on failure
+// -----------------------------------------------------------------------------
+// Without this, an expired access token (15-min TTL) leaves the user staring
+// at a dashboard frozen on stale localStorage data — every protected call
+// returns 401 and the UI never gets a signal to recover. The refresh token
+// lives in the same persisted store; we trade it for a fresh access token
+// transparently on the first 401, then re-issue the failed request.
+//
+// Concurrent 401s are coalesced behind a single in-flight refresh promise
+// so a dashboard mount that fires 4-5 simultaneous queries doesn't fan out
+// into 5 parallel refresh calls (which would race the token-rotation).
+
+type RetryableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
+
+let refreshInFlight: Promise<string> | null = null;
+
+function isAuthEndpoint(url: string | undefined): boolean {
+  if (!url) return false;
+  return url.includes("/auth/refresh") || url.includes("/auth/login") || url.includes("/auth/register");
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshInFlight) return refreshInFlight;
+  const current = useAuthStore.getState();
+  if (!current.refreshToken) {
+    return Promise.reject(new Error("no refresh token"));
+  }
+  refreshInFlight = (async () => {
+    try {
+      // Use a bare axios call here, not `api`, so we don't recurse through
+      // our own interceptors on the refresh endpoint itself.
+      const { data } = await axios.post<AuthResponse>(
+        `${api.defaults.baseURL}/auth/refresh`,
+        { refreshToken: current.refreshToken },
+        { headers: { "Content-Type": "application/json" } },
+      );
+      useAuthStore.getState().setSession({
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        user: data.user,
+      });
+      return data.accessToken;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const original = error.config as RetryableConfig | undefined;
+    const status = error.response?.status;
+
+    // Only intervene on 401, and only once per request, and not on the
+    // auth endpoints themselves (refreshing a login attempt is nonsense).
+    if (status !== 401 || !original || original._retried || isAuthEndpoint(original.url)) {
+      return Promise.reject(error);
+    }
+    original._retried = true;
+
+    try {
+      const newToken = await refreshAccessToken();
+      original.headers = original.headers ?? {};
+      original.headers.Authorization = `Bearer ${newToken}`;
+      return api(original);
+    } catch (refreshErr) {
+      // Refresh failed — wipe the store so ProtectedRoute can redirect
+      // to /login. We rethrow the ORIGINAL error so the caller still sees
+      // the 401 it was expecting; the refresh error is logged only.
+      // eslint-disable-next-line no-console
+      console.warn("token refresh failed, logging out", refreshErr);
+      useAuthStore.getState().logout();
+      return Promise.reject(error);
+    }
+  },
+);
 
 export async function registerUser(payload: {
   fullName: string;
