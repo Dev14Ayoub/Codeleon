@@ -80,7 +80,10 @@ codeleon:
       # agent mode in production.
       agent-model: ${OLLAMA_AGENT_MODEL:}
       embed-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
-      request-timeout: ${OLLAMA_REQUEST_TIMEOUT:60s}
+      # 4 minutes — small CPU-only models can take 2-3 min for a long-ish
+      # response. 60s was killing chats halfway through inference and
+      # surfacing as a "Chat failed" toast on the frontend.
+      request-timeout: ${OLLAMA_REQUEST_TIMEOUT:240s}
     qdrant:
       url: ${QDRANT_URL:http://localhost:6333}
       collection: ${QDRANT_COLLECTION:codeleon-room-files}

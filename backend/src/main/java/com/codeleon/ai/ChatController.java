@@ -27,7 +27,11 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class ChatController {
 
-    private static final long EMITTER_TIMEOUT_MS = 90_000L;
+    // 5 minutes — has to be longer than the Ollama HTTP client timeout
+    // (240s in application.yml) so the SSE doesn't close mid-inference on
+    // a slow CPU-only Ollama. The previous 90s value was the root cause
+    // of the "Chat failed" toast users saw 60-90s into a long chat turn.
+    private static final long EMITTER_TIMEOUT_MS = 300_000L;
 
     private final RoomChatService chatService;
     private final RoomFileService roomFileService;
