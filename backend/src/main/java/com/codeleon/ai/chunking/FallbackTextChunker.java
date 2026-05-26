@@ -1,16 +1,20 @@
 package com.codeleon.ai.chunking;
 
-import com.codeleon.ai.TextChunker;
-
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Sliding-window chunker for files with no recognised language. Wraps the
- * legacy {@link TextChunker} so the behaviour matches the pre-AST indexer
- * for unknown extensions, READMEs, JSON, etc. Line ranges are approximate —
- * computed from the chunk's offset, not the parser — because there is no
- * parser here.
+ * Sliding-window chunker for files with no recognised language. Walks
+ * the source itself rather than delegating to {@code TextChunker.chunk}
+ * so the emitted line range stays aligned with where the chunk text
+ * actually lives in the file.
+ *
+ * <p>The earlier implementation looped over {@code TextChunker.chunk}'s
+ * returned slices and assumed one slice per window, but {@code TextChunker}
+ * silently drops windows that strip down to empty (a long run of
+ * whitespace produces no slice). The cursor then desynced from the real
+ * window position, so every chunk emitted after a dropped window
+ * reported a line range from earlier in the file.
  */
 public final class FallbackTextChunker implements CodeChunker {
 
@@ -24,19 +28,20 @@ public final class FallbackTextChunker implements CodeChunker {
     public List<CodeChunk> chunk(String text) {
         if (text == null || text.isBlank()) return List.of();
 
-        List<String> slices = TextChunker.chunk(text, CHUNK_SIZE, CHUNK_OVERLAP);
-        if (slices.isEmpty()) return List.of();
-
-        List<CodeChunk> chunks = new ArrayList<>(slices.size());
-        int cursor = 0;
+        List<CodeChunk> chunks = new ArrayList<>();
         int step = CHUNK_SIZE - CHUNK_OVERLAP;
-        for (String slice : slices) {
-            int startOffset = cursor;
-            int endOffset = Math.min(startOffset + CHUNK_SIZE, text.length());
-            int startLine = lineAt(text, startOffset);
-            int endLine = lineAt(text, Math.max(startOffset, endOffset - 1));
-            chunks.add(CodeChunk.text(slice, startLine, endLine));
-            cursor += step;
+        int length = text.length();
+        for (int start = 0; start < length; start += step) {
+            int end = Math.min(start + CHUNK_SIZE, length);
+            String slice = text.substring(start, end).strip();
+            if (!slice.isEmpty()) {
+                int startLine = lineAt(text, start);
+                int endLine = lineAt(text, Math.max(start, end - 1));
+                chunks.add(CodeChunk.text(slice, startLine, endLine));
+            }
+            if (end == length) {
+                break;
+            }
         }
         return chunks;
     }
