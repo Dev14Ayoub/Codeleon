@@ -96,6 +96,27 @@ class JavaCodeChunkerTest {
     }
 
     @Test
+    void multiVariableFieldDeclarationLabelsEveryName() {
+        // `int x, y;` used to emit a chunk whose symbol was "Foo.x",
+        // losing "y" from symbol-based retrieval. Both names now appear
+        // in the comma-joined symbol so a search by either identifier
+        // finds the chunk via the symbol field.
+        String source = """
+                public class Foo {
+                    private int x, y;
+
+                    public int sum() {
+                        // pad the body so the field doesn't merge into a method
+                        return x + y;
+                    }
+                }
+                """;
+        List<CodeChunk> chunks = chunker.chunk(source);
+        assertThat(chunks).anyMatch(c -> c.symbolKind() == CodeChunk.SymbolKind.FIELD
+                && c.symbol() != null && c.symbol().contains("x") && c.symbol().contains("y"));
+    }
+
+    @Test
     void minifiedSingleLineBodyIsSlicedByCharBudget() {
         // A single line longer than MAX_CHUNK_CHARS — the line-based
         // splitOversized loop cannot break it, so before the flush fix

@@ -18,6 +18,7 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Splits a Java source file into one chunk per top-level/nested class member
@@ -114,10 +115,16 @@ public final class JavaCodeChunker implements CodeChunker {
             } else if (member instanceof ConstructorDeclaration c) {
                 emitMember(c.getNameAsString(), CodeChunk.SymbolKind.CONSTRUCTOR, c.getRange().orElse(null), source, path, out);
             } else if (member instanceof FieldDeclaration f) {
-                String name = f.getVariables().stream()
-                        .map(VariableDeclarator::getNameAsString)
-                        .findFirst()
-                        .orElse("field");
+                // Multi-variable declarations (e.g. `int x, y;`) name every
+                // variable in the symbol so a BM25 / vector search by either
+                // identifier still finds the chunk. The chunk text already
+                // contains both, but symbol-level retrieval would miss the
+                // tail names if we kept just the first.
+                String name = f.getVariables().isEmpty()
+                        ? "field"
+                        : f.getVariables().stream()
+                                .map(VariableDeclarator::getNameAsString)
+                                .collect(Collectors.joining(","));
                 emitMember(name, CodeChunk.SymbolKind.FIELD, f.getRange().orElse(null), source, path, out);
             } else if (member instanceof TypeDeclaration<?> nested) {
                 emitType(nested, path, source, out);
