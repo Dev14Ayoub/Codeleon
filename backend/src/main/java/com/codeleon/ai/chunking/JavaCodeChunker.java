@@ -32,19 +32,30 @@ import java.util.List;
  */
 public final class JavaCodeChunker implements CodeChunker {
 
-    private final JavaParser parser;
+    /**
+     * Parser configuration is immutable and reusable across threads; the
+     * {@link JavaParser} instance built from it is NOT — it keeps internal
+     * problem-reporter state during {@code parse}, so two concurrent
+     * indexings sharing one parser would race on that state.
+     *
+     * <p>{@link CodeChunkerDispatcher} holds a single {@code JavaCodeChunker}
+     * as a Spring singleton, and {@code RoomFileIndexer.index} can be
+     * invoked from many HTTP threads (one per concurrent chat / index
+     * request), so the field-level parser was a real race. We now build
+     * a fresh parser per call — the cost is microseconds compared to the
+     * parse itself, and the safety is unconditional.
+     */
+    private static final ParserConfiguration PARSER_CONFIG = new ParserConfiguration()
+            .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
     public JavaCodeChunker() {
-        ParserConfiguration cfg = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        this.parser = new JavaParser(cfg);
     }
 
     @Override
     public List<CodeChunk> chunk(String text) {
         if (text == null || text.isBlank()) return List.of();
 
-        ParseResult<CompilationUnit> result = parser.parse(text);
+        ParseResult<CompilationUnit> result = new JavaParser(PARSER_CONFIG).parse(text);
         if (!result.isSuccessful() || result.getResult().isEmpty()) {
             return List.of();
         }
