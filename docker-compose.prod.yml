@@ -1,0 +1,155 @@
+# Production stack for the Hetzner VPS.
+#
+# Design principles:
+#   - Every service lives on a private Docker network. The only port that
+#     reaches the host is Caddy's :80, and even that is bound to the
+#     Tailscale IP so the public internet sees nothing.
+#   - Postgres / Redis / Qdrant / Ollama are unpublished — internal traffic
+#     between containers uses Docker DNS (e.g. http://ollama:11434).
+#   - Backend reads its config from environment variables interpolated
+#     from .env.production. No secrets in this file.
+#   - Volumes survive container recreation, so a `docker compose up -d`
+#     never wipes the database.
+#
+# Bring up:
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: codeleon-postgres
+    environment:
+      POSTGRES_DB: codeleon
+      POSTGRES_USER: codeleon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeleon"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: codeleon-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    container_name: codeleon-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - internal
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: codeleon-ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_NUM_PARALLEL: 1
+      OLLAMA_MAX_LOADED_MODELS: 2
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - internal
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codeleon-backend
+    environment:
+      # Spring datasource → internal Postgres via Docker DNS.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/codeleon
+      SPRING_DATASOURCE_USERNAME: codeleon
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Redis for sessions / cache.
+      SPRING_DATA_REDIS_HOST: redis
+
+      # AI plumbing — points at the internal Ollama + Qdrant.
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5-coder:1.5b}
+      OLLAMA_AGENT_MODEL: ${OLLAMA_AGENT_MODEL:-qwen2.5-coder:3b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      OLLAMA_REQUEST_TIMEOUT: 240s
+      QDRANT_URL: http://qdrant:6333
+      AI_ENABLED: "true"
+
+      # Auth — JWT secret + bootstrap admin from .env.production.
+      JWT_SECRET: ${JWT_SECRET}
+      CODELEON_BOOTSTRAP_ADMIN_EMAIL: ${ADMIN_EMAIL}
+
+      # Required so Caddy /api/* routing maps to the right Spring path.
+      SERVER_SERVLET_CONTEXT_PATH: /api/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend-web
+      dockerfile: Dockerfile
+      args:
+        # Caddy proxies /api/* to backend, so the SPA uses the relative
+        # path and is reachable from any host (Tailscale IP, domain, etc.).
+        VITE_API_BASE_URL: /api/v1
+    container_name: codeleon-frontend
+    networks:
+      - internal
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: codeleon-caddy
+    # Bind explicitly to the Tailscale IP so Caddy is unreachable from the
+    # public internet even if UFW is misconfigured. TAILSCALE_IP comes from
+    # .env.production; if unset, Docker binds to 0.0.0.0 (and UFW is then
+    # the only line of defence — still safe but less belt-and-suspenders).
+    ports:
+      - "${TAILSCALE_IP:-0.0.0.0}:80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  ollama_data:
+  caddy_data:
+  caddy_config:

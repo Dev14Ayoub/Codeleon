@@ -1,0 +1,35 @@
+# Caddy reverse proxy for Codeleon production.
+#
+# Currently listens on :80 (HTTP) because access is private via Tailscale —
+# no need for TLS on a 100.x.y.z address. When the deployment goes public,
+# replace the ":80" block with your domain and Caddy auto-issues a
+# Let's Encrypt cert.
+#
+# Routes:
+#   /api/*  → backend (Spring Boot — includes WebSocket /api/v1/collab/...)
+#   *       → frontend (Vite SPA via nginx)
+
+:80 {
+    # Backend — API + WebSocket (Caddy handles WS upgrade transparently
+    # via reverse_proxy).
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # Everything else hits the SPA. nginx inside the frontend container
+    # handles the client-side routing fallback.
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    # Compression for the SPA bundle.
+    encode gzip zstd
+
+    # Structured logs to stdout — Docker captures them via
+    # `docker logs codeleon-caddy`.
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}
