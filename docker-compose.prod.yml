@@ -120,6 +120,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CODELEON_BOOTSTRAP_ADMIN_EMAIL: ${ADMIN_EMAIL}
 
+      # First entry is the SPA origin that the OAuth2 success handler
+      # redirects the browser to after a successful GitHub/Google login
+      # (see OAuth2LoginSuccessHandler#frontendOrigin). Without this the
+      # handler falls back to the default localhost:5173 — which only
+      # works in dev. Override via .env if you ever expose a public domain.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://100.106.32.95}
+
       # OAuth2 social login credentials. Leaving any pair blank disables
       # that provider — OAuth2ClientConfig only registers a client when
       # both id AND secret are non-blank. Forwarded from .env so the
