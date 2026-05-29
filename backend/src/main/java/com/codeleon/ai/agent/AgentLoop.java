@@ -231,8 +231,51 @@ public class AgentLoop {
             return extracted;
         }
 
-        OllamaClient.ToolCall tc = tryParseToolCallJson(content.trim(), registry);
-        return tc == null ? List.of() : List.of(tc);
+        // Q4 variants of qwen2.5-coder often emit some prose then a bare
+        // JSON object (no <tool_call> wrapper). Scan every top-level
+        // {...} block in the content and try each as a tool call. The
+        // brace scanner is string-aware so escaped quotes inside JSON
+        // strings don't fool the depth counter.
+        for (String candidate : findTopLevelJsonObjects(content)) {
+            OllamaClient.ToolCall tc = tryParseToolCallJson(candidate, registry);
+            if (tc != null) extracted.add(tc);
+        }
+        return extracted;
+    }
+
+    /**
+     * Returns every balanced {@code {...}} block in {@code text}, in document
+     * order. Tracks string context so {@code "\"}"} inside a JSON string
+     * value does not close the outer object. Nested objects are returned as
+     * part of their enclosing top-level object (not separately).
+     */
+    static List<String> findTopLevelJsonObjects(String text) {
+        List<String> out = new ArrayList<>();
+        int depth = 0;
+        int start = -1;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escape) { escape = false; continue; }
+            if (inString) {
+                if (c == '\\') { escape = true; }
+                else if (c == '"') { inString = false; }
+                continue;
+            }
+            if (c == '"') { inString = true; continue; }
+            if (c == '{') {
+                if (depth == 0) start = i;
+                depth++;
+            } else if (c == '}' && depth > 0) {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    out.add(text.substring(start, i + 1));
+                    start = -1;
+                }
+            }
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")

@@ -196,6 +196,41 @@ class AgentLoopTest {
     }
 
     @Test
+    void contentExtractorFindsToolJsonEmbeddedAfterProse() {
+        // Real-world Q4 behaviour observed on Hetzner: the model
+        // narrates ("Let's start by...") and THEN emits the JSON. The
+        // whole-content check misses this; the brace scanner doesn't.
+        OllamaClient ollama = mock(OllamaClient.class);
+        StubTool listFiles = new StubTool("list_files", "App.java\n");
+        AgentToolRegistry registry = new AgentToolRegistry(List.of(listFiles));
+
+        String mixed = "Let's start by listing all the files in the project.\n\n"
+                + "{\"name\": \"list_files\", \"arguments\": {}}";
+        when(ollama.chatWithTools(anyList(), anyList()))
+                .thenReturn(ChatMessage.assistant(mixed))
+                .thenReturn(ChatMessage.assistant("Done."));
+
+        AgentLoop loop = new AgentLoop(ollama, registry);
+        AgentLoopResult result = loop.run(UUID.randomUUID(), queryOnly("what files?"), (n, p) -> {});
+
+        assertThat(listFiles.calls).isEqualTo(1);
+        assertThat(result.answer()).isEqualTo("Done.");
+    }
+
+    @Test
+    void findTopLevelJsonObjects_handlesNestingAndStringsCorrectly() {
+        // Brace scanner edge cases: nested object as an argument, escaped
+        // quotes inside string values, multiple top-level objects.
+        String text = "preamble {\"name\": \"propose_patch\", \"arguments\": "
+                + "{\"path\": \"x.py\", \"find\": \"foo {\\\"k\\\":1}\", \"replace\": \"bar\"}} "
+                + "middle {\"name\": \"list_files\", \"arguments\": {}} trailer";
+        List<String> found = AgentLoop.findTopLevelJsonObjects(text);
+        assertThat(found).hasSize(2);
+        assertThat(found.get(0)).contains("\"propose_patch\"");
+        assertThat(found.get(1)).isEqualTo("{\"name\": \"list_files\", \"arguments\": {}}");
+    }
+
+    @Test
     void contentExtractorRejectsUnknownToolNamesAndTreatsThemAsFinalAnswer() {
         // Defence-in-depth: a chatty model can't smuggle in a fake tool
         // name (e.g. "rm_rf") by pretending to call it via plain JSON.
