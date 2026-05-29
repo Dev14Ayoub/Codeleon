@@ -1,6 +1,6 @@
 # Codeleon Progress Log
 
-This document tracks what has been completed so far in the Codeleon PFE project.
+> **Historical milestone log — captures the first 8 milestones (commits `9ea55b4` → `e9ccbbc`, April → early May 2026).** The project has since grown well past this point: real RAG with AST chunking and hybrid retrieval, agent mode, GitHub import, code runner extended to Java/Maven/Nix, OAuth2 social login, admin dashboard, observability, and production deployment on Hetzner behind Tailscale. For the current and complete status, see **[ROADMAP.md](ROADMAP.md)** — it is the maintained source of truth.
 
 ## Current Repository
 
@@ -305,26 +305,8 @@ docker compose stop ollama qdrant
 
 Note: the Spring backend wiring (Ollama/Qdrant clients, embedding pipeline, `/chat` endpoint) is the next milestone — this commit ships only the infrastructure.
 
-## Current Git History
+---
 
-```text
-e9ccbbc docs: log code runner milestone
-28356e8 feat: add Python code runner via Docker sandbox
-b2bfb94 docs: log real-time collaboration milestone
-e00e1ae feat: add real-time collaborative editing with Yjs and WebSocket
-1905e82 docs: add project progress log
-c7eac9b feat: add room editor page
-475067a feat: add room management
-9ea55b4 feat: bootstrap codeleon foundation
-```
+## End of historical log
 
-## Next Planned Work
-
-1. Backend: Ollama + Qdrant clients, room file embedding pipeline, `POST /rooms/{roomId}/chat` with streaming.
-2. Frontend: AI chat panel wired to the streaming endpoint inside the room editor.
-3. Extend the Code Runner to JavaScript (Node) and Java sandboxes.
-4. Add the text chat (re-uses the WebSocket plumbing already in place).
-
-Immediate next technical milestone:
-
-**RAG backend pipeline — index `RoomFile` content to Qdrant on save, `POST /rooms/{roomId}/chat` that retrieves top-K context and streams an Ollama response.**
+The milestone log above stops at commit `e9ccbbc` (early May 2026). The work that followed — the actual RAG pipeline, the chat endpoint, the agent loop, the Java/Maven/Nix runners, OAuth2, the admin dashboard, the production deployment — is captured in [ROADMAP.md](ROADMAP.md) and in the git history itself (`git log --oneline`). All the items that once lived in this file's "Next Planned Work" section have shipped.
