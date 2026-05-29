@@ -120,6 +120,16 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CODELEON_BOOTSTRAP_ADMIN_EMAIL: ${ADMIN_EMAIL}
 
+      # OAuth2 social login credentials. Leaving any pair blank disables
+      # that provider — OAuth2ClientConfig only registers a client when
+      # both id AND secret are non-blank. Forwarded from .env so the
+      # backend container actually sees them; without these lines the
+      # interpolation only happens in the compose file itself.
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
       # Required so Caddy /api/* routing maps to the right Spring path.
       SERVER_SERVLET_CONTEXT_PATH: /api/v1
     depends_on:
