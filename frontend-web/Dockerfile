@@ -62,7 +62,12 @@ EOF
 
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Use 127.0.0.1, not localhost: the base image's IPv6 setup script only
+# adds `listen [::]:80;` when /etc/nginx/conf.d/default.conf matches the
+# packaged checksum. Our custom conf above doesn't, so nginx stays
+# IPv4-only — and busybox wget resolves `localhost` to `::1` first,
+# which yields "Connection refused" and keeps the container unhealthy.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD wget -q --spider http://localhost/ || exit 1
+    CMD wget -q --spider http://127.0.0.1/ || exit 1
 
 EXPOSE 80
