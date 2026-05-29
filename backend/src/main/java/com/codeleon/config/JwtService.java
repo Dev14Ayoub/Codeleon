@@ -5,6 +5,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -20,6 +21,35 @@ public class JwtService {
 
     public JwtService(SecurityProperties properties) {
         this.properties = properties;
+    }
+
+    /**
+     * Fail fast at boot if {@code JWT_SECRET} was not configured. Without
+     * this, a deploy that forgets {@code --env-file} silently falls back
+     * to the placeholder default in {@code application.yml} — a value
+     * that lives in the public source tree, meaning anyone can forge an
+     * admin token. We refuse to start the JVM rather than open that hole.
+     */
+    @PostConstruct
+    void validateSecret() {
+        String secret = properties.jwtSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT_SECRET is not set. Refusing to boot — auth would silently fall back to a known default.");
+        }
+        if (secret.startsWith("replace_me")) {
+            throw new IllegalStateException(
+                    "JWT_SECRET still contains the placeholder default from application.yml / .env.example. "
+                            + "Set a real, random secret (>= 32 chars) in .env before deploying.");
+        }
+        // Pings the key construction path so a too-short secret surfaces
+        // now (boot) rather than on the first user login.
+        try {
+            secretKey();
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException(
+                    "JWT_SECRET is too weak for HS256 (needs >= 32 bytes of key material): " + ex.getMessage(), ex);
+        }
     }
 
     public String generateAccessToken(User user) {
