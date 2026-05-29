@@ -88,9 +88,17 @@ services:
     # to spawn (and kill) sibling containers. On this Tailscale-only,
     # single-tenant VM the trade-off is acceptable; on a multi-tenant
     # host this would be a hard no — use a dedicated runner service.
+    #
+    # The runs bind mount uses the SAME absolute path on host and inside
+    # the container so the Maven and Nix runners can pass `-v <path>:/workspace`
+    # to the host daemon and have it find the files we just wrote.
+    # The host dir must be writable by uid 999 (the codeleon user):
+    #   sudo mkdir -p /opt/codeleon/runs && sudo chown 999:999 /opt/codeleon/runs
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/codeleon/runs:/opt/codeleon/runs
     environment:
+      RUNNER_WORKSPACE_BASE_DIR: /opt/codeleon/runs
       # Spring datasource → internal Postgres via Docker DNS.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/codeleon
       SPRING_DATASOURCE_USERNAME: codeleon

@@ -31,9 +31,14 @@ public class NixProjectRunnerService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final NixRunnerProperties props;
+    // Shared with the Docker runner: where on disk per-run workspaces are
+    // created. Must resolve to the same path host-side and container-side
+    // so docker.sock-spawned siblings see what we just wrote.
+    private final CodeRunnerProperties runnerProps;
 
-    public NixProjectRunnerService(NixRunnerProperties props) {
+    public NixProjectRunnerService(NixRunnerProperties props, CodeRunnerProperties runnerProps) {
         this.props = props;
+        this.runnerProps = runnerProps;
     }
 
     public ProjectRunResult run(ProjectRunRequest request) {
@@ -48,7 +53,11 @@ public class NixProjectRunnerService {
         String networkName = spec.services().isEmpty() ? null : "codeleon-nix-net-" + UUID.randomUUID();
         List<ServiceRuntime> serviceRuntimes = List.of();
         try {
-            workspace = Files.createTempDirectory("codeleon-nix-run-");
+            // See CodeRunnerProperties#workspaceBaseDir: same-path rule
+            // on both sides of the docker.sock bind mount.
+            Path baseDir = Path.of(runnerProps.workspaceBaseDir());
+            Files.createDirectories(baseDir);
+            workspace = Files.createTempDirectory(baseDir, "codeleon-nix-run-");
             materializeProject(request.files(), workspace);
             if (!spec.projectFlake()) {
                 Files.writeString(workspace.resolve("flake.nix"), generatedFlake(spec.environment()), StandardCharsets.UTF_8);

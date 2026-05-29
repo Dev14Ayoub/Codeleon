@@ -16,7 +16,15 @@ public record CodeRunnerProperties(
         int mavenMemoryMb,
         double cpus,
         int pidsLimit,
-        int maxOutputBytes
+        int maxOutputBytes,
+        // Base directory under which the Maven and Nix runners create
+        // per-run workspaces. Must resolve to the SAME absolute path on
+        // both sides of the docker.sock bind mount in production — when
+        // the backend creates "${workspaceBaseDir}/codeleon-…-XYZ" inside
+        // its container, the daemon on the host has to find the exact
+        // same path or its `-v` mount comes up empty. Defaults to /tmp
+        // for local dev where the backend runs on the host directly.
+        String workspaceBaseDir
 ) {
     public CodeRunnerProperties {
         if (pythonImage == null || pythonImage.isBlank()) pythonImage = "python:3.12-slim";
@@ -31,5 +39,6 @@ public record CodeRunnerProperties(
         if (cpus <= 0) cpus = 0.5;
         if (pidsLimit <= 0) pidsLimit = 64;
         if (maxOutputBytes <= 0) maxOutputBytes = 64 * 1024;
+        if (workspaceBaseDir == null || workspaceBaseDir.isBlank()) workspaceBaseDir = "/tmp";
     }
 }

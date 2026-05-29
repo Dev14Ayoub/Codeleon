@@ -95,7 +95,13 @@ public class DockerCodeRunnerService implements CodeRunnerService {
     private RunResult runMavenJava(RunRequest request, JavaRunSpec spec) {
         Path workspace = null;
         try {
-            workspace = Files.createTempDirectory("codeleon-maven-run-");
+            // Create the workspace under workspaceBaseDir so the path
+            // resolves the same way inside the backend container and on
+            // the host Docker daemon's side of the socket bind mount.
+            // A plain Files.createTempDirectory("…") would land in /tmp
+            // of the container, which the host daemon cannot see.
+            Path baseDir = ensureWorkspaceBaseDir();
+            workspace = Files.createTempDirectory(baseDir, "codeleon-maven-run-");
             materializeProject(request, workspace);
 
             String buildContainerName = "codeleon-runner-" + UUID.randomUUID();
@@ -292,6 +298,18 @@ public class DockerCodeRunnerService implements CodeRunnerService {
             return null;
         }
         return normalized;
+    }
+
+    /**
+     * Resolves and creates (if needed) the shared workspace base directory.
+     * In production this is bind-mounted at the same absolute path on host
+     * and inside the backend container so the host Docker daemon sees the
+     * per-run subdirs the backend writes into.
+     */
+    private Path ensureWorkspaceBaseDir() throws IOException {
+        Path baseDir = Path.of(props.workspaceBaseDir());
+        Files.createDirectories(baseDir);
+        return baseDir;
     }
 
     private void deleteWorkspace(Path workspace) {

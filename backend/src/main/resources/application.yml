@@ -46,6 +46,11 @@ codeleon:
     bootstrap-email: ${CODELEON_BOOTSTRAP_ADMIN_EMAIL:}
   runner:
     enabled: ${RUNNER_ENABLED:true}
+    # Where per-run workspaces are created. In Docker-compose prod this
+    # MUST be a bind mount with the same absolute path on host and
+    # backend container, otherwise the host Docker daemon can't see the
+    # files the backend wrote when it spawns a sibling with -v.
+    workspace-base-dir: ${RUNNER_WORKSPACE_BASE_DIR:/tmp}
     python-image: ${RUNNER_PYTHON_IMAGE:python:3.12-slim}
     java-image: ${RUNNER_JAVA_IMAGE:eclipse-temurin:21-jdk}
     maven-image: ${RUNNER_MAVEN_IMAGE:maven:3.9-eclipse-temurin-21}
