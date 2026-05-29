@@ -37,7 +37,13 @@ function pickColor(seed: string): string {
 
 function buildWebsocketUrl(): { base: string } {
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1") as string;
-  const url = new URL(apiBase);
+  // VITE_API_BASE_URL is relative in the prod build (e.g. "/api/v1") so
+  // the SPA stays reachable from any host that Caddy routes through.
+  // new URL() refuses a relative string on its own — fall back to the
+  // page origin when the base doesn't include a scheme.
+  const url = /^https?:\/\//i.test(apiBase)
+    ? new URL(apiBase)
+    : new URL(apiBase, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const path = url.pathname.endsWith("/")
     ? `${url.pathname}ws/rooms`
