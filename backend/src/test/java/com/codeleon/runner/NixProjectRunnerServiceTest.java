@@ -25,6 +25,11 @@ class NixProjectRunnerServiceTest {
                     0.5,
                     64,
                     8_192
+            ),
+            new CodeRunnerProperties(
+                    true, null, null, null, null,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    "/tmp"
             )
     );
 
