@@ -3,6 +3,9 @@ package com.codeleon.ai.agent;
 import com.codeleon.ai.ChatRequest;
 import com.codeleon.ai.OllamaClient;
 import com.codeleon.ai.OllamaClient.ChatMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The reasoning loop behind {@code mode="agent"} chats. On each iteration
@@ -44,6 +49,15 @@ public class AgentLoop {
      *  feeding the result back to the model so a single fat file dump
      *  cannot blow past the context window. */
     public static final int MAX_TOOL_RESPONSE_CHARS = 4_000;
+
+    /** Captures the body of a Qwen-style <tool_call>{...}</tool_call> block.
+     *  DOTALL so the JSON can span newlines (the template puts each call on
+     *  its own line). */
+    private static final Pattern TOOL_CALL_WRAPPER = Pattern.compile(
+            "<tool_call>\\s*(\\{.*?\\})\\s*</tool_call>", Pattern.DOTALL);
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private static final String SYSTEM_PROMPT_PREFIX = """
             You are Codeleon, a coding agent inside a collaborative code editor.
@@ -85,15 +99,16 @@ public class AgentLoop {
 
         for (iterations = 1; iterations <= MAX_ITERATIONS; iterations++) {
             ChatMessage response = ollama.chatWithTools(messages, toolCatalogue);
+            List<OllamaClient.ToolCall> effectiveCalls = extractToolCalls(response, registry);
 
-            if (!response.hasToolCalls()) {
+            if (effectiveCalls.isEmpty()) {
                 finalAnswer = response.content() == null ? "" : response.content();
                 messages.add(response);
                 break;
             }
 
             messages.add(response);
-            for (OllamaClient.ToolCall tc : response.toolCalls()) {
+            for (OllamaClient.ToolCall tc : effectiveCalls) {
                 totalToolCalls++;
                 String callId = "call_" + totalToolCalls;
                 String fnName = tc.function() == null ? "" : tc.function().name();
@@ -173,6 +188,70 @@ public class AgentLoop {
                     .append("\n```\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * Returns the tool calls the loop should execute on this turn, falling
+     * back to content parsing when Ollama did not promote them to the
+     * structured {@code tool_calls} field. Visible for testing.
+     *
+     * <p>Nominal path: Ollama parses the model's {@code <tool_call>...</tool_call>}
+     * output and exposes it as {@code message.tool_calls}. With some
+     * model/version combinations (notably the qwen2.5-coder Q4 variants on
+     * Ollama 0.24) the wrapper is missing or Ollama's auto-promotion is not
+     * applied, and the tool intent lands inside {@code message.content} as
+     * plain JSON. We compensate here, gated on the registry knowing the
+     * function name so a chatty model can't smuggle in fake "tool calls"
+     * that we would then try to execute.
+     *
+     * <p>Recognised content shapes:
+     * <ul>
+     *   <li>One or more {@code <tool_call>{"name":..,"arguments":..}</tool_call>}
+     *       blocks (the canonical Qwen template).</li>
+     *   <li>The whole content being a single JSON object with {@code name}
+     *       and {@code arguments} keys (what the Q4 variants emit today).</li>
+     * </ul>
+     */
+    static List<OllamaClient.ToolCall> extractToolCalls(ChatMessage response, AgentToolRegistry registry) {
+        if (response.hasToolCalls()) {
+            return response.toolCalls();
+        }
+        String content = response.content();
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+
+        List<OllamaClient.ToolCall> extracted = new ArrayList<>();
+        Matcher m = TOOL_CALL_WRAPPER.matcher(content);
+        while (m.find()) {
+            OllamaClient.ToolCall tc = tryParseToolCallJson(m.group(1), registry);
+            if (tc != null) extracted.add(tc);
+        }
+        if (!extracted.isEmpty()) {
+            return extracted;
+        }
+
+        OllamaClient.ToolCall tc = tryParseToolCallJson(content.trim(), registry);
+        return tc == null ? List.of() : List.of(tc);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OllamaClient.ToolCall tryParseToolCallJson(String json, AgentToolRegistry registry) {
+        if (json == null) return null;
+        String trimmed = json.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+        try {
+            Map<String, Object> parsed = MAPPER.readValue(trimmed, MAP_TYPE);
+            if (!(parsed.get("name") instanceof String name)) return null;
+            if (!registry.has(name)) return null;
+            Object argsObj = parsed.getOrDefault("arguments", Map.of());
+            Map<String, Object> args = argsObj instanceof Map<?, ?> mm
+                    ? (Map<String, Object>) mm
+                    : Map.of();
+            return new OllamaClient.ToolCall(new OllamaClient.ToolCall.Function(name, args));
+        } catch (JsonProcessingException ignored) {
+            return null;
+        }
     }
 
     private record ToolOutcome(String content, boolean isError) {}

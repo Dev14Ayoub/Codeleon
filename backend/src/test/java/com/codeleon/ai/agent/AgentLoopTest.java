@@ -150,6 +150,72 @@ class AgentLoopTest {
     }
 
     @Test
+    void contentJsonIsLiftedToToolCallWhenOllamaForgetsTheStructuredField() {
+        // Repro of the Ollama 0.24 + qwen2.5-coder Q4 behaviour: the model
+        // emits the tool intent as plain JSON inside content, with no
+        // <tool_call> wrapper and no structured tool_calls array. We must
+        // still execute the tool — silently dropping it would make the
+        // entire agent mode appear broken on these model/version combos.
+        OllamaClient ollama = mock(OllamaClient.class);
+        StubTool listFiles = new StubTool("list_files", "App.java\n");
+        AgentToolRegistry registry = new AgentToolRegistry(List.of(listFiles));
+
+        ChatMessage contentOnly = ChatMessage.assistant("{\"name\": \"list_files\", \"arguments\": {}}");
+        when(ollama.chatWithTools(anyList(), anyList()))
+                .thenReturn(contentOnly)
+                .thenReturn(ChatMessage.assistant("Done."));
+
+        AgentLoop loop = new AgentLoop(ollama, registry);
+        AgentLoopResult result = loop.run(UUID.randomUUID(), queryOnly("what files?"), (n, p) -> {});
+
+        assertThat(listFiles.calls).isEqualTo(1);
+        assertThat(result.toolCalls()).isEqualTo(1);
+        assertThat(result.iterations()).isEqualTo(2);
+        assertThat(result.answer()).isEqualTo("Done.");
+    }
+
+    @Test
+    void toolCallWrappersInContentAreExtractedAsFallback() {
+        // Canonical Qwen template path: model emits <tool_call>{...}</tool_call>
+        // and Ollama doesn't strip it into the structured field. We pick the
+        // wrapper apart and execute the call.
+        OllamaClient ollama = mock(OllamaClient.class);
+        StubTool listFiles = new StubTool("list_files", "App.java\n");
+        AgentToolRegistry registry = new AgentToolRegistry(List.of(listFiles));
+
+        String wrapped = "<tool_call>\n{\"name\": \"list_files\", \"arguments\": {}}\n</tool_call>";
+        when(ollama.chatWithTools(anyList(), anyList()))
+                .thenReturn(ChatMessage.assistant(wrapped))
+                .thenReturn(ChatMessage.assistant("Done."));
+
+        AgentLoop loop = new AgentLoop(ollama, registry);
+        AgentLoopResult result = loop.run(UUID.randomUUID(), queryOnly("what files?"), (n, p) -> {});
+
+        assertThat(listFiles.calls).isEqualTo(1);
+        assertThat(result.answer()).isEqualTo("Done.");
+    }
+
+    @Test
+    void contentExtractorRejectsUnknownToolNamesAndTreatsThemAsFinalAnswer() {
+        // Defence-in-depth: a chatty model can't smuggle in a fake tool
+        // name (e.g. "rm_rf") by pretending to call it via plain JSON.
+        // Unknown names are ignored and the content stands as the answer.
+        OllamaClient ollama = mock(OllamaClient.class);
+        AgentToolRegistry registry = new AgentToolRegistry(List.of(new StubTool("list_files", "ok")));
+
+        String fake = "{\"name\": \"rm_rf\", \"arguments\": {\"path\": \"/\"}}";
+        when(ollama.chatWithTools(anyList(), anyList()))
+                .thenReturn(ChatMessage.assistant(fake));
+
+        AgentLoop loop = new AgentLoop(ollama, registry);
+        AgentLoopResult result = loop.run(UUID.randomUUID(), queryOnly("hi"), (n, p) -> {});
+
+        assertThat(result.toolCalls()).isZero();
+        assertThat(result.iterations()).isEqualTo(1);
+        assertThat(result.answer()).isEqualTo(fake);
+    }
+
+    @Test
     void oversizedToolResponseIsTruncatedBeforeBeingFedBack() {
         OllamaClient ollama = mock(OllamaClient.class);
         String huge = "x".repeat(AgentLoop.MAX_TOOL_RESPONSE_CHARS + 500);
