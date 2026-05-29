@@ -75,7 +75,21 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Must match the GID of the host's `docker` group (check with
+        # `getent group docker`). Lets the non-root codeleon user inside
+        # the container talk to the bind-mounted socket. Default 983 is
+        # what Ubuntu 24.04+ docker.io packages use; override via .env
+        # if your host differs.
+        DOCKER_GID: ${DOCKER_GID:-983}
     container_name: codeleon-backend
+    # The code runner shells out to `docker run ...` against the host's
+    # daemon. Mounting the socket gives the backend container the power
+    # to spawn (and kill) sibling containers. On this Tailscale-only,
+    # single-tenant VM the trade-off is acceptable; on a multi-tenant
+    # host this would be a hard no — use a dedicated runner service.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       # Spring datasource → internal Postgres via Docker DNS.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/codeleon
