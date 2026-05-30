@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import * as Y from "yjs";
+import { AnimatedBackdrop } from "@/components/brand/AnimatedBackdrop";
 import { Logo } from "@/components/brand/Logo";
 import { ActivityFeed } from "@/components/projects/ActivityFeed";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -317,7 +318,10 @@ export function DashboardPage() {
     // showing up when a long, unbreakable string (room name, GitHub URL,
     // invite code) escapes its container. The legitimate scroll direction
     // for the page is always vertical.
-    <main className="min-h-screen overflow-x-hidden bg-background">
+    <main className="relative min-h-screen overflow-x-hidden bg-background">
+      {/* Subtle variant — dashboard is dense, the orbs hint at depth
+          without competing with project cards / activity feed. */}
+      <AnimatedBackdrop variant="subtle" />
       {/* Backdrop for the mobile drawer — only rendered when open, on
           small screens. Click closes the drawer. */}
       {mobileNavOpen && (
@@ -366,7 +370,7 @@ export function DashboardPage() {
         </nav>
       </aside>
 
-      <MotionPage className="lg:pl-64">
+      <MotionPage className="relative z-10 lg:pl-64">
         <header className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-background/90 px-3 py-3 backdrop-blur sm:px-4 sm:py-4 lg:px-8">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {/* Hamburger to open the mobile nav drawer — hidden on lg+
