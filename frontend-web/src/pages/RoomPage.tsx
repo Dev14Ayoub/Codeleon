@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Database,
   Eye,
@@ -20,6 +22,7 @@ import {
   Users,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -134,6 +137,30 @@ export function RoomPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [aiPanelFullscreen]);
+
+  // Output panel (run terminal). Closed by default — the user opens it
+  // explicitly via the strip toggle, AND it auto-opens as soon as a run
+  // starts so they see the result. Height persists in localStorage.
+  const [outputPanelOpen, setOutputPanelOpen] = useState(false);
+  const [outputPanelHeight, setOutputPanelHeight] = useState<number>(() => {
+    try {
+      const stored = window.localStorage.getItem("codeleon.outputPanelHeight");
+      if (stored !== null) {
+        const n = Number(stored);
+        if (Number.isFinite(n) && n >= 120 && n <= 600) return n;
+      }
+    } catch {
+      // localStorage can throw in some private-mode contexts — fall through.
+    }
+    return 220;
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("codeleon.outputPanelHeight", String(outputPanelHeight));
+    } catch {
+      // localStorage access can throw in private mode — ignore.
+    }
+  }, [outputPanelHeight]);
 
   const room = roomQuery.data;
   const canEdit =
@@ -323,6 +350,38 @@ export function RoomPage() {
   });
 
   const isRunPending = runMutation.isPending || projectRunMutation.isPending;
+
+  // Auto-open the output panel when a run starts so the user sees the
+  // result without having to click. We only OPEN on rising edge — the
+  // user can still close the panel mid-run if they want; we won't
+  // re-open it unless a new run starts.
+  useEffect(() => {
+    if (isRunPending) setOutputPanelOpen(true);
+  }, [isRunPending]);
+
+  // Drag-resize the output panel vertically. Mirrors beginSidebarResize
+  // but on the Y axis. Bounded to [120, 600] so the editor always keeps
+  // at least ~120px of breathing room.
+  const beginOutputResize = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = outputPanelHeight;
+    const onMove = (moveEvent: globalThis.PointerEvent) => {
+      const delta = startY - moveEvent.clientY;
+      setOutputPanelHeight((current) => {
+        const next = startHeight + delta;
+        if (next < 120) return 120;
+        if (next > 600) return 600;
+        return next;
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [outputPanelHeight]);
 
   // Open a file as a tab (idempotent) and make it active.
   const openFile = useCallback((path: string) => {
@@ -886,23 +945,63 @@ export function RoomPage() {
               onReadyChange={onEditorReadyChange}
             />
           </div>
-          <OutputPanel
+          {/* Output strip — always visible at the bottom of the editor
+              column. Click to toggle the panel open/closed. Shows the
+              last exit code or "running" status as a quick glance.
+              Auto-opens when isRunPending flips true (see useEffect). */}
+          <OutputStrip
+            open={outputPanelOpen}
+            onToggle={() => setOutputPanelOpen((v) => !v)}
             isPending={isRunPending}
-            result={runResult}
-            projectResult={projectRunResult}
-            error={runError}
-            activePath={activePath}
-            languageLabel={activeRunLanguageLabel}
-            runContext={runContext}
-            stdin={runStdin}
-            onStdinChange={setRunStdin}
-            projectEnvironment={projectEnvironment}
-            projectDetectionMessage={projectDetectionMessage}
-            projectCommand={projectRunCommand}
-            projectCommandForDisplay={projectCommandForDisplay}
-            onProjectCommandChange={setProjectRunCommand}
-            staticPreviewHtml={staticPreviewHtml}
+            exitCode={runResult?.exitCode ?? projectRunResult?.exitCode ?? null}
+            timedOut={runResult?.timedOut ?? projectRunResult?.timedOut ?? false}
+            durationMs={runResult?.durationMs ?? projectRunResult?.durationMs ?? null}
           />
+          {outputPanelOpen && (
+            <>
+              <div
+                onPointerDown={beginOutputResize}
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize output panel"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  // Up/Down arrows nudge the panel by 24px so keyboard
+                  // users can size it without a mouse.
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setOutputPanelHeight((h) => Math.min(600, h + 24));
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setOutputPanelHeight((h) => Math.max(120, h - 24));
+                  }
+                }}
+                className="h-1 shrink-0 cursor-row-resize bg-zinc-800 transition-colors hover:bg-cyan/60 focus:bg-cyan focus:outline-none"
+              />
+              <div
+                style={{ height: outputPanelHeight }}
+                className="shrink-0 overflow-hidden"
+              >
+                <OutputPanel
+                  isPending={isRunPending}
+                  result={runResult}
+                  projectResult={projectRunResult}
+                  error={runError}
+                  activePath={activePath}
+                  languageLabel={activeRunLanguageLabel}
+                  runContext={runContext}
+                  stdin={runStdin}
+                  onStdinChange={setRunStdin}
+                  projectEnvironment={projectEnvironment}
+                  projectDetectionMessage={projectDetectionMessage}
+                  projectCommand={projectRunCommand}
+                  projectCommandForDisplay={projectCommandForDisplay}
+                  onProjectCommandChange={setProjectRunCommand}
+                  staticPreviewHtml={staticPreviewHtml}
+                />
+              </div>
+            </>
+          )}
           {/* Status bar at the bottom of the editor column — VSCode pattern.
               Was floating above the editor as a noisy row of chips. */}
           <WorkspaceStatusStrip
@@ -1463,6 +1562,69 @@ function WorkspaceStatusStrip({
 
 function StatusSeparator() {
   return <span className="mx-2 h-3 w-px shrink-0 bg-zinc-800" aria-hidden />;
+}
+
+/**
+ * Always-visible thin strip at the bottom of the editor area that
+ * toggles the output panel open/closed and surfaces the last run's
+ * exit status at a glance. Click anywhere on the strip to toggle.
+ */
+function OutputStrip({
+  open,
+  onToggle,
+  isPending,
+  exitCode,
+  timedOut,
+  durationMs,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  isPending: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+  durationMs: number | null;
+}) {
+  // The little badge on the right summarises the last run:
+  //   • running  — while a mutation is pending
+  //   • exit 0 · 295ms (green) — successful run
+  //   • exit N · 295ms (red) — non-zero exit
+  //   • timeout (amber)
+  //   • nothing — no run yet this session
+  let badge: { text: string; tone: string } | null = null;
+  if (isPending) {
+    badge = { text: "running…", tone: "text-cyan" };
+  } else if (timedOut) {
+    badge = { text: "timed out", tone: "text-amber-400" };
+  } else if (exitCode !== null) {
+    const tone = exitCode === 0 ? "text-emerald-400" : "text-rose-400";
+    const duration = durationMs !== null ? ` · ${durationMs}ms` : "";
+    badge = { text: `exit ${exitCode}${duration}`, tone };
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex h-7 shrink-0 items-center justify-between border-t border-zinc-800 bg-surface/80 px-3 text-[11px] transition hover:bg-surfaceRaised"
+      aria-expanded={open}
+      aria-controls="output-panel"
+      title={open ? "Hide output panel" : "Show output panel"}
+    >
+      <span className="inline-flex items-center gap-1.5 text-zinc-400">
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+        <Terminal className="h-3 w-3" />
+        <span className="font-medium">Output</span>
+        {badge && (
+          <>
+            <span className="text-zinc-700">·</span>
+            <span className={badge.tone}>{badge.text}</span>
+          </>
+        )}
+      </span>
+      {open && (
+        <span className="text-zinc-500">drag border to resize</span>
+      )}
+    </button>
+  );
 }
 
 function StatusItem({
