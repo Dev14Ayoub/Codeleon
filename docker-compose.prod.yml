@@ -122,11 +122,10 @@ services:
 
       # First entry is the SPA origin that the OAuth2 success handler
       # redirects the browser to after a successful GitHub/Google login
-      # (see OAuth2LoginSuccessHandler#frontendOrigin). The production
-      # access path is the Tailscale-managed HTTPS hostname; the plain
-      # HTTP IP path is intentionally closed (see Caddy ports below).
-      # Override via .env if you ever expose a public domain.
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://ubuntu-8gb-hel1-1.taild1d23e.ts.net}
+      # (see OAuth2LoginSuccessHandler#frontendOrigin). Without this the
+      # handler falls back to the default localhost:5173 — which only
+      # works in dev. Override via .env if you ever expose a public domain.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://100.106.32.95}
 
       # OAuth2 social login credentials. Leaving any pair blank disables
       # that provider — OAuth2ClientConfig only registers a client when
@@ -165,14 +164,12 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: codeleon-caddy
-    # Bind to loopback only. Tailscale Serve terminates HTTPS on the
-    # tailnet (port 443) and proxies to this Caddy via localhost:80.
-    # The plain HTTP port on the Tailscale IP is intentionally closed
-    # so the only access path is https://<host>.ts.net — this forces
-    # TLS for the OAuth callbacks (the HTTP path triggered Google's
-    # secure-response-handling policy; see docs/google-oauth-limitation.md).
+    # Bind explicitly to the Tailscale IP so Caddy is unreachable from the
+    # public internet even if UFW is misconfigured. TAILSCALE_IP comes from
+    # .env.production; if unset, Docker binds to 0.0.0.0 (and UFW is then
+    # the only line of defence — still safe but less belt-and-suspenders).
     ports:
-      - "127.0.0.1:80:80"
+      - "${TAILSCALE_IP:-0.0.0.0}:80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
