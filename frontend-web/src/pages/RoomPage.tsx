@@ -621,9 +621,9 @@ export function RoomPage() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
-      <header className="flex min-h-16 items-center justify-between border-b border-zinc-800 bg-background/95 px-4 backdrop-blur">
-        <div className="flex min-w-0 items-center gap-4">
-          <Button asChild variant="ghost" className="px-2">
+      <header className="flex min-h-14 items-center justify-between gap-2 border-b border-zinc-800 bg-background/95 px-3 backdrop-blur sm:min-h-16 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Button asChild variant="ghost" className="h-9 w-9 shrink-0 p-0">
             <Link to="/dashboard" aria-label="Back to dashboard">
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -643,11 +643,12 @@ export function RoomPage() {
         <div className="flex items-center gap-1.5">
           {/* Panel toggles — compact icon buttons replace the menu-bar
               entries that used to live in View > Toggle File Explorer /
-              Toggle AI Panel. Always-visible, single-click. */}
+              Toggle AI Panel. Always-visible on every screen size: on
+              mobile/tablet (<1024px) they open the overlay drawers. */}
           <button
             type="button"
             onClick={() => setShowFileExplorer((v) => !v)}
-            className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
             title={showFileExplorer ? "Hide file explorer" : "Show file explorer"}
             aria-pressed={showFileExplorer}
           >
@@ -656,7 +657,7 @@ export function RoomPage() {
           <button
             type="button"
             onClick={() => setShowAiPanel((v) => !v)}
-            className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
             title={showAiPanel ? "Hide AI panel" : "Show AI panel"}
             aria-pressed={showAiPanel}
           >
@@ -712,7 +713,9 @@ export function RoomPage() {
             title={room?.inviteCode ? `Copy invite code: ${room.inviteCode}` : "Loading invite code..."}
           >
             {inviteCopied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-            {inviteCopied ? "Copied!" : "Invite"}
+            {/* Labels collapse to icon-only on phones to fit the top bar.
+                The full label reappears at sm: (>= 640px). */}
+            <span className="hidden sm:inline">{inviteCopied ? "Copied!" : "Invite"}</span>
           </Button>
           <Button
             onClick={() => runMutation.mutate()}
@@ -730,7 +733,7 @@ export function RoomPage() {
             ) : (
               <Play className="h-4 w-4" />
             )}
-            Run file
+            <span className="hidden sm:inline">Run file</span>
           </Button>
           <Button
             variant="secondary"
@@ -747,7 +750,9 @@ export function RoomPage() {
             ) : (
               <Terminal className="h-4 w-4" />
             )}
-            Run project
+            {/* Hide "Run project" label on small + medium — it's the secondary
+                action so saving space here is fine. Reappears at lg+. */}
+            <span className="hidden lg:inline">Run project</span>
           </Button>
         </div>
       </header>

@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, PanelRightClose, PanelRightOpen, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users } from "lucide-react";
+import { Activity, Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Menu, PanelRightClose, PanelRightOpen, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -68,6 +68,13 @@ export function DashboardPage() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("codeleon-activity-panel", activityOpen ? "open" : "closed");
   }, [activityOpen]);
+
+  // Mobile / tablet navigation drawer. The sidebar is hidden below lg
+  // (1024px) so we expose a hamburger that slides it in over the page.
+  // Closes on backdrop click, on link click, and when the viewport
+  // crosses into lg (handled by the user / browser resize).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const closeMobileNav = () => setMobileNavOpen(false);
   const [localImportReport, setLocalImportReport] = useState<ImportFilterReport | null>(null);
   const [localImportName, setLocalImportName] = useState<string | null>(null);
   const [githubRepoSearch, setGithubRepoSearch] = useState("");
@@ -311,21 +318,48 @@ export function DashboardPage() {
     // invite code) escapes its container. The legitimate scroll direction
     // for the page is always vertical.
     <main className="min-h-screen overflow-x-hidden bg-background">
-      <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-zinc-800 bg-surface/80 p-4 lg:block">
-        <Link to="/" className="flex items-center gap-3 px-2 py-2">
-          <Logo size={40} />
-          <span className="font-semibold text-zinc-50">Codeleon</span>
-        </Link>
+      {/* Backdrop for the mobile drawer — only rendered when open, on
+          small screens. Click closes the drawer. */}
+      {mobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={closeMobileNav}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-40 h-screen w-64 border-r border-zinc-800 bg-surface p-4 transition-transform duration-200 ease-out lg:translate-x-0 lg:bg-surface/80",
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3 px-2 py-2" onClick={closeMobileNav}>
+            <Logo size={40} />
+            <span className="font-semibold text-zinc-50">Codeleon</span>
+          </Link>
+          {/* Close button — only visible inside the drawer on small screens. */}
+          <button
+            type="button"
+            onClick={closeMobileNav}
+            aria-label="Close navigation"
+            className="-mr-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-zinc-400 transition hover:bg-surfaceRaised hover:text-zinc-100 lg:hidden"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
         <nav className="mt-8 space-y-1 text-sm text-zinc-400">
-          <a className="flex items-center gap-3 rounded-md bg-surfaceRaised px-3 py-2 text-zinc-100" href="#projects">
+          <a className="flex items-center gap-3 rounded-md bg-surfaceRaised px-3 py-2 text-zinc-100" href="#projects" onClick={closeMobileNav}>
             <Users className="h-4 w-4" />
             My projects
           </a>
-          <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#public">
+          <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#public" onClick={closeMobileNav}>
             <Radio className="h-4 w-4" />
             Public projects
           </a>
-          <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#integrations">
+          <a className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-surfaceRaised hover:text-zinc-100" href="#integrations" onClick={closeMobileNav}>
             <Link2 className="h-4 w-4" />
             Integrations
           </a>
@@ -333,10 +367,24 @@ export function DashboardPage() {
       </aside>
 
       <MotionPage className="lg:pl-64">
-        <header className="flex items-center justify-between border-b border-zinc-800 bg-background/90 px-4 py-4 backdrop-blur lg:px-8">
-          <div>
-            <p className="text-sm text-zinc-400">Dashboard</p>
-            <h1 className="text-xl font-semibold text-zinc-50">Welcome, {user?.fullName ?? "builder"}</h1>
+        <header className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-background/90 px-3 py-3 backdrop-blur sm:px-4 sm:py-4 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {/* Hamburger to open the mobile nav drawer — hidden on lg+
+                where the sidebar is already permanently visible. */}
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open navigation"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100 lg:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            <div className="min-w-0">
+              <p className="hidden text-sm text-zinc-400 sm:block">Dashboard</p>
+              <h1 className="truncate text-base font-semibold text-zinc-50 sm:text-xl">
+                Welcome, {user?.fullName ?? "builder"}
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Activity panel toggle — only visible on xl+ where the panel
@@ -351,9 +399,10 @@ export function DashboardPage() {
               {activityOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
               <span>{activityOpen ? "Hide activity" : "Show activity"}</span>
             </button>
-            <Button variant="secondary" onClick={handleLogout}>
+            <Button variant="secondary" onClick={handleLogout} title="Log out">
               <LogOut className="h-4 w-4" />
-              Logout
+              {/* Label hidden on phones to save header width. */}
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </header>
