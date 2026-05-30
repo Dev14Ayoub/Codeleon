@@ -82,9 +82,10 @@ export function ProjectCard({ room }: ProjectCardProps) {
       whileTap={{ scale: 0.99 }}
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
       className={
+        // Tighter padding (p-4 vs p-5) for a denser card grid.
         room.archived
-          ? "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface/60 p-5 opacity-70 shadow-[0_14px_38px_rgba(0,0,0,0.2)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:opacity-100 hover:shadow-[0_22px_70px_rgba(99,102,241,0.18)]"
-          : "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_14px_38px_rgba(0,0,0,0.2)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:shadow-[0_22px_70px_rgba(99,102,241,0.2)]"
+          ? "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface/60 p-4 opacity-70 shadow-[0_10px_28px_rgba(0,0,0,0.18)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:opacity-100 hover:shadow-[0_18px_56px_rgba(99,102,241,0.18)]"
+          : "group relative flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-surface p-4 shadow-[0_10px_28px_rgba(0,0,0,0.18)] transition hover:border-signature/60 hover:bg-surfaceRaised hover:shadow-[0_18px_56px_rgba(99,102,241,0.2)]"
       }
     >
       <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan/70 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -121,30 +122,30 @@ export function ProjectCard({ room }: ProjectCardProps) {
       </div>
 
       {room.description ? (
-        <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-300">{room.description}</p>
+        <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-zinc-300">{room.description}</p>
       ) : (
-        <p className="mt-3 text-sm italic text-zinc-500">No description</p>
+        <p className="mt-2 text-[13px] italic text-zinc-500">No description</p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
-        <span className="inline-flex items-center gap-1.5">
-          <FileCode2 className="h-3.5 w-3.5" />
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+        <span className="inline-flex items-center gap-1">
+          <FileCode2 className="h-3 w-3" />
           {room.fileCount} {room.fileCount === 1 ? "file" : "files"}
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Users className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1">
+          <Users className="h-3 w-3" />
           {room.memberCount} {room.memberCount === 1 ? "member" : "members"}
         </span>
         <span>Updated {formatRelativeDate(room.updatedAt)}</span>
       </div>
 
       {room.lastEditedByName && (
-        <p className="mt-2 text-xs text-zinc-600">
-          Last edited by <span className="text-zinc-400">{room.lastEditedByName}</span>
+        <p className="mt-1.5 text-[11px] text-zinc-500">
+          Last edited by <span className="text-zinc-300">{room.lastEditedByName}</span>
         </p>
       )}
 
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-zinc-800 pt-4">
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800 pt-3">
         <button
           type="button"
           onClick={handleCopy}

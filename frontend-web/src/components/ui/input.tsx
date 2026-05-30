@@ -6,7 +6,9 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        "h-11 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-signature focus:ring-2 focus:ring-signature/20",
+        // h-9 to match the new Button height; was h-11 which dwarfed the
+        // adjacent buttons in forms and toolbars.
+        "h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-signature focus:ring-2 focus:ring-signature/20",
         className,
       )}
       {...props}

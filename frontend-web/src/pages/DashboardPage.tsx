@@ -384,8 +384,8 @@ export function DashboardPage() {
               <Menu className="h-4 w-4" />
             </button>
             <div className="min-w-0">
-              <p className="hidden text-sm text-zinc-400 sm:block">Dashboard</p>
-              <h1 className="truncate text-base font-semibold text-zinc-50 sm:text-xl">
+              <p className="hidden text-[11px] uppercase tracking-wide text-zinc-500 sm:block">Dashboard</p>
+              <h1 className="truncate text-sm font-semibold text-zinc-50 sm:text-base">
                 Welcome, {user?.fullName ?? "builder"}
               </h1>
             </div>
@@ -411,14 +411,14 @@ export function DashboardPage() {
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-8">
           <div className={cn(
-            "grid gap-8",
+            "grid gap-6",
             // When the activity panel is open we use a 2-column layout on xl;
             // when collapsed the main column takes the full width.
             activityOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-1",
           )}>
-            <div className="min-w-0 space-y-8">
+            <div className="min-w-0 space-y-6">
           <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-3 sm:grid-cols-3">
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
@@ -428,7 +428,7 @@ export function DashboardPage() {
           <section id="projects" className="scroll-mt-8 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-50">My projects</h2>
+                <h2 className="text-base font-semibold text-zinc-50">My projects</h2>
                 <p className="text-sm text-zinc-500">Your collaborative workspaces.</p>
               </div>
 
@@ -440,7 +440,7 @@ export function DashboardPage() {
                     aria-autocomplete="list"
                     aria-controls="my-project-search-suggestions"
                     aria-expanded={showSearchSuggestions}
-                    className="h-10 w-72 pl-9"
+                    className="h-9 w-64 pl-9"
                     placeholder="Search projects..."
                     role="combobox"
                     value={searchQuery}
@@ -632,7 +632,7 @@ export function DashboardPage() {
 
           <section id="public" className="scroll-mt-8 space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-50">Public projects</h2>
+              <h2 className="text-base font-semibold text-zinc-50">Public projects</h2>
               <p className="text-sm text-zinc-500">Discover public programming sessions.</p>
             </div>
             <ProjectGrid
@@ -644,7 +644,7 @@ export function DashboardPage() {
 
           <section id="integrations" className="scroll-mt-8 space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-50">Integrations</h2>
+              <h2 className="text-base font-semibold text-zinc-50">Integrations</h2>
               <p className="text-sm text-zinc-500">Connect external accounts for imports and project workflows.</p>
             </div>
             <AccountIntegrations />
@@ -829,15 +829,16 @@ function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string
   return (
     <motion.div
       variants={fadeUp}
-      whileHover={{ y: -3, scale: 1.01 }}
+      whileHover={{ y: -2, scale: 1.01 }}
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
-      className="rounded-lg border border-zinc-800 bg-surface px-5 py-4 shadow-[0_12px_34px_rgba(0,0,0,0.2)] transition hover:border-cyan/40 hover:bg-surfaceRaised"
+      // Tighter padding + smaller value font for a denser dashboard.
+      className="rounded-lg border border-zinc-800 bg-surface px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition hover:border-cyan/40 hover:bg-surfaceRaised"
     >
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
         {icon}
         {label}
       </div>
-      <p className="mt-2 text-2xl font-semibold text-zinc-50">{value}</p>
+      <p className="mt-1.5 text-xl font-semibold text-zinc-50">{value}</p>
     </motion.div>
   );
 }

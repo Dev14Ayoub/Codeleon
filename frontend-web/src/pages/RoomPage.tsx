@@ -641,20 +641,20 @@ export function RoomPage() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
-      <header className="flex min-h-14 items-center justify-between gap-2 border-b border-zinc-800 bg-background/95 px-3 backdrop-blur sm:min-h-16 sm:px-4">
+      <header className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800 bg-background/95 px-3 backdrop-blur sm:min-h-13 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <Button asChild variant="ghost" className="h-9 w-9 shrink-0 p-0">
+          <Button asChild variant="ghost" className="h-8 w-8 shrink-0 p-0">
             <Link to="/dashboard" aria-label="Back to dashboard">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <Link to="/" className="hidden items-center gap-3 sm:flex">
-            <Logo size={32} />
+          <Link to="/" className="hidden items-center gap-2 sm:flex">
+            <Logo size={28} />
           </Link>
           <div className="min-w-0">
             {/* Title only — the "Room workspace" sub-label was redundant
                 with the page context and added vertical noise. */}
-            <h1 className="truncate text-base font-semibold text-zinc-50">
+            <h1 className="truncate text-sm font-semibold text-zinc-50">
               {roomQuery.isLoading ? "Loading room…" : room?.name ?? "Room unavailable"}
             </h1>
           </div>
@@ -668,7 +668,7 @@ export function RoomPage() {
           <button
             type="button"
             onClick={() => setShowFileExplorer((v) => !v)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
             title={showFileExplorer ? "Hide file explorer" : "Show file explorer"}
             aria-pressed={showFileExplorer}
           >
@@ -677,7 +677,7 @@ export function RoomPage() {
           <button
             type="button"
             onClick={() => setShowAiPanel((v) => !v)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
             title={showAiPanel ? "Hide AI panel" : "Show AI panel"}
             aria-pressed={showAiPanel}
           >

@@ -22,7 +22,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <Component
         ref={ref}
         className={cn(
-          "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
+          // Denser default: h-9 (was h-10), px-3.5 (was px-4), gap-1.5
+          // (was gap-2). Smaller hover lift (-translate-y-px) so dense
+          // toolbars don't visually jitter on hover.
+          "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-medium transition duration-200 hover:-translate-y-px active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
           variants[variant],
           className,
         )}

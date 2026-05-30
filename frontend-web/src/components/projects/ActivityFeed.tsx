@@ -61,12 +61,12 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
       className="rounded-lg border border-zinc-800 bg-surface shadow-[0_16px_42px_rgba(0,0,0,0.22)]"
     >
       <span className="block h-px bg-gradient-to-r from-transparent via-cyan/50 to-transparent" />
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
-        <Activity className="h-4 w-4 text-cyan" />
-        <h3 className="text-sm font-medium text-zinc-100">Recent activity</h3>
+      <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
+        <Activity className="h-3.5 w-3.5 text-cyan" />
+        <h3 className="text-[13px] font-medium text-zinc-100">Recent activity</h3>
       </div>
 
-      <div className="max-h-[28rem] overflow-y-auto">
+      <div className="max-h-[26rem] overflow-y-auto">
         {isLoading && (
           <div className="space-y-3 p-4">
             {[0, 1, 2, 3].map((i) => (
@@ -93,17 +93,17 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
                   ? "You"
                   : event.userName ?? "Someone";
               return (
-                <motion.li key={event.id} variants={fadeUp} className="flex gap-3 px-4 py-3 transition-colors hover:bg-zinc-950/50">
-                  <span className="mt-0.5 shrink-0">{ICONS[event.type] ?? <Activity className="h-3.5 w-3.5 text-zinc-400" />}</span>
+                <motion.li key={event.id} variants={fadeUp} className="flex gap-2.5 px-3 py-2 transition-colors hover:bg-zinc-950/50">
+                  <span className="mt-0.5 shrink-0">{ICONS[event.type] ?? <Activity className="h-3 w-3 text-zinc-400" />}</span>
                   <div className="min-w-0 flex-1">
                     {/* break-words prevents long room names ("morocco-dream-travel")
                         from forcing a horizontal scrollbar on the panel. */}
-                    <p className="break-words text-xs leading-5 text-zinc-300">
+                    <p className="break-words text-[11px] leading-[1.35] text-zinc-300">
                       <span className="font-medium text-zinc-100">{actor}</span> {describe(event)}{" "}
                       <span className="text-zinc-400">in</span>{" "}
                       <span className="font-medium text-zinc-200">{event.roomName}</span>
                     </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">{formatRelativeDate(event.createdAt)}</p>
+                    <p className="mt-0.5 text-[10px] text-zinc-500">{formatRelativeDate(event.createdAt)}</p>
                   </div>
                 </motion.li>
               );
