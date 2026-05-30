@@ -10,6 +10,8 @@ import {
   Eye,
   FileText,
   Loader2,
+  Maximize2,
+  Minimize2,
   PanelLeft,
   PanelRight,
   Play,
@@ -111,9 +113,27 @@ export function RoomPage() {
     readStoredWidth("codeleon.leftSidebarWidth", 272, 192, 448),
   );
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() =>
-    readStoredWidth("codeleon.rightSidebarWidth", 320, 256, 544),
+    // Wider default (420px) for the AI panel — at the previous 320px the
+    // chat bubbles were cramped on laptop screens. Min stays at 280 so
+    // users on smaller laptops can still drag it narrower. Existing
+    // localStorage values are honored as long as they fall in [min,max].
+    readStoredWidth("codeleon.rightSidebarWidth", 420, 280, 640),
   );
   const [isCompactWorkspace, setIsCompactWorkspace] = useState(false);
+  // Fullscreen mode for the AI panel — when true the panel detaches
+  // from the right sidebar and renders as a fixed overlay covering
+  // the viewport. The component instance stays mounted (just its
+  // container className changes) so the chat history and streaming
+  // state survive the toggle. Esc closes.
+  const [aiPanelFullscreen, setAiPanelFullscreen] = useState(false);
+  useEffect(() => {
+    if (!aiPanelFullscreen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAiPanelFullscreen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aiPanelFullscreen]);
 
   const room = roomQuery.data;
   const canEdit =
@@ -797,14 +817,17 @@ export function RoomPage() {
         ref={workspaceRef}
         className="relative grid min-h-0 flex-1 grid-cols-1 overflow-hidden"
         style={{
+          // When the AI panel is in fullscreen mode it detaches from the
+          // grid and becomes a modal overlay — treat it as absent here so
+          // the editor reclaims the right column.
           gridTemplateColumns: isCompactWorkspace
             ? "minmax(0, 1fr)"
             : [
             showFileExplorer ? `${leftSidebarWidth}px` : null,
             showFileExplorer ? "4px" : null,
             "minmax(0, 1fr)",
-            showAiPanel ? "4px" : null,
-            showAiPanel ? `${rightSidebarWidth}px` : null,
+            (showAiPanel && !aiPanelFullscreen) ? "4px" : null,
+            (showAiPanel && !aiPanelFullscreen) ? `${rightSidebarWidth}px` : null,
           ]
             .filter(Boolean)
             .join(" "),
@@ -894,7 +917,9 @@ export function RoomPage() {
           />
         </section>
 
-        {showAiPanel && !isCompactWorkspace && (
+        {/* Resize handle: only visible when the panel is docked in the
+            sidebar (not fullscreen, not on compact viewport). */}
+        {showAiPanel && !isCompactWorkspace && !aiPanelFullscreen && (
           <ResizeHandle
             label="Resize AI assistant"
             onPointerDown={beginSidebarResize("right")}
@@ -902,7 +927,9 @@ export function RoomPage() {
           />
         )}
 
-        {showAiPanel && !isCompactWorkspace && (
+        {/* Docked (non-fullscreen, wide viewport) AI panel sits in the
+            grid as a regular column. */}
+        {showAiPanel && !isCompactWorkspace && !aiPanelFullscreen && (
           <aside className="min-h-0 overflow-hidden border-l border-zinc-800 bg-surface/70">
             <RoomRightPanel
               tab={rightPanelTab}
@@ -917,6 +944,8 @@ export function RoomPage() {
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
               onJumpToFile={jumpToFile}
+              fullscreen={false}
+              onToggleFullscreen={() => setAiPanelFullscreen(true)}
             />
           </aside>
         )}
@@ -943,7 +972,10 @@ export function RoomPage() {
           </aside>
         )}
 
-        {showAiPanel && isCompactWorkspace && (
+        {/* Compact (mobile/tablet) drawer — slides in from the right
+            when the user taps the panel toggle. Hidden in fullscreen
+            mode because the fullscreen modal already covers everything. */}
+        {showAiPanel && isCompactWorkspace && !aiPanelFullscreen && (
           <aside className="absolute inset-y-0 right-0 z-30 w-[min(88vw,24rem)] min-h-0 overflow-hidden border-l border-zinc-800 bg-surface shadow-glow">
             <RoomRightPanel
               tab={rightPanelTab}
@@ -958,8 +990,42 @@ export function RoomPage() {
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
               onJumpToFile={jumpToFile}
+              fullscreen={false}
+              onToggleFullscreen={() => setAiPanelFullscreen(true)}
             />
           </aside>
+        )}
+
+        {/* Fullscreen overlay — panel detaches from the layout and
+            covers the viewport as a modal. Backdrop click closes, Esc
+            also closes (wired up in the useEffect above). */}
+        {showAiPanel && aiPanelFullscreen && (
+          <>
+            <button
+              type="button"
+              aria-label="Close AI assistant"
+              onClick={() => setAiPanelFullscreen(false)}
+              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+            />
+            <aside className="fixed inset-2 z-50 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.6)] sm:inset-6 lg:inset-10">
+              <RoomRightPanel
+                tab={rightPanelTab}
+                onTabChange={setRightPanelTab}
+                peers={collab.peers}
+                currentUserId={currentUser?.id}
+                roomId={roomId}
+                activePath={activePath}
+                getEditorText={getEditorText}
+                getAllFiles={getAllFiles}
+                lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
+                isOwner={room?.currentUserRole === "OWNER"}
+                onApplyPatch={applyPatch}
+                onJumpToFile={jumpToFile}
+                fullscreen={true}
+                onToggleFullscreen={() => setAiPanelFullscreen(false)}
+              />
+            </aside>
+          </>
         )}
       </section>
     </main>
@@ -1437,6 +1503,8 @@ function RoomRightPanel({
   isOwner,
   onApplyPatch,
   onJumpToFile,
+  fullscreen,
+  onToggleFullscreen,
 }: {
   tab: RightPanelTab;
   onTabChange: (tab: RightPanelTab) => void;
@@ -1450,6 +1518,12 @@ function RoomRightPanel({
   isOwner: boolean;
   onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
   onJumpToFile?: (path: string, line?: number) => void;
+  /** True when the panel is rendered as a fullscreen modal (vs docked
+   *  in the right sidebar). The header button label and icon flip
+   *  accordingly. */
+  fullscreen: boolean;
+  /** Toggle between docked and fullscreen. The parent owns the state. */
+  onToggleFullscreen: () => void;
 }) {
   const tabs: { id: RightPanelTab; label: string; icon: JSX.Element }[] = [
     { id: "ai", label: "AI", icon: <Bot className="h-3.5 w-3.5" /> },
@@ -1459,8 +1533,8 @@ function RoomRightPanel({
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_1fr]">
-      <div className="border-b border-zinc-800 bg-surface/90 p-2">
-        <div className="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+      <div className="flex items-center gap-2 border-b border-zinc-800 bg-surface/90 p-2">
+        <div className="flex-1 grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
           {tabs.map((item) => {
             const active = item.id === tab;
             return (
@@ -1485,6 +1559,19 @@ function RoomRightPanel({
             );
           })}
         </div>
+        {/* Fullscreen toggle — Maximize2 when docked, Minimize2 when
+            already expanded. Same height as the tabs row so it lines
+            up cleanly. */}
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+          title={fullscreen ? "Collapse panel (Esc)" : "Expand panel to full screen"}
+          aria-pressed={fullscreen}
+          aria-label={fullscreen ? "Collapse AI panel" : "Expand AI panel"}
+        >
+          {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       <div className="min-h-0 overflow-hidden">
@@ -1645,8 +1732,8 @@ function ResizeHandle({
 
 const LEFT_SIDEBAR_MIN = 192;
 const LEFT_SIDEBAR_MAX = 448;
-const RIGHT_SIDEBAR_MIN = 256;
-const RIGHT_SIDEBAR_MAX = 544;
+const RIGHT_SIDEBAR_MIN = 280;
+const RIGHT_SIDEBAR_MAX = 640;
 const MIN_EDITOR_WIDTH = 420;
 
 function readStoredWidth(

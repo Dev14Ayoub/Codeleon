@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, Send, Sparkles, Trash2, Users, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, RefreshCw, Send, Sparkles, Trash2, Users, Wrench, X, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -260,7 +260,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
           <Bot className="h-4 w-4 text-cyan" />
           AI assistant
@@ -300,14 +300,14 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
       {/* Privacy disclosure — invited members must know the room owner
           can read their conversation. The owner sees nothing here. */}
       {!isOwner && (
-        <p className="mb-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-[11px] text-zinc-500">
-          The room owner can read this conversation.
+        <p className="mb-2 truncate rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-500" title="The room owner can read this conversation.">
+          🔒 Owner can read this conversation.
         </p>
       )}
 
       {/* Owner-only thread picker: review any member's chat read-only. */}
       {isOwner && (threadsQuery.data?.length ?? 0) > 0 && (
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-2 flex items-center gap-2">
           <Users className="h-3.5 w-3.5 text-zinc-500" />
           <label htmlFor="thread-picker" className="text-[11px] text-zinc-500">
             Viewing
@@ -333,23 +333,31 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
         </div>
       )}
 
-      {/* Index button + status. Indexing also runs automatically before a
-          chat send when the project changed — the button is for an
-          explicit refresh. */}
-      <div className="mb-3 flex flex-col gap-1">
-        <IndexStatusLine status={indexStatus} />
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => void indexProject(true)}
-          disabled={indexing}
-          className="w-full"
-        >
-          {indexing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-          {indexing ? "Indexing project..." : "Index project"}
-        </Button>
-        {indexInfo && <p className="text-[11px] text-emerald-400">{indexInfo}</p>}
-        {indexError && <p className="text-[11px] text-rose-400">{indexError}</p>}
+      {/* Index status + manual refresh on a single compact row.
+          Indexing already runs automatically before each send when the
+          project changed — the button here is for an explicit refresh
+          (e.g. after deleting cached data, or to surface a "blocked"
+          status to retry). Info/error messages collapse to a single
+          line under the row when present. */}
+      <div className="mb-2 flex flex-col gap-1">
+        <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5">
+          <IndexStatusLine status={indexStatus} className="flex-1" />
+          <button
+            type="button"
+            onClick={() => void indexProject(true)}
+            disabled={indexing}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
+            title="Re-index project"
+            aria-label="Re-index project"
+          >
+            {indexing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+        {(indexInfo || indexError) && (
+          <p className={cn("truncate text-[11px]", indexError ? "text-rose-400" : "text-emerald-400")}>
+            {indexError ?? indexInfo}
+          </p>
+        )}
       </div>
 
       {/* Messages */}
@@ -547,45 +555,48 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
   );
 }
 
-function IndexStatusLine({ status }: { status: IndexStatus }) {
+function IndexStatusLine({ status, className }: { status: IndexStatus; className?: string }) {
+  // Short labels — fit a single chat-panel row width (~280px min sidebar).
+  // The previous "Indexed and ready for grounded answers" was 6 words for
+  // a status the user just needs to glance at.
   const copy: Record<IndexStatus, { icon: JSX.Element; text: string; className: string }> = {
     idle: {
-      icon: <CircleDashed className="h-3.5 w-3.5" />,
-      text: "Project index is ready to refresh",
-      className: "border-zinc-800 bg-zinc-950 text-zinc-500",
+      icon: <CircleDashed className="h-3 w-3" />,
+      text: "Index up to date",
+      className: "text-zinc-500",
     },
     indexing: {
-      icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
-      text: "Indexing project for private AI context",
-      className: "border-cyan/40 bg-cyan/10 text-cyan",
+      icon: <Loader2 className="h-3 w-3 animate-spin" />,
+      text: "Indexing project…",
+      className: "text-cyan",
     },
     indexed: {
-      icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-      text: "Indexed and ready for grounded answers",
-      className: "border-emerald-800 bg-emerald-950/40 text-emerald-300",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+      text: "Indexed",
+      className: "text-emerald-400",
     },
     failed: {
-      icon: <AlertTriangle className="h-3.5 w-3.5" />,
-      text: "Indexing failed",
-      className: "border-rose-900 bg-rose-950/40 text-rose-300",
+      icon: <AlertTriangle className="h-3 w-3" />,
+      text: "Index failed",
+      className: "text-rose-400",
     },
     blocked: {
-      icon: <AlertTriangle className="h-3.5 w-3.5" />,
-      text: "Indexing blocked by project limits",
-      className: "border-amber-900 bg-amber-950/40 text-amber-300",
+      icon: <AlertTriangle className="h-3 w-3" />,
+      text: "Index blocked",
+      className: "text-amber-400",
     },
     empty: {
-      icon: <CircleDashed className="h-3.5 w-3.5" />,
-      text: "No files available to index",
-      className: "border-zinc-800 bg-zinc-950 text-zinc-500",
+      icon: <CircleDashed className="h-3 w-3" />,
+      text: "No files to index",
+      className: "text-zinc-500",
     },
   };
   const item = copy[status];
   return (
-    <p className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]", item.className)}>
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-[11px]", item.className, className)}>
       {item.icon}
-      {item.text}
-    </p>
+      <span className="truncate">{item.text}</span>
+    </span>
   );
 }
 
