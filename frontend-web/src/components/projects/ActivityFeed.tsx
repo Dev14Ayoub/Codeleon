@@ -94,14 +94,16 @@ export function ActivityFeed({ currentUserId }: ActivityFeedProps) {
                   : event.userName ?? "Someone";
               return (
                 <motion.li key={event.id} variants={fadeUp} className="flex gap-3 px-4 py-3 transition-colors hover:bg-zinc-950/50">
-                  <span className="mt-0.5 shrink-0">{ICONS[event.type] ?? <Activity className="h-3.5 w-3.5 text-zinc-500" />}</span>
+                  <span className="mt-0.5 shrink-0">{ICONS[event.type] ?? <Activity className="h-3.5 w-3.5 text-zinc-400" />}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs leading-5 text-zinc-300">
+                    {/* break-words prevents long room names ("morocco-dream-travel")
+                        from forcing a horizontal scrollbar on the panel. */}
+                    <p className="break-words text-xs leading-5 text-zinc-300">
                       <span className="font-medium text-zinc-100">{actor}</span> {describe(event)}{" "}
-                      <span className="text-zinc-500">in</span>{" "}
+                      <span className="text-zinc-400">in</span>{" "}
                       <span className="font-medium text-zinc-200">{event.roomName}</span>
                     </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-600">{formatRelativeDate(event.createdAt)}</p>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">{formatRelativeDate(event.createdAt)}</p>
                   </div>
                 </motion.li>
               );

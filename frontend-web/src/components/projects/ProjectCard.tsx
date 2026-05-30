@@ -91,11 +91,14 @@ export function ProjectCard({ room }: ProjectCardProps) {
       <span className="pointer-events-none absolute -right-16 -top-20 h-32 w-32 rotate-12 bg-[linear-gradient(90deg,transparent,rgba(6,182,212,0.12),transparent)] opacity-0 blur-xl transition-opacity duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            {room.pinned && <Pin className="h-3.5 w-3.5 shrink-0 fill-cyan text-cyan" aria-label="Pinned" />}
-            <p className="truncate font-medium text-zinc-100 group-hover:text-white">{room.name}</p>
+          <div className="flex items-start gap-2">
+            {room.pinned && <Pin className="mt-1 h-3.5 w-3.5 shrink-0 fill-cyan text-cyan" aria-label="Pinned" />}
+            {/* line-clamp-2 instead of truncate: lets long project names wrap
+                onto a second line rather than collapsing into "Test_..." when
+                the card is narrow (3-column grid + activity panel). */}
+            <p className="line-clamp-2 break-words font-medium text-zinc-100 group-hover:text-white">{room.name}</p>
           </div>
-          <p className="mt-1 truncate text-sm text-zinc-500">Owner: {room.ownerName}</p>
+          <p className="mt-1 truncate text-sm text-zinc-400">Owner: {room.ownerName}</p>
         </div>
         <div className="flex items-center gap-1.5">
           <span
@@ -118,9 +121,9 @@ export function ProjectCard({ room }: ProjectCardProps) {
       </div>
 
       {room.description ? (
-        <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-400">{room.description}</p>
+        <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-300">{room.description}</p>
       ) : (
-        <p className="mt-3 text-sm italic text-zinc-600">No description</p>
+        <p className="mt-3 text-sm italic text-zinc-500">No description</p>
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">

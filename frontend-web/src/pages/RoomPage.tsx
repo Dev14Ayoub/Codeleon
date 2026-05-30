@@ -10,6 +10,8 @@ import {
   Eye,
   FileText,
   Loader2,
+  PanelLeft,
+  PanelRight,
   Play,
   ShieldCheck,
   Terminal,
@@ -627,18 +629,51 @@ export function RoomPage() {
             </Link>
           </Button>
           <Link to="/" className="hidden items-center gap-3 sm:flex">
-            <Logo size={36} />
+            <Logo size={32} />
           </Link>
           <div className="min-w-0">
-            <p className="truncate text-sm text-zinc-500">Room workspace</p>
-            <h1 className="truncate text-lg font-semibold text-zinc-50">
-              {roomQuery.isLoading ? "Loading room..." : room?.name ?? "Room unavailable"}
+            {/* Title only — the "Room workspace" sub-label was redundant
+                with the page context and added vertical noise. */}
+            <h1 className="truncate text-base font-semibold text-zinc-50">
+              {roomQuery.isLoading ? "Loading room…" : room?.name ?? "Room unavailable"}
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <ConnectionPill connected={collab.isConnected} />
+        <div className="flex items-center gap-1.5">
+          {/* Panel toggles — compact icon buttons replace the menu-bar
+              entries that used to live in View > Toggle File Explorer /
+              Toggle AI Panel. Always-visible, single-click. */}
+          <button
+            type="button"
+            onClick={() => setShowFileExplorer((v) => !v)}
+            className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            title={showFileExplorer ? "Hide file explorer" : "Show file explorer"}
+            aria-pressed={showFileExplorer}
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAiPanel((v) => !v)}
+            className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
+            title={showAiPanel ? "Hide AI panel" : "Show AI panel"}
+            aria-pressed={showAiPanel}
+          >
+            <PanelRight className="h-4 w-4" />
+          </button>
+          <div className="mx-1 hidden md:block h-6 w-px bg-zinc-800" />
+          {/* Tiny dot only — the verbose "Live/Offline" pill is now part
+              of the bottom status bar. Keep a subtle indicator here so
+              the user can see at a glance the connection state without
+              looking down. */}
+          <span
+            className={`hidden md:block h-2 w-2 rounded-full ${
+              collab.isConnected ? "bg-emerald-400" : "bg-zinc-600"
+            }`}
+            aria-label={collab.isConnected ? "Live" : "Disconnected"}
+            title={collab.isConnected ? "Live (real-time collab)" : "Disconnected"}
+          />
           <Button
             variant="secondary"
             onClick={() => {
@@ -717,26 +752,34 @@ export function RoomPage() {
         </div>
       </header>
 
-      <MenuBar
-        onNewFile={onNewFile}
-        onImportGithub={() => setGithubDialogOpen(true)}
-        onCloseTab={closeActiveTab}
-        onCloseAllTabs={closeAllTabs}
-        onFind={onFind}
-        onReplace={onReplace}
-        onFormatDocument={onFormatDocument}
-        onToggleFileExplorer={() => setShowFileExplorer((v) => !v)}
-        onToggleAiPanel={() => setShowAiPanel((v) => !v)}
-        onRunFile={onRunFile}
-        onRunProject={onRunProject}
-        isFileExplorerVisible={showFileExplorer}
-        isAiPanelVisible={showAiPanel}
-        hasActiveTab={activePath !== null}
-        hasOpenTabs={openPaths.length > 0}
-        canRunActiveFile={canRunActiveFile && !isRunPending}
-        canRunProject={canRunProject && !isRunPending}
-        canEdit={canEdit}
-      />
+      {/* MenuBar (File/Edit/View/Run/Help) intentionally hidden — its
+          actions are now reachable via the top-bar icon buttons (panel
+          toggles, Run), the file explorer (+ to create a file), the
+          tab close buttons, and standard editor keyboard shortcuts
+          (Ctrl/Cmd+F for Find, Ctrl/Cmd+S is auto-saved by Yjs). Keeping
+          the MenuBar import in case it is reintroduced behind a setting. */}
+      {false && (
+        <MenuBar
+          onNewFile={onNewFile}
+          onImportGithub={() => setGithubDialogOpen(true)}
+          onCloseTab={closeActiveTab}
+          onCloseAllTabs={closeAllTabs}
+          onFind={onFind}
+          onReplace={onReplace}
+          onFormatDocument={onFormatDocument}
+          onToggleFileExplorer={() => setShowFileExplorer((v) => !v)}
+          onToggleAiPanel={() => setShowAiPanel((v) => !v)}
+          onRunFile={onRunFile}
+          onRunProject={onRunProject}
+          isFileExplorerVisible={showFileExplorer}
+          isAiPanelVisible={showAiPanel}
+          hasActiveTab={activePath !== null}
+          hasOpenTabs={openPaths.length > 0}
+          canRunActiveFile={canRunActiveFile && !isRunPending}
+          canRunProject={canRunProject && !isRunPending}
+          canEdit={canEdit}
+        />
+      )}
 
       <ImportGithubDialog
         open={githubDialogOpen}
@@ -793,7 +836,9 @@ export function RoomPage() {
         )}
 
         <section className="flex min-h-0 flex-col overflow-hidden bg-zinc-950">
-          <div className="flex items-center justify-between border-b border-zinc-800 bg-surface pr-4">
+          {/* Tabs only — the redundant "Live/Connecting" pill is now part
+              of the status bar at the bottom of this column (VSCode-style). */}
+          <div className="flex items-center border-b border-zinc-800 bg-surface">
             <div className="flex-1 min-w-0">
               <EditorTabs
                 openPaths={openPaths}
@@ -802,20 +847,7 @@ export function RoomPage() {
                 onClose={closeTab}
               />
             </div>
-            <span className="ml-3 shrink-0 text-xs text-zinc-500">
-              {collab.isReady ? "Live" : "Connecting..."}
-            </span>
           </div>
-          <WorkspaceStatusStrip
-            connected={collab.isConnected}
-            isReady={collab.isReady}
-            activePath={activePath}
-            peersCount={collab.peers.length}
-            runPending={isRunPending}
-            runLanguageLabel={activeRunLanguageLabel}
-            projectEnvironmentLabel={projectEnvironment?.label ?? null}
-            projectDetectionMessage={projectDetectionMessage}
-          />
           <div className="flex-1 min-h-0">
             <CodeMirrorEditor
               ref={editorRef}
@@ -842,6 +874,18 @@ export function RoomPage() {
             projectCommandForDisplay={projectCommandForDisplay}
             onProjectCommandChange={setProjectRunCommand}
             staticPreviewHtml={staticPreviewHtml}
+          />
+          {/* Status bar at the bottom of the editor column — VSCode pattern.
+              Was floating above the editor as a noisy row of chips. */}
+          <WorkspaceStatusStrip
+            connected={collab.isConnected}
+            isReady={collab.isReady}
+            activePath={activePath}
+            peersCount={collab.peers.length}
+            runPending={isRunPending}
+            runLanguageLabel={activeRunLanguageLabel}
+            projectEnvironmentLabel={projectEnvironment?.label ?? null}
+            projectDetectionMessage={projectDetectionMessage}
           />
         </section>
 
@@ -1310,32 +1354,44 @@ function WorkspaceStatusStrip({
   projectEnvironmentLabel: string | null;
   projectDetectionMessage: string | null;
 }) {
+  // Bottom status bar — VSCode style: thin, flat, separator-delimited.
+  // No pill backgrounds, no per-item borders, color is only used to
+  // communicate state (green = healthy, amber = pending, red = error).
   return (
-    <div className="flex h-9 items-center gap-2 overflow-x-auto border-b border-zinc-800 bg-background/80 px-4 text-[11px] text-zinc-500">
+    <div className="flex h-7 items-center overflow-x-auto border-t border-zinc-800 bg-surface/80 px-3 text-[11px] text-zinc-400">
       <StatusItem tone={connected ? "success" : "muted"} icon={connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}>
-        {isReady ? "Live room" : "Connecting"}
+        {isReady ? "Live" : "Connecting"}
       </StatusItem>
-      <StatusItem tone="cyan" icon={<Users className="h-3 w-3" />}>
-        {peersCount} online
+      <StatusSeparator />
+      <StatusItem tone="default" icon={<Users className="h-3 w-3" />}>
+        {peersCount} {peersCount === 1 ? "online" : "online"}
       </StatusItem>
-      <StatusItem tone="muted" icon={<FileText className="h-3 w-3" />}>
-        {activePath ?? "No file open"}
+      <StatusSeparator />
+      <StatusItem tone="default" icon={<FileText className="h-3 w-3" />}>
+        {activePath ?? "No file"}
       </StatusItem>
-      <StatusItem tone="cyan" icon={<Database className="h-3 w-3" />}>
+      <StatusSeparator />
+      <StatusItem tone="default" icon={<Database className="h-3 w-3" />}>
         Private AI
       </StatusItem>
+      <StatusSeparator />
       <StatusItem tone={projectEnvironmentLabel ? "success" : "muted"} icon={<Terminal className="h-3 w-3" />}>
         {projectEnvironmentLabel ?? projectDetectionMessage ?? "No project env"}
       </StatusItem>
+      <StatusSeparator />
       <StatusItem tone={runPending ? "warning" : runLanguageLabel ? "success" : "muted"} icon={<ShieldCheck className="h-3 w-3" />}>
         {runPending
           ? `${runLanguageLabel ?? "Sandbox"} running`
           : runLanguageLabel
-            ? `${runLanguageLabel} sandbox ready`
-            : "Python/Java runner"}
+            ? `${runLanguageLabel} ready`
+            : "Sandbox idle"}
       </StatusItem>
     </div>
   );
+}
+
+function StatusSeparator() {
+  return <span className="mx-2 h-3 w-px shrink-0 bg-zinc-800" aria-hidden />;
 }
 
 function StatusItem({
@@ -1345,22 +1401,21 @@ function StatusItem({
 }: {
   children: ReactNode;
   icon: JSX.Element;
-  tone: "success" | "warning" | "cyan" | "muted";
+  tone: "success" | "warning" | "default" | "muted";
 }) {
+  // Only foreground color changes per tone — no chip background, no border.
+  // This keeps the bar visually flat and lets the editor get the focus.
   const toneClass = {
-    success: "border-emerald-800/60 bg-emerald-950/30 text-emerald-300",
-    warning: "border-amber-800/60 bg-amber-950/30 text-amber-300",
-    cyan: "border-cyan/30 bg-cyan/10 text-cyan",
-    muted: "border-zinc-800 bg-zinc-950 text-zinc-400",
+    success: "text-emerald-400",
+    warning: "text-amber-400",
+    default: "text-zinc-300",
+    muted: "text-zinc-500",
   }[tone];
   return (
-    <motion.span
-      layout
-      className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2 ${toneClass}`}
-    >
+    <span className={`inline-flex h-7 shrink-0 items-center gap-1.5 ${toneClass}`}>
       {icon}
-      <span className="max-w-[15rem] truncate">{children}</span>
-    </motion.span>
+      <span className="max-w-[18rem] truncate">{children}</span>
+    </span>
   );
 }
 
@@ -1547,21 +1602,6 @@ function Participant({
         <span className="truncate">{activePath ?? "No file open"}</span>
       </p>
     </div>
-  );
-}
-
-function ConnectionPill({ connected }: { connected: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
-        connected
-          ? "border-emerald-700/60 bg-emerald-900/20 text-emerald-300"
-          : "border-zinc-700 bg-zinc-900 text-zinc-400"
-      }`}
-    >
-      {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-      {connected ? "Live" : "Offline"}
-    </span>
   );
 }
 

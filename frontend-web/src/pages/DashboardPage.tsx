@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users } from "lucide-react";
+import { Activity, Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, PanelRightClose, PanelRightOpen, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -57,6 +57,17 @@ export function DashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [filterKey, setFilterKey] = useState<FilterKey>("all");
   const [createSource, setCreateSource] = useState<CreateProjectSource>("blank");
+  // Activity panel visibility persists in localStorage so the user's
+  // preference survives reloads. Default to visible — first-time visitors
+  // see the feature, returning users keep their choice.
+  const [activityOpen, setActivityOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("codeleon-activity-panel") !== "closed";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("codeleon-activity-panel", activityOpen ? "open" : "closed");
+  }, [activityOpen]);
   const [localImportReport, setLocalImportReport] = useState<ImportFilterReport | null>(null);
   const [localImportName, setLocalImportName] = useState<string | null>(null);
   const [githubRepoSearch, setGithubRepoSearch] = useState("");
@@ -295,7 +306,11 @@ export function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
+    // overflow-x-hidden defends against the occasional horizontal scrollbar
+    // showing up when a long, unbreakable string (room name, GitHub URL,
+    // invite code) escapes its container. The legitimate scroll direction
+    // for the page is always vertical.
+    <main className="min-h-screen overflow-x-hidden bg-background">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-zinc-800 bg-surface/80 p-4 lg:block">
         <Link to="/" className="flex items-center gap-3 px-2 py-2">
           <Logo size={40} />
@@ -320,17 +335,36 @@ export function DashboardPage() {
       <MotionPage className="lg:pl-64">
         <header className="flex items-center justify-between border-b border-zinc-800 bg-background/90 px-4 py-4 backdrop-blur lg:px-8">
           <div>
-            <p className="text-sm text-zinc-500">Dashboard</p>
+            <p className="text-sm text-zinc-400">Dashboard</p>
             <h1 className="text-xl font-semibold text-zinc-50">Welcome, {user?.fullName ?? "builder"}</h1>
           </div>
-          <Button variant="secondary" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Activity panel toggle — only visible on xl+ where the panel
+                is actually rendered alongside the main column. */}
+            <button
+              type="button"
+              onClick={() => setActivityOpen((v) => !v)}
+              className="hidden xl:inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-surface px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
+              title={activityOpen ? "Hide activity panel" : "Show activity panel"}
+              aria-pressed={activityOpen}
+            >
+              {activityOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+              <span>{activityOpen ? "Hide activity" : "Show activity"}</span>
+            </button>
+            <Button variant="secondary" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </header>
 
         <div className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className={cn(
+            "grid gap-8",
+            // When the activity panel is open we use a 2-column layout on xl;
+            // when collapsed the main column takes the full width.
+            activityOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-1",
+          )}>
             <div className="min-w-0 space-y-8">
           <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-3 sm:grid-cols-3">
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
@@ -564,11 +598,13 @@ export function DashboardPage() {
           </section>
             </div>
 
-            <aside className="hidden xl:block">
-              <div className="sticky top-8 space-y-4">
-                <ActivityFeed currentUserId={user?.id} />
-              </div>
-            </aside>
+            {activityOpen && (
+              <aside className="hidden xl:block">
+                <div className="sticky top-8 space-y-4">
+                  <ActivityFeed currentUserId={user?.id} />
+                </div>
+              </aside>
+            )}
           </div>
         </div>
       </MotionPage>
