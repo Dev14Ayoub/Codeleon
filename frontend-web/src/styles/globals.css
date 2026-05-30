@@ -57,6 +57,94 @@ a {
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * Animated background — three blurred radial gradient orbs that slowly drift
+ * across the viewport. Used on marketing, auth and dashboard pages to give
+ * a "depth + motion" feel without the perf cost of a canvas particle system.
+ *
+ * Rules:
+ * - Only transform & opacity animate (GPU-cheap, no layout / paint thrash).
+ * - The whole layer is pointer-events:none so it never intercepts clicks.
+ * - prefers-reduced-motion kills the keyframes entirely (rule below).
+ * - z-index 0 puts it behind any z-10+ content; page main containers must
+ *   establish a stacking context (relative + z-10) for it to render under
+ *   them rather than over them.
+ * ------------------------------------------------------------------------- */
+.codeleon-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.codeleon-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.35;
+  will-change: transform;
+}
+
+.codeleon-orb--indigo {
+  width: 42vw;
+  height: 42vw;
+  background: #6366F1;
+  top: -10vw;
+  left: -8vw;
+  animation: codeleon-orb-drift-a 28s ease-in-out infinite;
+}
+
+.codeleon-orb--cyan {
+  width: 36vw;
+  height: 36vw;
+  background: #06B6D4;
+  top: 32vw;
+  right: -10vw;
+  animation: codeleon-orb-drift-b 36s ease-in-out infinite;
+}
+
+.codeleon-orb--violet {
+  width: 32vw;
+  height: 32vw;
+  background: #8B5CF6;
+  bottom: -12vw;
+  left: 18vw;
+  animation: codeleon-orb-drift-c 32s ease-in-out infinite;
+}
+
+/* Vignette: darken the edges so the orbs feel held inside a frame
+ * rather than bleeding off the screen edges. */
+.codeleon-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(9, 9, 11, 0.9) 100%);
+  pointer-events: none;
+}
+
+.codeleon-backdrop--subtle .codeleon-orb {
+  opacity: 0.18;
+}
+
+@keyframes codeleon-orb-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(10vw, 5vw, 0) scale(1.06); }
+  66%      { transform: translate3d(-5vw, 12vw, 0) scale(0.95); }
+}
+
+@keyframes codeleon-orb-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-15vw, -10vw, 0) scale(1.1); }
+}
+
+@keyframes codeleon-orb-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  40%      { transform: translate3d(8vw, -10vw, 0) scale(1.08); }
+  80%      { transform: translate3d(-12vw, 6vw, 0) scale(0.92); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Bot, CheckCircle2, Radio, ShieldCheck, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ReactNode } from "react";
+import { AnimatedBackdrop } from "@/components/brand/AnimatedBackdrop";
 import { Logo } from "@/components/brand/Logo";
 import { StatusPulse, fadeUp, stagger } from "@/components/ui/motion";
 
@@ -24,8 +25,11 @@ export function AuthShell({
 }: AuthShellProps) {
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <div className="codeleon-grid pointer-events-none absolute inset-0 opacity-70" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,#09090b_0%,rgba(9,9,11,0.96)_44%,rgba(24,24,27,0.72)_100%)]" />
+      {/* Showcase variant: orbs at full intensity — auth pages are the
+          first impression of Codeleon and deserve the "wow" backdrop. */}
+      <AnimatedBackdrop variant="showcase" />
+      <div className="codeleon-grid pointer-events-none absolute inset-0 z-[1] opacity-60" />
+      <div className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(105deg,#09090b_0%,rgba(9,9,11,0.86)_44%,rgba(24,24,27,0.58)_100%)]" />
 
       <motion.section
         initial="hidden"
