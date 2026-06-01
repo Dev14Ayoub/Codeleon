@@ -539,6 +539,57 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 // ===========================================================================
+// Peer-to-peer room chat (humans only, distinct from the AI chat above)
+// ===========================================================================
+
+export interface RoomPeerChatMessage {
+  id: string;
+  userId: string | null;
+  userName: string;
+  content: string;
+  fileName: string | null;
+  fileType: string | null;
+  fileSize: number | null;
+  createdAt: string;
+}
+
+/** Last N messages for a room, oldest first. */
+export async function fetchRoomPeerChatHistory(roomId: string, limit?: number) {
+  const { data } = await api.get<RoomPeerChatMessage[]>(`/rooms/${roomId}/peer-chat/messages`, {
+    params: limit ? { limit } : undefined,
+  });
+  return data;
+}
+
+/** Plain-text send. */
+export async function sendRoomPeerChatMessage(roomId: string, content: string) {
+  const { data } = await api.post<RoomPeerChatMessage>(`/rooms/${roomId}/peer-chat/messages`, { content });
+  return data;
+}
+
+/** Multipart send with attachment. The caption can be empty when the
+ *  user only sent the file. */
+export async function sendRoomPeerChatFile(roomId: string, file: File, caption: string) {
+  const form = new FormData();
+  form.append("file", file);
+  if (caption) form.append("caption", caption);
+  const { data } = await api.post<RoomPeerChatMessage>(
+    `/rooms/${roomId}/peer-chat/messages/file`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+}
+
+/** URL to fetch an attachment's bytes. The backend serves with inline
+ *  Content-Disposition so the browser previews images / PDFs in a new
+ *  tab. The same Authorization header used elsewhere is required; the
+ *  helper below adds it via the access token in localStorage. */
+export function peerChatFileUrl(roomId: string, messageId: string): string {
+  return `${API_BASE_URL}/rooms/${roomId}/peer-chat/messages/${messageId}/file`;
+}
+
+// ===========================================================================
 // Admin dashboard
 // ===========================================================================
 

@@ -19,6 +19,14 @@ spring:
         format_sql: true
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      # Peer-chat attachments are capped at 5 MB by RoomPeerChatService.
+      # Add a hair of slack for multipart envelope overhead so a clean
+      # 5 MB file isn't rejected by Spring before our service-level
+      # check runs and returns a clearer 400.
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 springdoc:
   swagger-ui:

@@ -26,9 +26,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
+import type * as Y from "yjs";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { RoomChat } from "@/components/chat/RoomChat";
 import {
   CodeMirrorEditor,
   type CodeMirrorEditorHandle,
@@ -1035,6 +1037,8 @@ export function RoomPage() {
               onTabChange={setRightPanelTab}
               peers={collab.peers}
               currentUserId={currentUser?.id}
+              currentUserName={currentUser?.fullName}
+              ydoc={collab.ydoc}
               roomId={roomId}
               activePath={activePath}
               getEditorText={getEditorText}
@@ -1081,6 +1085,8 @@ export function RoomPage() {
               onTabChange={setRightPanelTab}
               peers={collab.peers}
               currentUserId={currentUser?.id}
+              currentUserName={currentUser?.fullName}
+              ydoc={collab.ydoc}
               roomId={roomId}
               activePath={activePath}
               getEditorText={getEditorText}
@@ -1112,6 +1118,8 @@ export function RoomPage() {
                 onTabChange={setRightPanelTab}
                 peers={collab.peers}
                 currentUserId={currentUser?.id}
+                currentUserName={currentUser?.fullName}
+                ydoc={collab.ydoc}
                 roomId={roomId}
                 activePath={activePath}
                 getEditorText={getEditorText}
@@ -1657,6 +1665,8 @@ function RoomRightPanel({
   onTabChange,
   peers,
   currentUserId,
+  currentUserName,
+  ydoc,
   roomId,
   getEditorText,
   getAllFiles,
@@ -1672,6 +1682,12 @@ function RoomRightPanel({
   onTabChange: (tab: RightPanelTab) => void;
   peers: CollabPeer[];
   currentUserId: string | undefined;
+  /** Display name of the current user — used by RoomChat to label
+   *  outgoing messages. */
+  currentUserName: string | undefined;
+  /** Shared Y.Doc — RoomChat stores its messages in a Y.Array inside
+   *  this same Doc so they ride the existing WS sync + snapshot persistence. */
+  ydoc: Y.Doc;
   roomId: string;
   getEditorText: () => string;
   getAllFiles: () => IndexFile[];
@@ -1745,9 +1761,26 @@ function RoomRightPanel({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -16 }}
               transition={{ duration: 0.2 }}
-              className="h-full overflow-y-auto p-4"
+              className="flex h-full min-h-0 flex-col gap-3 p-3"
             >
-              <ParticipantsList peers={peers} currentUserId={currentUserId} />
+              {/* People tab is split: a compact participants list at the
+                  top (capped to ~12rem so the chat gets most of the
+                  vertical space), then the human-↔-human room chat that
+                  fills the rest. RoomChat stores its messages in a
+                  Y.Array inside the shared Y.Doc so it rides on the
+                  existing WebSocket sync and snapshot persistence. */}
+              <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
+                <ParticipantsList peers={peers} currentUserId={currentUserId} />
+              </div>
+              <div className="flex-1 min-h-0">
+                <RoomChat
+                  ydoc={ydoc}
+                  roomId={roomId}
+                  currentUserId={currentUserId}
+                  currentUserName={currentUserName}
+                  canSend={true}
+                />
+              </div>
             </motion.section>
           ) : (
             <motion.section
