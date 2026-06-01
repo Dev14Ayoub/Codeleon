@@ -696,8 +696,4 @@ MIT (to be added before the defense).
 ## 🎓 PFE context
 
 Final-year project for **Licence Pro Génie Logiciel, Faculté
-Polydisciplinaire de Taza**, academic year 2025-2026. Mentored by
-[Claude Code](https://claude.com/claude-code) as an AI pair-programming
-assistant; co-authorship is acknowledged on every commit message.
-</content>
-</invoke>
+Polydisciplinaire de Taza**, academic year 2025-2026.

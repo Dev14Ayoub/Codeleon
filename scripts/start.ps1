@@ -145,7 +145,7 @@ function Invoke-NewPSWindow {
 
 Write-Step "Spawning backend window (Spring Boot)"
 # Delegate to run-backend.ps1 so .env loading + JDK pinning + defaults
-# stay in a single source of truth (also used by .claude/launch.json).
+# stay in a single source of truth.
 $backendScript = @"
 `$Host.UI.RawUI.WindowTitle = 'Codeleon Backend'
 & '$projectRoot\scripts\run-backend.ps1'

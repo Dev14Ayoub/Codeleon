@@ -1,6 +1,5 @@
 # =============================================================================
-# Codeleon backend wrapper - used by .claude/launch.json (preview_start)
-# and by scripts/start.ps1.
+# Codeleon backend wrapper - used by scripts/start.ps1.
 #
 # Loads the project root .env into the current process so Spring Boot picks
 # up every key (Postgres creds, AI flags, OAuth client ids/secrets, etc.),

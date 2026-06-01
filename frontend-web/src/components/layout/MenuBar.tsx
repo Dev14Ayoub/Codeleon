@@ -364,7 +364,7 @@ function AboutDialog({
           </dl>
 
           <p className="mt-6 text-[11px] text-zinc-500">
-            PFE final-year project — built with Claude Code.
+            PFE final-year project · Licence Pro Génie Logiciel.
           </p>
         </Dialog.Content>
       </Dialog.Portal>

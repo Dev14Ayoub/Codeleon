@@ -11,7 +11,7 @@
 # Why this exists: stop.ps1 historically matched processes by window title,
 # which only catches backends launched via the start.ps1 wrapper that sets
 # the window title. A backend launched from a plain `mvn spring-boot:run`,
-# or one spawned by an external tool (Claude Code preview_start, an IDE),
+# or one spawned by an external IDE,
 # kept holding the port after stop.ps1 ran. Subsequent start.ps1 invocations
 # then crashed with "Port 8080 was already in use" — exactly the loop we
 # want to be unable to fall into.

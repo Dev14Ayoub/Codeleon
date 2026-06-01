@@ -6,8 +6,8 @@
 #
 # Historically this script only matched processes by window title, which
 # missed mvn / java orphans launched from a plain shell or by an external
-# tool (an IDE, a previous Claude Code preview_start, etc.). The next
-# start.ps1 then crashed with "Port 8080 was already in use". The shared
+# tool such as an IDE. The next start.ps1 then crashed with
+# "Port 8080 was already in use". The shared
 # helper Stop-PortListener walks the listening process tree on a given
 # port and kills everything, so the next start has a clean slate.
 #
