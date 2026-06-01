@@ -1,5 +1,30 @@
 # Mémoire PFE — Writing Plan, Project Brief, and Ghostwriter Prompts
 
+> ## 🇫🇷 LANGUE DU MÉMOIRE : FRANÇAIS ACADÉMIQUE — non négociable
+>
+> **Le mémoire entier doit être rédigé en français.** Ce writing plan
+> est en anglais pour des raisons pratiques (faciliter le copier-coller
+> de noms de classes Java, d'attributs SQL et de termes techniques),
+> mais **tout le texte que l'AI ghostwriter produit doit être en
+> français**.
+>
+> Ne traduis pas :
+> - les noms de classes / méthodes / fichiers (`JwtService.generateAccessToken`,
+>   `RoomChatService`, `docker-compose.prod.yml`, etc.),
+> - les noms de produits / technologies (`Tailscale`, `Hetzner`, `Spring Boot`,
+>   `Yjs`, `Ollama`, `Qdrant`, etc.),
+> - les acronymes anglo-saxons standards (`JWT`, `RAG`, `CRDT`, `SSE`,
+>   `MIME`, `UFW`, `OAuth`).
+>
+> Traduis tout le reste : titres de sections, légendes de figures,
+> commentaires de tableaux, paragraphes de prose, conclusions de
+> chapitre. Les anglicismes courants en informatique (« framework »,
+> « backend », « workspace ») sont tolérés à condition d'être en
+> italique à leur première occurrence avec une glose française entre
+> parenthèses.
+
+---
+
 > Single-source briefing document for handing off the writing of the
 > PFE final report to an external AI assistant (ChatGPT, Claude,
 > Gemini, …). The reader of this file should be able to write the
