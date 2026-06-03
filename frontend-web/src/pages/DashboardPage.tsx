@@ -1,8 +1,9 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, Archive, ArrowDownAZ, Check, ChevronDown, Clock, Database, DoorOpen, FileCode2, Github, Globe2, LayoutGrid, Link2, Loader2, Lock, LogOut, Menu, PanelRightClose, PanelRightOpen, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Terminal, Upload, Users, X } from "lucide-react";
+import { Activity, Archive, ArrowDownAZ, Check, ChevronDown, ChevronRight, Clock, Command, Database, DoorOpen, FileCode2, Flame, Github, Globe2, LayoutGrid, Link2, List, Loader2, Lock, LogOut, Menu, PanelRightClose, PanelRightOpen, Pin, Plus, Radio, Search, ShieldCheck, Sparkles, Sun, Sunrise, Sunset, Terminal, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -44,6 +45,7 @@ import { useAuthStore } from "@/stores/auth-store";
 type SortKey = "recent" | "alphabetical" | "files";
 type FilterKey = "all" | "pinned" | "archived";
 type CreateProjectSource = "blank" | "local" | "github";
+type ViewMode = "grid" | "list";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -58,6 +60,16 @@ export function DashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [filterKey, setFilterKey] = useState<FilterKey>("all");
   const [createSource, setCreateSource] = useState<CreateProjectSource>("blank");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "grid";
+    return (window.localStorage.getItem("codeleon-view-mode") as ViewMode) || "grid";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("codeleon-view-mode", viewMode);
+  }, [viewMode]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Activity panel visibility persists in localStorage so the user's
   // preference survives reloads. Default to visible — first-time visitors
   // see the feature, returning users keep their choice.
@@ -185,6 +197,7 @@ export function DashboardPage() {
       setGithubRepoUrl("");
       setGithubBranch("");
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      setCreateOpen(false);
       navigate(`/rooms/${room.id}`);
     },
   });
@@ -194,6 +207,7 @@ export function DashboardPage() {
     onSuccess: () => {
       joinForm.reset({ inviteCode: "" });
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      setCreateOpen(false);
     },
   });
 
@@ -277,6 +291,17 @@ export function DashboardPage() {
   useEffect(() => {
     setActiveSuggestionIndex(searchSuggestions.length > 0 ? 0 : -1);
   }, [searchQuery, searchSuggestions.length]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function openProjectSuggestion(room: Room) {
     setSearchFocused(false);
@@ -419,6 +444,13 @@ export function DashboardPage() {
             activityOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-1",
           )}>
             <div className="min-w-0 space-y-6">
+          <TodayWidget
+            userName={user?.fullName ?? null}
+            projectCount={myRooms.length}
+            recentRoom={myRoomsView[0]}
+            onOpenPalette={() => setPaletteOpen(true)}
+          />
+
           <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-3 sm:grid-cols-3">
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Projects" value={myRooms.length} />
             <StatTile icon={<FileCode2 className="h-4 w-4 text-cyan" />} label="Files across projects" value={totalFiles} />
@@ -484,10 +516,23 @@ export function DashboardPage() {
                 </div>
                 <FilterMenu filterKey={filterKey} onChange={setFilterKey} />
                 <SortMenu sortKey={sortKey} onChange={setSortKey} />
+                <ViewToggle viewMode={viewMode} onChange={setViewMode} />
+                <Button onClick={() => setCreateOpen(true)} className="h-9">
+                  <Plus className="h-4 w-4" />
+                  New project
+                </Button>
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
+              <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in" />
+                <Dialog.Content className="fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[min(100%-2rem,56rem)] -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-4 overflow-y-auto rounded-xl border border-zinc-800 bg-background p-5 shadow-2xl lg:grid-cols-[1.1fr_0.9fr]">
+                  <Dialog.Title className="sr-only">Create or join a project</Dialog.Title>
+                  <Dialog.Description className="sr-only">Create a blank project, import from local or GitHub, or join with an invite code.</Dialog.Description>
+                  <Dialog.Close className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition hover:bg-surface hover:text-zinc-100" aria-label="Close">
+                    <X className="h-4 w-4" />
+                  </Dialog.Close>
               <motion.form
                 variants={fadeUp}
                 initial="hidden"
@@ -621,12 +666,15 @@ export function DashboardPage() {
                   {joinRoomMutation.isPending ? "Joining..." : "Join project"}
                 </Button>
               </motion.form>
-            </div>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
 
             <ProjectGrid
               emptyText={searchQuery ? "No projects match your search" : "No projects yet"}
               isLoading={myRoomsQuery.isLoading}
               rooms={myRoomsView}
+              viewMode={viewMode}
             />
           </section>
 
@@ -639,6 +687,7 @@ export function DashboardPage() {
               emptyText={searchQuery ? "No public projects match your search" : "No public projects yet"}
               isLoading={publicRoomsQuery.isLoading}
               rooms={publicRoomsView}
+              viewMode={viewMode}
             />
           </section>
 
@@ -661,6 +710,24 @@ export function DashboardPage() {
           </div>
         </div>
       </MotionPage>
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        rooms={myRooms}
+        onNewProject={() => {
+          setPaletteOpen(false);
+          setCreateOpen(true);
+        }}
+        onNavigate={(path) => {
+          setPaletteOpen(false);
+          navigate(path);
+        }}
+        onLogout={() => {
+          setPaletteOpen(false);
+          handleLogout();
+        }}
+      />
     </main>
   );
 }
@@ -1025,7 +1092,7 @@ function SortMenu({ sortKey, onChange }: { sortKey: SortKey; onChange: (key: Sor
   );
 }
 
-function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoading: boolean; rooms: Room[] }) {
+function ProjectGrid({ emptyText, isLoading, rooms, viewMode = "grid" }: { emptyText: string; isLoading: boolean; rooms: Room[]; viewMode?: ViewMode }) {
   if (isLoading) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-surface/50 p-8">
@@ -1045,6 +1112,24 @@ function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoa
       </motion.div>
     );
   }
+  if (viewMode === "list") {
+    return (
+      <motion.div variants={stagger} initial="hidden" animate="show" className="overflow-hidden rounded-lg border border-zinc-800 bg-surface/50">
+        <div className="hidden grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_8rem_5rem_7rem] gap-3 border-b border-zinc-800 px-4 py-2 text-[10px] uppercase tracking-wide text-zinc-500 md:grid">
+          <span>Project</span>
+          <span>Owner</span>
+          <span>Updated</span>
+          <span>Files</span>
+          <span>Members</span>
+        </div>
+        {rooms.map((room) => (
+          <motion.div key={room.id} variants={fadeUp}>
+            <ProjectListRow room={room} />
+          </motion.div>
+        ))}
+      </motion.div>
+    );
+  }
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {rooms.map((room) => (
@@ -1054,6 +1139,151 @@ function ProjectGrid({ emptyText, isLoading, rooms }: { emptyText: string; isLoa
       ))}
     </motion.div>
   );
+}
+
+function ProjectListRow({ room }: { room: Room }) {
+  const updatedAt = new Date(room.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return (
+    <Link
+      to={`/rooms/${room.id}`}
+      className="group grid grid-cols-1 gap-2 border-b border-zinc-800 px-4 py-3 transition last:border-b-0 hover:bg-surfaceRaised md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_8rem_5rem_7rem] md:items-center md:gap-3"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-500 group-hover:text-cyan">
+          {room.visibility === "PUBLIC" ? <Globe2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+        </span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-zinc-100">{room.name}</span>
+            {room.pinned && <Pin className="h-3 w-3 shrink-0 text-cyan" />}
+            {room.archived && <Archive className="h-3 w-3 shrink-0 text-zinc-500" />}
+          </div>
+          {room.description && (
+            <p className="truncate text-[11px] text-zinc-500">{room.description}</p>
+          )}
+        </div>
+      </div>
+      <span className="truncate text-xs text-zinc-400">{room.ownerName}</span>
+      <span className="text-xs text-zinc-500">{updatedAt}</span>
+      <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+        <FileCode2 className="h-3 w-3" />
+        {room.fileCount}
+      </span>
+      <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+        <Users className="h-3 w-3" />
+        {room.memberCount}
+      </span>
+    </Link>
+  );
+}
+
+function ViewToggle({ viewMode, onChange }: { viewMode: ViewMode; onChange: (mode: ViewMode) => void }) {
+  const options: { key: ViewMode; icon: React.ReactNode; label: string }[] = [
+    { key: "grid", icon: <LayoutGrid className="h-3.5 w-3.5" />, label: "Grid" },
+    { key: "list", icon: <List className="h-3.5 w-3.5" />, label: "List" },
+  ];
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-zinc-800 bg-surface p-1">
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => onChange(opt.key)}
+          aria-pressed={opt.key === viewMode}
+          aria-label={`${opt.label} view`}
+          title={`${opt.label} view`}
+          className={
+            opt.key === viewMode
+              ? "inline-flex items-center gap-1.5 rounded-sm bg-surfaceRaised px-2.5 py-1 text-xs font-medium text-zinc-100"
+              : "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-surfaceRaised hover:text-zinc-200"
+          }
+        >
+          {opt.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TodayWidget({
+  userName,
+  projectCount,
+  recentRoom,
+  onOpenPalette,
+}: {
+  userName: string | null;
+  projectCount: number;
+  recentRoom: Room | undefined;
+  onOpenPalette: () => void;
+}) {
+  const greeting = useMemo(() => getTimeGreeting(), []);
+  const firstName = userName?.split(" ")[0] ?? "builder";
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="relative overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-br from-surface via-zinc-950 to-background p-5 shadow-[0_18px_60px_rgba(99,102,241,0.12)]"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-70"
+        style={{
+          background:
+            "radial-gradient(ellipse at top right, rgba(6,182,212,0.18), transparent 55%), radial-gradient(ellipse at bottom left, rgba(139,92,246,0.16), transparent 55%)",
+        }}
+      />
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-cyan">
+            <greeting.icon className="h-3.5 w-3.5" />
+            {greeting.label}
+          </div>
+          <h2 className="mt-1 text-xl font-semibold text-zinc-50 sm:text-2xl">
+            {greeting.salutation}, {firstName}
+          </h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            {projectCount === 0
+              ? "Spin up your first room and invite a teammate."
+              : recentRoom
+                ? <>You were last in <span className="font-medium text-zinc-200">{recentRoom.name}</span>. Pick up where you left off.</>
+                : `${projectCount} ${projectCount === 1 ? "project" : "projects"} in your workspace.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {recentRoom && (
+            <Button asChild variant="secondary" className="h-9">
+              <Link to={`/rooms/${recentRoom.id}`}>
+                <Flame className="h-4 w-4" />
+                Resume
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 text-xs text-zinc-400 transition hover:border-cyan/40 hover:text-zinc-100"
+          >
+            <Command className="h-3.5 w-3.5" />
+            Quick jump
+            <kbd className="ml-1 rounded border border-zinc-700 bg-background px-1 py-0.5 font-mono text-[10px] text-zinc-400">
+              {isMac ? "⌘" : "Ctrl"} K
+            </kbd>
+          </button>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+function getTimeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 6) return { label: "Late night", salutation: "Bonne nuit", icon: Sunset };
+  if (hour < 12) return { label: "Morning", salutation: "Bonjour", icon: Sunrise };
+  if (hour < 18) return { label: "Afternoon", salutation: "Bon après-midi", icon: Sun };
+  return { label: "Evening", salutation: "Bonsoir", icon: Sunset };
 }
 
 function ProjectSourcePicker({
@@ -1498,6 +1728,168 @@ function inferLocalProjectName(fileList: FileList): string | null {
   }
   const [folder] = rawPath.replace(/\\/g, "/").split("/");
   return folder?.trim() || null;
+}
+
+type PaletteAction = {
+  id: string;
+  label: string;
+  hint?: string;
+  icon: React.ReactNode;
+  group: "Actions" | "Navigate" | "Projects" | "Account";
+  run: () => void;
+};
+
+function CommandPalette({
+  open,
+  onOpenChange,
+  rooms,
+  onNewProject,
+  onNavigate,
+  onLogout,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  rooms: Room[];
+  onNewProject: () => void;
+  onNavigate: (path: string) => void;
+  onLogout: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setActiveIndex(0);
+      window.setTimeout(() => inputRef.current?.focus(), 30);
+    }
+  }, [open]);
+
+  const actions: PaletteAction[] = useMemo(() => {
+    const base: PaletteAction[] = [
+      { id: "act-new", label: "Create new project", hint: "Open create modal", icon: <Plus className="h-3.5 w-3.5" />, group: "Actions", run: onNewProject },
+      { id: "nav-projects", label: "My projects", icon: <FileCode2 className="h-3.5 w-3.5" />, group: "Navigate", run: () => onNavigate("/dashboard#projects") },
+      { id: "nav-public", label: "Public projects", icon: <Radio className="h-3.5 w-3.5" />, group: "Navigate", run: () => onNavigate("/dashboard#public") },
+      { id: "nav-integrations", label: "Integrations", icon: <Link2 className="h-3.5 w-3.5" />, group: "Navigate", run: () => onNavigate("/dashboard#integrations") },
+      { id: "act-logout", label: "Log out", icon: <LogOut className="h-3.5 w-3.5" />, group: "Account", run: onLogout },
+    ];
+    const projects: PaletteAction[] = rooms.slice(0, 20).map((room) => ({
+      id: `project-${room.id}`,
+      label: room.name,
+      hint: room.description ?? `Owned by ${room.ownerName}`,
+      icon: room.visibility === "PUBLIC" ? <Globe2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />,
+      group: "Projects",
+      run: () => onNavigate(`/rooms/${room.id}`),
+    }));
+    return [...base, ...projects];
+  }, [rooms, onNewProject, onNavigate, onLogout]);
+
+  const filtered = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return actions;
+    return actions.filter((a) => `${a.label} ${a.hint ?? ""} ${a.group}`.toLowerCase().includes(trimmed));
+  }, [actions, query]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<PaletteAction["group"], PaletteAction[]>();
+    for (const action of filtered) {
+      map.set(action.group, [...(map.get(action.group) ?? []), action]);
+    }
+    return Array.from(map.entries());
+  }, [filtered]);
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (filtered.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((i) => (i + 1) % filtered.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? filtered.length - 1 : i - 1));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      filtered[activeIndex]?.run();
+    }
+  }
+
+  let cursor = -1;
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-24 z-50 w-[min(100%-2rem,40rem)] -translate-x-1/2 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl">
+          <Dialog.Title className="sr-only">Command palette</Dialog.Title>
+          <Dialog.Description className="sr-only">Search projects and jump to common actions.</Dialog.Description>
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
+            <Search className="h-4 w-4 text-zinc-500" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Search projects, actions..."
+              className="h-7 w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+            />
+            <kbd className="rounded border border-zinc-700 bg-background px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">ESC</kbd>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto p-2">
+            {grouped.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-zinc-500">No matches.</p>
+            ) : (
+              grouped.map(([group, items]) => (
+                <div key={group} className="mb-2 last:mb-0">
+                  <p className="px-2 py-1 text-[10px] uppercase tracking-wider text-zinc-500">{group}</p>
+                  <div className="space-y-0.5">
+                    {items.map((action) => {
+                      cursor += 1;
+                      const active = cursor === activeIndex;
+                      const myIndex = cursor;
+                      return (
+                        <button
+                          key={action.id}
+                          type="button"
+                          onMouseEnter={() => setActiveIndex(myIndex)}
+                          onClick={() => action.run()}
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition",
+                            active ? "bg-surfaceRaised text-zinc-50" : "text-zinc-300 hover:bg-surface",
+                          )}
+                        >
+                          <span className={cn("flex h-7 w-7 items-center justify-center rounded-md border", active ? "border-cyan/50 bg-cyan/10 text-cyan" : "border-zinc-800 bg-background text-zinc-500")}>
+                            {action.icon}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">{action.label}</span>
+                            {action.hint && <span className="block truncate text-[11px] text-zinc-500">{action.hint}</span>}
+                          </span>
+                          {active && <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex items-center justify-between border-t border-zinc-800 px-4 py-2 text-[10px] text-zinc-500">
+            <span className="flex items-center gap-2">
+              <kbd className="rounded border border-zinc-700 bg-background px-1 py-0.5 font-mono">↑↓</kbd>
+              Navigate
+            </span>
+            <span className="flex items-center gap-2">
+              <kbd className="rounded border border-zinc-700 bg-background px-1 py-0.5 font-mono">↵</kbd>
+              Select
+            </span>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
 }
 
 function filterGithubRepositories(repositories: GithubRepository[], query: string) {
