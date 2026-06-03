@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Archive, ArchiveRestore, Copy, FileCode2, Globe2, Lock, MoreHorizontal, Pin, PinOff, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { archiveRoom, pinRoom, unarchiveRoom, unpinRoom, type Room } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/utils";
@@ -15,20 +16,43 @@ const MotionLink = motion(Link);
 export function ProjectCard({ room }: ProjectCardProps) {
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  // The trigger ref stays inside the card so click-on-trigger does not
+  // trigger the "click outside" branch.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // The portal menu lives on document.body so the card's overflow-hidden
+  // does not clip it; we still need a ref to it so click-on-menu-item
+  // does not trigger the "click outside" branch either.
+  const portalMenuRef = useRef<HTMLDivElement | null>(null);
+  // Position of the floating menu, computed from the trigger's bounding
+  // box when the menu opens. Stays null until the first open.
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const queryClient = useQueryClient();
 
   // Close the ⋯ menu on outside click. We listen at the document level
-  // and bail out when the click target is inside our menu container.
+  // and bail out when the click target is inside the trigger OR inside
+  // the portal-rendered menu. Also close on scroll/resize because the
+  // computed position becomes stale.
   useEffect(() => {
     if (!menuOpen) return;
     function onClick(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const inTrigger = triggerRef.current?.contains(target) ?? false;
+      const inPortal = portalMenuRef.current?.contains(target) ?? false;
+      if (!inTrigger && !inPortal) {
         setMenuOpen(false);
       }
     }
+    function onScrollOrResize() {
+      setMenuOpen(false);
+    }
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
   }, [menuOpen]);
 
   const pinMutation = useMutation({
@@ -62,7 +86,22 @@ export function ProjectCard({ room }: ProjectCardProps) {
   function handleMenuToggle(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setMenuOpen((v) => !v);
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    // Anchor the menu under the trigger using a fixed-position offset
+    // from the right edge of the viewport. Using `right` (rather than
+    // `left`) keeps the menu nicely aligned with the trigger even on
+    // wider screens where the card may sit far from the viewport edge.
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    setMenuOpen(true);
   }
 
   function handleArchive(e: React.MouseEvent) {
@@ -168,8 +207,9 @@ export function ProjectCard({ room }: ProjectCardProps) {
             {room.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
           </button>
           {isOwner && (
-            <div className="relative" ref={menuRef}>
+            <>
               <button
+                ref={triggerRef}
                 type="button"
                 onClick={handleMenuToggle}
                 className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
@@ -179,10 +219,24 @@ export function ProjectCard({ room }: ProjectCardProps) {
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
-              {menuOpen && (
+              {menuOpen && menuPosition && createPortal(
+                /*
+                 * The kebab menu is portaled to document.body so the card's
+                 * overflow-hidden does not clip it. position:fixed +
+                 * computed top/right anchors it to the trigger button.
+                 * The portalMenuRef + outside-click handler (useEffect
+                 * above) keep the menu dismissible.
+                 */
                 <div
+                  ref={portalMenuRef}
                   role="menu"
-                  className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-zinc-700 bg-zinc-950 p-1 shadow-lg"
+                  style={{
+                    position: "fixed",
+                    top: menuPosition.top,
+                    right: menuPosition.right,
+                    zIndex: 50,
+                  }}
+                  className="w-48 rounded-md border border-zinc-700 bg-zinc-950 p-1 shadow-[0_18px_48px_rgba(0,0,0,0.55)]"
                 >
                   <button
                     type="button"
@@ -203,9 +257,10 @@ export function ProjectCard({ room }: ProjectCardProps) {
                       </>
                     )}
                   </button>
-                </div>
+                </div>,
+                document.body,
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
