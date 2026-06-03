@@ -1,10 +1,13 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Archive, ArchiveRestore, Copy, FileCode2, Globe2, Lock, MoreHorizontal, Pin, PinOff, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Archive, ArchiveRestore, Copy, FileCode2, Globe2, Loader2, Lock, MoreHorizontal, Pencil, Pin, PinOff, Trash2, Users, X } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { archiveRoom, pinRoom, unarchiveRoom, unpinRoom, type Room } from "@/lib/api";
+import { archiveRoom, deleteRoom, pinRoom, unarchiveRoom, unpinRoom, updateRoom, type Room } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatRelativeDate } from "@/lib/utils";
 
 interface ProjectCardProps {
@@ -68,6 +71,48 @@ export function ProjectCard({ room }: ProjectCardProps) {
     },
   });
 
+  // Rename dialog state. We pre-fill with the current values so the
+  // user can just adjust without re-typing.
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameName, setRenameName] = useState(room.name);
+  const [renameDescription, setRenameDescription] = useState(room.description ?? "");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameMutation = useMutation({
+    mutationFn: () =>
+      updateRoom(room.id, {
+        name: renameName.trim(),
+        description: renameDescription.trim(),
+      }),
+    onSuccess: () => {
+      setRenameOpen(false);
+      setRenameError(null);
+      void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Could not update the project";
+      setRenameError(msg);
+    },
+  });
+
+  // Delete dialog state. We require the user to type the project name
+  // verbatim to confirm — a 2-step gate against accidental clicks.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteRoom(room.id),
+    onSuccess: () => {
+      setDeleteOpen(false);
+      setDeleteConfirmText("");
+      setDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Could not delete the project";
+      setDeleteError(msg);
+    },
+  });
+
   function handleCopy(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -108,6 +153,48 @@ export function ProjectCard({ room }: ProjectCardProps) {
     e.preventDefault();
     e.stopPropagation();
     archiveMutation.mutate();
+  }
+
+  function handleOpenRename(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenameName(room.name);
+    setRenameDescription(room.description ?? "");
+    setRenameError(null);
+    setMenuOpen(false);
+    setRenameOpen(true);
+  }
+
+  function handleOpenDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteConfirmText("");
+    setDeleteError(null);
+    setMenuOpen(false);
+    setDeleteOpen(true);
+  }
+
+  function submitRename(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = renameName.trim();
+    if (trimmed.length < 2) {
+      setRenameError("Name must be at least 2 characters.");
+      return;
+    }
+    if (trimmed.length > 120) {
+      setRenameError("Name must be at most 120 characters.");
+      return;
+    }
+    renameMutation.mutate();
+  }
+
+  function submitDelete(e: FormEvent) {
+    e.preventDefault();
+    if (deleteConfirmText.trim() !== room.name) {
+      setDeleteError("Type the project name exactly to confirm.");
+      return;
+    }
+    deleteMutation.mutate();
   }
 
   const isPublic = room.visibility === "PUBLIC";
@@ -241,6 +328,15 @@ export function ProjectCard({ room }: ProjectCardProps) {
                   <button
                     type="button"
                     role="menuitem"
+                    onClick={handleOpenRename}
+                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-surfaceRaised hover:text-zinc-100"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Rename project
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
                     onClick={handleArchive}
                     disabled={archiveMutation.isPending}
                     className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-surfaceRaised hover:text-zinc-100 disabled:opacity-50"
@@ -257,9 +353,156 @@ export function ProjectCard({ room }: ProjectCardProps) {
                       </>
                     )}
                   </button>
+                  {/* Visual separator before the destructive action. */}
+                  <div className="my-1 h-px bg-zinc-800" aria-hidden />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleOpenDelete}
+                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-xs text-rose-400 transition hover:bg-rose-950/40 hover:text-rose-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete project
+                  </button>
                 </div>,
                 document.body,
               )}
+
+              {/* Rename dialog. Radix Dialog auto-portals to body, so
+                  no overflow-hidden clipping. */}
+              <Dialog.Root open={renameOpen} onOpenChange={setRenameOpen}>
+                <Dialog.Portal>
+                  <Dialog.Overlay
+                    onClick={(e) => e.stopPropagation()}
+                    className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in"
+                  />
+                  <Dialog.Content
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-zinc-800 bg-surface p-5 shadow-[0_24px_70px_rgba(0,0,0,0.46)]"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <Dialog.Title className="text-base font-semibold text-zinc-50">
+                          Rename project
+                        </Dialog.Title>
+                        <Dialog.Description className="mt-1 text-xs text-zinc-400">
+                          Change how this project appears on every member's dashboard.
+                        </Dialog.Description>
+                      </div>
+                      <Dialog.Close className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200">
+                        <X className="h-4 w-4" />
+                      </Dialog.Close>
+                    </div>
+                    <form onSubmit={submitRename} className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] uppercase tracking-wide text-zinc-500" htmlFor={`rename-name-${room.id}`}>
+                          Name
+                        </label>
+                        <Input
+                          id={`rename-name-${room.id}`}
+                          value={renameName}
+                          onChange={(e) => setRenameName(e.target.value)}
+                          maxLength={120}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] uppercase tracking-wide text-zinc-500" htmlFor={`rename-desc-${room.id}`}>
+                          Description
+                        </label>
+                        <textarea
+                          id={`rename-desc-${room.id}`}
+                          value={renameDescription}
+                          onChange={(e) => setRenameDescription(e.target.value)}
+                          maxLength={500}
+                          rows={3}
+                          placeholder="Optional short context"
+                          className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan focus:outline-none"
+                        />
+                      </div>
+                      {renameError && (
+                        <p className="rounded-md border border-rose-900 bg-rose-950/40 px-2.5 py-1.5 text-[11px] text-rose-300">
+                          {renameError}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Dialog.Close asChild>
+                          <Button type="button" variant="secondary">Cancel</Button>
+                        </Dialog.Close>
+                        <Button type="submit" disabled={renameMutation.isPending}>
+                          {renameMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                          Save changes
+                        </Button>
+                      </div>
+                    </form>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Delete dialog with type-to-confirm gate. */}
+              <Dialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <Dialog.Portal>
+                  <Dialog.Overlay
+                    onClick={(e) => e.stopPropagation()}
+                    className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in"
+                  />
+                  <Dialog.Content
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-rose-900/60 bg-surface p-5 shadow-[0_24px_70px_rgba(0,0,0,0.55)]"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <Dialog.Title className="inline-flex items-center gap-2 text-base font-semibold text-rose-300">
+                          <Trash2 className="h-4 w-4" />
+                          Delete project
+                        </Dialog.Title>
+                        <Dialog.Description className="mt-1 text-xs text-zinc-300">
+                          This permanently deletes <span className="font-medium text-zinc-100">{room.name}</span>,
+                          including every file, every chat message, and every member.
+                          This action cannot be undone.
+                        </Dialog.Description>
+                      </div>
+                      <Dialog.Close className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200">
+                        <X className="h-4 w-4" />
+                      </Dialog.Close>
+                    </div>
+                    <form onSubmit={submitDelete} className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] uppercase tracking-wide text-zinc-500" htmlFor={`delete-confirm-${room.id}`}>
+                          Type <span className="font-mono text-zinc-300">{room.name}</span> to confirm
+                        </label>
+                        <Input
+                          id={`delete-confirm-${room.id}`}
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          autoFocus
+                          autoComplete="off"
+                        />
+                      </div>
+                      {deleteError && (
+                        <p className="rounded-md border border-rose-900 bg-rose-950/40 px-2.5 py-1.5 text-[11px] text-rose-300">
+                          {deleteError}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Dialog.Close asChild>
+                          <Button type="button" variant="secondary">Cancel</Button>
+                        </Dialog.Close>
+                        <Button
+                          type="submit"
+                          disabled={deleteMutation.isPending || deleteConfirmText.trim() !== room.name}
+                          className="!bg-rose-600 !shadow-[0_10px_30px_rgba(244,63,94,0.22)] hover:!bg-rose-500 hover:!shadow-[0_14px_36px_rgba(244,63,94,0.32)]"
+                        >
+                          {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                          Delete forever
+                        </Button>
+                      </div>
+                    </form>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
             </>
           )}
         </div>

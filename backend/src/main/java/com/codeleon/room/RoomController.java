@@ -2,6 +2,7 @@ package com.codeleon.room;
 
 import com.codeleon.room.dto.CreateRoomRequest;
 import com.codeleon.room.dto.RoomResponse;
+import com.codeleon.room.dto.UpdateRoomRequest;
 import com.codeleon.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -85,5 +87,28 @@ public class RoomController {
     @DeleteMapping("/{roomId}/archive")
     public RoomResponse unarchiveRoom(@PathVariable UUID roomId, @AuthenticationPrincipal User user) {
         return roomService.unarchiveRoom(roomId, user);
+    }
+
+    /**
+     * Owner-only rename / description update. Returns the refreshed
+     * room so the dashboard re-renders without an extra fetch.
+     */
+    @PatchMapping("/{roomId}")
+    public RoomResponse updateRoom(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody UpdateRoomRequest request
+    ) {
+        return roomService.updateRoom(roomId, user, request.name(), request.description());
+    }
+
+    /**
+     * Owner-only hard delete. Cascade-removes members, files, events,
+     * AI + peer chat history. No body required, returns 204.
+     */
+    @DeleteMapping("/{roomId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteRoom(@PathVariable UUID roomId, @AuthenticationPrincipal User user) {
+        roomService.deleteRoom(roomId, user);
     }
 }

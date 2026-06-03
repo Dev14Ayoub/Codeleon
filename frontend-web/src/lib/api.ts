@@ -323,6 +323,23 @@ export async function unarchiveRoom(roomId: string) {
   return data;
 }
 
+/**
+ * Owner-only rename / description update. Sends both fields together —
+ * pass the current description as a no-op if you only want to rename.
+ */
+export async function updateRoom(roomId: string, payload: { name: string; description?: string }) {
+  const { data } = await api.patch<Room>(`/rooms/${roomId}`, {
+    name: payload.name,
+    description: payload.description ?? "",
+  });
+  return data;
+}
+
+/** Owner-only hard delete. Cascade-removes members, files, chat. */
+export async function deleteRoom(roomId: string) {
+  await api.delete(`/rooms/${roomId}`);
+}
+
 export type RunLanguage = "PYTHON" | "JAVA";
 
 export interface RunRequest {

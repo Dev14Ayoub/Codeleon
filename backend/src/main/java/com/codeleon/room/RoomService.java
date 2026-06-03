@@ -177,6 +177,39 @@ public class RoomService {
         return toResponse(room, findRole(room, user), roomPinRepository.existsByUserAndRoom(user, room));
     }
 
+    /**
+     * Owner-only rename / description update. Visibility, owner, and
+     * invite code stay untouched — they have dedicated endpoints.
+     */
+    @Transactional
+    public RoomResponse updateRoom(UUID roomId, User user, String name, String description) {
+        Room room = mustOwnRoom(roomId, user);
+        if (name != null && !name.isBlank()) {
+            room.setName(name.trim());
+        }
+        // Treat an empty string as "clear the description" (the DTO
+        // validation already caps length, so an empty string is intentional).
+        if (description != null) {
+            String trimmed = description.trim();
+            room.setDescription(trimmed.isEmpty() ? null : trimmed);
+        }
+        roomRepository.save(room);
+        return toResponse(room, findRole(room, user), roomPinRepository.existsByUserAndRoom(user, room));
+    }
+
+    /**
+     * Owner-only hard delete. Cascade-removes members, files, events,
+     * AI chat history, peer chat messages, refresh tokens tied to the
+     * room (per the JPA cascade + Flyway ON DELETE CASCADE on every
+     * child table). No soft-delete — the user already has "archive"
+     * for that.
+     */
+    @Transactional
+    public void deleteRoom(UUID roomId, User user) {
+        Room room = mustOwnRoom(roomId, user);
+        roomRepository.delete(room);
+    }
+
     private Room mustReadRoom(UUID roomId, User user) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new NotFoundException("Room not found"));
