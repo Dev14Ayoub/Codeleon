@@ -567,6 +567,14 @@ export interface RoomPeerChatMessage {
   fileName: string | null;
   fileType: string | null;
   fileSize: number | null;
+  /** Cached duration of a voice message in milliseconds, null otherwise. */
+  audioDurationMs: number | null;
+  /** Wall-clock time after which the row is purged. Null for messages
+   *  that never expire (any non-audio). The UI renders a countdown
+   *  badge until then, and silently removes the row on its own once
+   *  the timer hits zero so a missed cleanup tick doesn't leave a
+   *  ghost. */
+  expiresAt: string | null;
   createdAt: string;
 }
 
@@ -586,10 +594,18 @@ export async function sendRoomPeerChatMessage(roomId: string, content: string) {
 
 /** Multipart send with attachment. The caption can be empty when the
  *  user only sent the file. */
-export async function sendRoomPeerChatFile(roomId: string, file: File, caption: string) {
+export async function sendRoomPeerChatFile(
+  roomId: string,
+  file: File,
+  caption: string,
+  audioDurationMs?: number,
+) {
   const form = new FormData();
   form.append("file", file);
   if (caption) form.append("caption", caption);
+  if (typeof audioDurationMs === "number" && audioDurationMs > 0) {
+    form.append("audioDurationMs", String(Math.round(audioDurationMs)));
+  }
   const { data } = await api.post<RoomPeerChatMessage>(
     `/rooms/${roomId}/peer-chat/messages/file`,
     form,

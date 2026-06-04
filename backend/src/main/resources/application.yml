@@ -32,6 +32,13 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+app:
+  voice:
+    # How long a voice message lives before the scheduled job purges it
+    # from the database. Default 24h. Override via APP_VOICE_TTL_HOURS,
+    # e.g. set to 0.0167 (~1 min) for a live demo of the auto-purge.
+    ttl-hours: ${APP_VOICE_TTL_HOURS:24}
+
 codeleon:
   security:
     jwt-secret: ${JWT_SECRET:replace_me_with_a_long_random_string_min_64_chars_for_HS256_security}

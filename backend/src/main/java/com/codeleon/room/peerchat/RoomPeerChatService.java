@@ -7,12 +7,14 @@ import com.codeleon.room.RoomFileService;
 import com.codeleon.room.RoomRepository;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,10 +37,17 @@ public class RoomPeerChatService {
     /** Allowed MIME types. Conservative on purpose — images, PDFs,
      *  and plain-text-ish formats. JS / executables not allowed even
      *  though the runner sandbox would catch them, because there's no
-     *  reason for a user to share an .exe via the chat. */
+     *  reason for a user to share an .exe via the chat.
+     *
+     *  <p>{@code audio/} is whitelisted to support voice messages,
+     *  but those are short-lived: see {@link #postWithFile} where any
+     *  audio attachment gets an {@code expiresAt} set so the scheduled
+     *  cleanup job removes it after the configured TTL (default 24h).
+     */
     private static final Set<String> ALLOWED_MIME_PREFIXES = Set.of(
             "image/",
             "text/",
+            "audio/",
             "application/pdf",
             "application/json",
             "application/xml",
@@ -48,6 +57,12 @@ public class RoomPeerChatService {
     private final RoomPeerChatMessageRepository repository;
     private final RoomRepository roomRepository;
     private final RoomFileService roomFileService;
+
+    /** Voice message TTL in hours. Overridable via {@code app.voice.ttl-hours}
+     *  in application.yml — set to 0.0167 (~1 minute) during a demo to
+     *  show the auto-purge live, back to 24 in production. */
+    @Value("${app.voice.ttl-hours:24}")
+    private double voiceTtlHours;
 
     /**
      * Persist a plain-text message. The room membership check is
@@ -80,7 +95,7 @@ public class RoomPeerChatService {
      */
     @Transactional
     public RoomPeerChatMessage postWithFile(UUID roomId, User author, String caption,
-                                            MultipartFile file) {
+                                            MultipartFile file, Integer audioDurationMs) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is required for attachment messages");
         }
@@ -103,6 +118,22 @@ public class RoomPeerChatService {
             throw new BadRequestException("Caption is too long (max 4000 chars)");
         }
         Room room = ensureMember(roomId, author);
+
+        // Voice message: any audio/* attachment is ephemeral. We cache
+        // the client-measured duration (rejecting nonsense values) and
+        // set expiresAt so the scheduled purge job removes the row
+        // after the configured TTL.
+        boolean isVoice = mime.startsWith("audio/");
+        Integer durationMs = null;
+        Instant expiresAt = null;
+        if (isVoice) {
+            if (audioDurationMs != null && audioDurationMs > 0 && audioDurationMs < 60 * 60 * 1000) {
+                durationMs = audioDurationMs;
+            }
+            long ttlMillis = Math.max(1, (long) (voiceTtlHours * 60 * 60 * 1000));
+            expiresAt = Instant.now().plus(Duration.ofMillis(ttlMillis));
+        }
+
         return repository.save(RoomPeerChatMessage.builder()
                 .id(UUID.randomUUID())
                 .room(room)
@@ -113,6 +144,8 @@ public class RoomPeerChatService {
                 .fileType(mime)
                 .fileSize((int) file.getSize())
                 .fileBytes(bytes)
+                .audioDurationMs(durationMs)
+                .expiresAt(expiresAt)
                 .createdAt(Instant.now())
                 .build());
     }

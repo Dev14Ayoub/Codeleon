@@ -12,6 +12,8 @@ import {
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
+import { VoicePlayer } from "@/components/chat/VoicePlayer";
+import { VoiceRecorder } from "@/components/chat/VoiceRecorder";
 
 /**
  * Y.Array key inside the room's shared Y.Doc. Used purely as a
@@ -37,6 +39,8 @@ interface BroadcastMessage {
   fileName: string | null;
   fileType: string | null;
   fileSize: number | null;
+  audioDurationMs: number | null;
+  expiresAt: string | null;
   createdAt: string;
 }
 
@@ -69,6 +73,8 @@ function fromApi(msg: ApiPeerChatMessage): BroadcastMessage {
     fileName: msg.fileName,
     fileType: msg.fileType,
     fileSize: msg.fileSize,
+    audioDurationMs: msg.audioDurationMs ?? null,
+    expiresAt: msg.expiresAt ?? null,
     createdAt: msg.createdAt,
   };
 }
@@ -160,6 +166,22 @@ export function RoomChat({ ydoc, roomId, currentUserId, currentUserName, canSend
     }
   }, [messages.length]);
 
+  // Drop expired voice messages from the live state. We rely on the
+  // server's scheduled job for the authoritative purge, but a local
+  // tick prevents users from seeing a row whose audio bytes are about
+  // to 404 server-side. Runs every minute — cheap on a list capped
+  // at MAX_BROADCAST_MESSAGES.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setMessages((current) => {
+        const kept = current.filter((m) => !m.expiresAt || new Date(m.expiresAt).getTime() > now);
+        return kept.length === current.length ? current : kept;
+      });
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   function pushToYArray(msg: BroadcastMessage) {
     ydoc.transact(() => {
       if (yArray.length >= MAX_BROADCAST_MESSAGES) {
@@ -194,6 +216,25 @@ export function RoomChat({ ydoc, roomId, currentUserId, currentUserName, canSend
     } finally {
       setSending(false);
     }
+  }
+
+  /**
+   * Persist a recorded voice message: ship the blob as a regular
+   * attachment but carry the client-measured duration so the player
+   * doesn't have to wait on loadedmetadata to render the time. The
+   * backend stamps expiresAt server-side from APP_VOICE_TTL_HOURS.
+   */
+  async function onSendVoice(blob: Blob, durationMs: number) {
+    if (!currentUserId || !currentUserName) return;
+    const extension = blob.type.includes("mp4")
+      ? "m4a"
+      : blob.type.includes("ogg")
+        ? "ogg"
+        : "webm";
+    const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" });
+    setError(null);
+    const saved = await sendRoomPeerChatFile(roomId, file, "", durationMs);
+    pushToYArray(fromApi(saved));
   }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -288,6 +329,11 @@ export function RoomChat({ ydoc, roomId, currentUserId, currentUserName, canSend
             >
               <Paperclip className="h-4 w-4" />
             </button>
+            {/* Voice recorder lives inline with the input. In idle state
+                it's a single mic button and the text input stays usable;
+                during recording / preview it expands and takes over the
+                row so the user focuses on the audio capture. */}
+            <VoiceRecorder onSend={onSendVoice} disabled={sending || !currentUserId} />
             <input
               type="text"
               value={draft}
@@ -330,6 +376,7 @@ function MessageBubble({
     minute: "2-digit",
   });
   const isImage = message.fileType?.startsWith("image/") ?? false;
+  const isAudio = message.fileType?.startsWith("audio/") ?? false;
   const hasFile = !!message.fileName;
   return (
     <div className={cn("flex flex-col", isMine ? "items-end" : "items-start")}>
@@ -349,9 +396,20 @@ function MessageBubble({
         className={cn(
           "max-w-[85%] overflow-hidden rounded-md text-[13px] leading-5",
           isMine ? "bg-signature/20 text-zinc-100" : "bg-zinc-900 text-zinc-200",
+          // Audio bubbles are wider than text bubbles to fit the
+          // progress bar + duration + countdown chip comfortably.
+          isAudio && "min-w-[16rem]",
         )}
       >
-        {hasFile && (
+        {hasFile && isAudio && (
+          <VoicePlayer
+            fileUrl={peerChatFileUrl(roomId, message.id)}
+            durationMs={message.audioDurationMs}
+            expiresAt={message.expiresAt}
+            isMine={isMine}
+          />
+        )}
+        {hasFile && !isAudio && (
           <AttachmentPreview
             roomId={roomId}
             messageId={message.id}

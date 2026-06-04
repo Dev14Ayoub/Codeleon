@@ -57,9 +57,10 @@ public class RoomPeerChatController {
             @PathVariable UUID roomId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "caption", required = false) String caption,
+            @RequestParam(value = "audioDurationMs", required = false) Integer audioDurationMs,
             @AuthenticationPrincipal User user
     ) {
-        RoomPeerChatMessage saved = service.postWithFile(roomId, user, caption, file);
+        RoomPeerChatMessage saved = service.postWithFile(roomId, user, caption, file, audioDurationMs);
         return toResponse(saved);
     }
 
@@ -92,6 +93,8 @@ public class RoomPeerChatController {
                 m.getFileName(),
                 m.getFileType(),
                 m.getFileSize(),
+                m.getAudioDurationMs(),
+                m.getExpiresAt(),
                 m.getCreatedAt()
         );
     }
@@ -112,6 +115,11 @@ public class RoomPeerChatController {
             String fileName,
             String fileType,
             Integer fileSize,
+            /** Cached client-side duration for audio messages, null otherwise. */
+            Integer audioDurationMs,
+            /** Wall-clock time after which the row is purged. Null for
+             *  non-ephemeral messages. The frontend renders a countdown. */
+            Instant expiresAt,
             Instant createdAt
     ) {}
 }

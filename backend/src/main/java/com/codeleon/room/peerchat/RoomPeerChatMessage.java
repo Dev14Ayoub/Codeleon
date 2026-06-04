@@ -67,6 +67,24 @@ public class RoomPeerChatMessage {
     @Column(name = "file_bytes")
     private byte[] fileBytes;
 
+    /**
+     * Cached audio duration in milliseconds — only set when this message
+     * is a voice message (i.e. {@link #fileType} starts with "audio/").
+     * The client measures it at recording time; we never decode the
+     * audio server-side just to compute this.
+     */
+    @Column(name = "audio_duration_ms")
+    private Integer audioDurationMs;
+
+    /**
+     * When this message must be purged from the database. NULL means
+     * "never" (regular text / file messages). Voice messages get this
+     * column set to {@code now() + voice TTL} (24h by default) so the
+     * scheduled cleanup job can delete them on a partial index lookup.
+     */
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 }
