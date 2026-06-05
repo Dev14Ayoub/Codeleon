@@ -138,6 +138,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
       # Required so Caddy /api/* routing maps to the right Spring path.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
       SERVER_SERVLET_CONTEXT_PATH: /api/v1
     depends_on:
       postgres:

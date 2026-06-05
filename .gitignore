@@ -52,3 +52,17 @@ infra/data/
 # Misc
 *.bak
 *.tmp
+
+# Secrets and backups — NEVER commit
+.env
+.env.local
+.env.bak
+.env.bak.*
+.env.save
+.env.save.*
+.env.production
+
+# TLS certs and keys — NEVER commit
+*.crt
+*.key
+*.pem

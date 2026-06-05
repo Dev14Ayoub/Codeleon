@@ -9,17 +9,33 @@
 #   /api/*  → backend (Spring Boot — includes WebSocket /api/v1/collab/...)
 #   *       → frontend (Vite SPA via nginx)
 
+{
+    servers {
+        trusted_proxies static 127.0.0.1/32 ::1/128
+    }
+}
+
 :80 {
+    
+     
     # Backend — API + WebSocket (Caddy handles WS upgrade transparently
     # via reverse_proxy).
     handle /api/* {
-        reverse_proxy backend:8080
+	
+        reverse_proxy backend:8080 {
+		
+	    header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+	}
     }
 
     # Everything else hits the SPA. nginx inside the frontend container
     # handles the client-side routing fallback.
     handle {
-        reverse_proxy frontend:80
+        reverse_proxy frontend:80 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
     }
 
     # Compression for the SPA bundle.
