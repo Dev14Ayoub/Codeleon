@@ -17,10 +17,14 @@
 -- expires_at value.
 -- =============================================================================
 
-ALTER TABLE room_peer_chat_messages
-    ADD COLUMN audio_duration_ms INTEGER,
-    ADD COLUMN expires_at        TIMESTAMP;
+-- Separate ALTER statements (not a single comma-joined ADD COLUMN) so the
+-- migration is portable: PostgreSQL accepts both forms, but H2 — used by the
+-- test suite — only accepts one ADD COLUMN per ALTER TABLE.
+ALTER TABLE room_peer_chat_messages ADD COLUMN audio_duration_ms INTEGER;
+ALTER TABLE room_peer_chat_messages ADD COLUMN expires_at TIMESTAMP;
 
+-- Plain (non-partial) index on expires_at. A partial index with a WHERE
+-- clause is PostgreSQL-only and breaks H2; the full index serves the purge
+-- query just as well — text-only rows simply index a NULL value.
 CREATE INDEX idx_room_peer_chat_messages_expires_at
-    ON room_peer_chat_messages(expires_at)
-    WHERE expires_at IS NOT NULL;
+    ON room_peer_chat_messages(expires_at);
