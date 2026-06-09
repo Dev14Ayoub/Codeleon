@@ -66,11 +66,17 @@ export function useRoomTerminal(options: {
     }
   };
 
-  /** Injects a command into the shell and echoes it so the user sees it run. */
+  /**
+   * Pushes the current project files into the container, then injects a command
+   * and echoes it. The sync makes "Run active file" always reflect the latest
+   * editor state (the workspace is a bind mount, so the container sees it at
+   * once) — no Restart needed after editing.
+   */
   const runCommand = useCallback((command: string) => {
     const term = termRef.current;
     if (!term) return;
     lineRef.current = "";
+    send({ type: "sync", files: getFilesRef.current() });
     term.write(`${command}\r\n`);
     send({ type: "stdin", data: `${command}\n` });
   }, []);

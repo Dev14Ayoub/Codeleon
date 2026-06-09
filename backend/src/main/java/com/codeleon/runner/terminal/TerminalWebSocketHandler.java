@@ -71,6 +71,7 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
         switch (node.path("type").asText("")) {
             case "init" -> handleInit(id, ws, node);
             case "stdin" -> handleStdin(id, node);
+            case "sync" -> sessionService.resync(id, parseFiles(node));
             case "signal" -> sessionService.sendSignal(id, node.path("data").asText("SIGINT"));
             default -> {
                 // ignore unknown frame types
@@ -78,12 +79,8 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void handleInit(String id, WebSocketSession ws, JsonNode node) {
-        AtomicBoolean flag = started.get(id);
-        if (flag == null || !flag.compareAndSet(false, true)) {
-            return; // a terminal was already started for this connection
-        }
-
+    /** Extracts the {path,text} file list from an init/sync frame. */
+    private List<WorkspaceMaterializer.FileEntry> parseFiles(JsonNode node) {
         List<WorkspaceMaterializer.FileEntry> files = new ArrayList<>();
         JsonNode filesNode = node.path("files");
         if (filesNode.isArray()) {
@@ -94,6 +91,16 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
                 }
             }
         }
+        return files;
+    }
+
+    private void handleInit(String id, WebSocketSession ws, JsonNode node) {
+        AtomicBoolean flag = started.get(id);
+        if (flag == null || !flag.compareAndSet(false, true)) {
+            return; // a terminal was already started for this connection
+        }
+
+        List<WorkspaceMaterializer.FileEntry> files = parseFiles(node);
 
         TerminalSession terminal;
         try {

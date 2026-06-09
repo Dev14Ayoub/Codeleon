@@ -144,6 +144,24 @@ public class TerminalSessionService {
         }
     }
 
+    /**
+     * Rewrites the room's files into the live workspace so a subsequent command
+     * sees the latest editor state. The workspace is a bind mount, so the
+     * container picks up the changes immediately — no restart needed.
+     */
+    public void resync(String id, List<WorkspaceMaterializer.FileEntry> files) {
+        TerminalSession session = sessions.get(id);
+        if (session == null) {
+            return;
+        }
+        try {
+            materializer.materialize(session.workspace(), files);
+            session.touch();
+        } catch (IOException | RuntimeException ex) {
+            log.warn("Failed to resync terminal workspace {}", id, ex);
+        }
+    }
+
     /** Best-effort delivery of a signal (currently only SIGINT) to the shell. */
     public void sendSignal(String id, String signal) {
         TerminalSession session = sessions.get(id);
