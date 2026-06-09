@@ -120,13 +120,28 @@ public class TerminalSessionService {
         cmd.add("--pids-limit=" + props.pidsLimit());
         cmd.add("--cap-drop=ALL");
         cmd.add("--security-opt=no-new-privileges");
+        // Run as the user that owns the workspace files (the backend's own
+        // uid) so the sandbox can read/write them even though CAP_DAC_OVERRIDE
+        // is dropped — otherwise root inside the container cannot traverse a
+        // 0700 dir owned by another uid (EACCES). This mirrors Replit's model,
+        // where everything runs as the container's "runner" user that owns the
+        // filesystem. On non-POSIX dev hosts (Windows) the owner uid is not
+        // available, so we fall back to the image's default user.
+        String userFlag = workspaceUserFlag(workspace);
+        if (userFlag != null) {
+            cmd.add("--user");
+            cmd.add(userFlag);
+        }
         cmd.add("-v");
         cmd.add(workspace.toAbsolutePath() + ":/workspace");
         cmd.add("--workdir=/workspace");
         // Unbuffered Python so input() prompts and print() output appear
-        // immediately when stdout is a pipe rather than a TTY.
+        // immediately when stdout is a pipe rather than a TTY. HOME points at
+        // the (writable) workspace because the run-as uid has no /etc/passwd
+        // entry in the image, so tools that probe ~ still have a home.
         cmd.add("--env=PYTHONUNBUFFERED=1");
         cmd.add("--env=TERM=xterm-256color");
+        cmd.add("--env=HOME=/workspace");
         cmd.add("--env=PS1=codeleon:\\w$ ");
         cmd.add(props.image());
         // --norc keeps the prompt clean; -i forces interactive mode (prompt +
@@ -135,6 +150,24 @@ public class TerminalSessionService {
         cmd.add("--norc");
         cmd.add("-i");
         return cmd;
+    }
+
+    /**
+     * Returns "uid:gid" of the workspace owner for {@code docker run --user},
+     * or null when the POSIX owner can't be read (e.g. Windows dev hosts),
+     * in which case the container uses the image's default user.
+     */
+    private String workspaceUserFlag(Path workspace) {
+        try {
+            Object uid = Files.getAttribute(workspace, "unix:uid");
+            Object gid = Files.getAttribute(workspace, "unix:gid");
+            if (uid instanceof Integer u && gid instanceof Integer g) {
+                return u + ":" + g;
+            }
+        } catch (IOException | UnsupportedOperationException ex) {
+            log.debug("Workspace owner uid unavailable; terminal runs as image default user", ex);
+        }
+        return null;
     }
 
     public void touch(String id) {
