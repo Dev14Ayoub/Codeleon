@@ -99,6 +99,13 @@ services:
       - /opt/codeleon/runs:/opt/codeleon/runs
     environment:
       RUNNER_WORKSPACE_BASE_DIR: /opt/codeleon/runs
+
+      # Interactive terminal (xterm.js + bash sandbox). Capped tighter than
+      # the defaults because this 8 GB VM also keeps Ollama resident: at most
+      # two concurrent shells, 384 MB each, killed after 5 min idle.
+      RUNNER_TERMINAL_ENABLED: "true"
+      RUNNER_TERMINAL_MEMORY_MB: "384"
+      RUNNER_TERMINAL_MAX_CONCURRENT: "2"
       # Spring datasource → internal Postgres via Docker DNS.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/codeleon
       SPRING_DATASOURCE_USERNAME: codeleon

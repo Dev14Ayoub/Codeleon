@@ -18,6 +18,7 @@ import {
   PanelRight,
   Play,
   ShieldCheck,
+  SquareTerminal,
   Terminal,
   Users,
   Wifi,
@@ -37,6 +38,7 @@ import {
 } from "@/components/editor/CodeMirrorEditor";
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
+import { TerminalPanel } from "@/components/editor/TerminalPanel";
 import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
 import { MenuBar } from "@/components/layout/MenuBar";
 import {
@@ -144,6 +146,10 @@ export function RoomPage() {
   // explicitly via the strip toggle, AND it auto-opens as soon as a run
   // starts so they see the result. Height persists in localStorage.
   const [outputPanelOpen, setOutputPanelOpen] = useState(false);
+  // Which tab the bottom panel shows: the run "Output" or the interactive
+  // "Terminal" (xterm.js + sandboxed bash). The terminal only connects while
+  // its tab is the visible one (see `active` prop below).
+  const [bottomTab, setBottomTab] = useState<"output" | "terminal">("output");
   const [outputPanelHeight, setOutputPanelHeight] = useState<number>(() => {
     try {
       const stored = window.localStorage.getItem("codeleon.outputPanelHeight");
@@ -358,7 +364,10 @@ export function RoomPage() {
   // user can still close the panel mid-run if they want; we won't
   // re-open it unless a new run starts.
   useEffect(() => {
-    if (isRunPending) setOutputPanelOpen(true);
+    if (isRunPending) {
+      setOutputPanelOpen(true);
+      setBottomTab("output");
+    }
   }, [isRunPending]);
 
   // Drag-resize the output panel vertically. Mirrors beginSidebarResize
@@ -982,25 +991,52 @@ export function RoomPage() {
               />
               <div
                 style={{ height: outputPanelHeight }}
-                className="shrink-0 overflow-hidden"
+                className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-800 bg-zinc-950"
               >
-                <OutputPanel
-                  isPending={isRunPending}
-                  result={runResult}
-                  projectResult={projectRunResult}
-                  error={runError}
-                  activePath={activePath}
-                  languageLabel={activeRunLanguageLabel}
-                  runContext={runContext}
-                  stdin={runStdin}
-                  onStdinChange={setRunStdin}
-                  projectEnvironment={projectEnvironment}
-                  projectDetectionMessage={projectDetectionMessage}
-                  projectCommand={projectRunCommand}
-                  projectCommandForDisplay={projectCommandForDisplay}
-                  onProjectCommandChange={setProjectRunCommand}
-                  staticPreviewHtml={staticPreviewHtml}
-                />
+                {/* Tab bar — switch between the batch run Output and the
+                    interactive Terminal (xterm.js + sandboxed bash). */}
+                <div className="flex h-8 shrink-0 items-center gap-1 border-b border-zinc-800 bg-surface px-2">
+                  <BottomTabButton
+                    active={bottomTab === "output"}
+                    onClick={() => setBottomTab("output")}
+                    icon={<Terminal className="h-3 w-3" />}
+                    label="Output"
+                  />
+                  <BottomTabButton
+                    active={bottomTab === "terminal"}
+                    onClick={() => setBottomTab("terminal")}
+                    icon={<SquareTerminal className="h-3 w-3" />}
+                    label="Terminal"
+                  />
+                </div>
+                <div className="min-h-0 flex-1">
+                  {bottomTab === "output" ? (
+                    <OutputPanel
+                      isPending={isRunPending}
+                      result={runResult}
+                      projectResult={projectRunResult}
+                      error={runError}
+                      activePath={activePath}
+                      languageLabel={activeRunLanguageLabel}
+                      runContext={runContext}
+                      stdin={runStdin}
+                      onStdinChange={setRunStdin}
+                      projectEnvironment={projectEnvironment}
+                      projectDetectionMessage={projectDetectionMessage}
+                      projectCommand={projectRunCommand}
+                      projectCommandForDisplay={projectCommandForDisplay}
+                      onProjectCommandChange={setProjectRunCommand}
+                      staticPreviewHtml={staticPreviewHtml}
+                    />
+                  ) : (
+                    <TerminalPanel
+                      roomId={roomId}
+                      active={outputPanelOpen && bottomTab === "terminal"}
+                      getFiles={getAllFiles}
+                      activePath={activePath}
+                    />
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -1405,8 +1441,8 @@ function OutputPanel({
     : "Running...";
 
   return (
-    <div className="h-64 border-t border-zinc-800 bg-zinc-950">
-      <div className="flex h-9 items-center justify-between border-b border-zinc-800 bg-surface px-4">
+    <div className="flex h-full flex-col bg-zinc-950">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 bg-surface px-4">
         <div className="flex items-center gap-2 font-mono text-xs text-zinc-400">
           <Terminal className="h-3.5 w-3.5 text-zinc-500" />
           {runContext?.kind === "project" ? "Run project" : "Run file"}
@@ -1425,7 +1461,7 @@ function OutputPanel({
                 : "idle"}
         </div>
       </div>
-      <div className="grid h-[calc(100%-2.25rem)] min-h-0 grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.5fr)] divide-x divide-zinc-800">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.5fr)] divide-x divide-zinc-800">
         <div className="flex min-h-0 flex-col">
           <div className="border-b border-zinc-800">
             <label className="flex h-8 items-center px-4 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
@@ -1631,6 +1667,34 @@ function OutputStrip({
       {open && (
         <span className="text-zinc-500">drag border to resize</span>
       )}
+    </button>
+  );
+}
+
+function BottomTabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em] transition ${
+        active
+          ? "bg-surfaceRaised text-zinc-200"
+          : "text-zinc-500 hover:text-zinc-300"
+      }`}
+    >
+      {icon}
+      {label}
     </button>
   );
 }

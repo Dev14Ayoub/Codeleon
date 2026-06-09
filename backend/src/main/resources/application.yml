@@ -78,6 +78,17 @@ codeleon:
     cpus: ${RUNNER_CPUS:0.5}
     pids-limit: ${RUNNER_PIDS_LIMIT:64}
     max-output-bytes: ${RUNNER_MAX_OUTPUT_BYTES:65536}
+    terminal:
+      enabled: ${RUNNER_TERMINAL_ENABLED:true}
+      # python:3.12-slim ships bash + python3 — a sane default sandbox shell.
+      image: ${RUNNER_TERMINAL_IMAGE:python:3.12-slim}
+      memory-mb: ${RUNNER_TERMINAL_MEMORY_MB:512}
+      cpus: ${RUNNER_TERMINAL_CPUS:0.5}
+      pids-limit: ${RUNNER_TERMINAL_PIDS_LIMIT:128}
+      idle-timeout-ms: ${RUNNER_TERMINAL_IDLE_TIMEOUT_MS:300000}
+      max-session-ms: ${RUNNER_TERMINAL_MAX_SESSION_MS:900000}
+      max-concurrent-sessions: ${RUNNER_TERMINAL_MAX_CONCURRENT:3}
+      max-output-bytes: ${RUNNER_TERMINAL_MAX_OUTPUT_BYTES:2097152}
     nix:
       enabled: ${RUNNER_NIX_ENABLED:true}
       image: ${RUNNER_NIX_IMAGE:nixos/nix:2.24.11}
