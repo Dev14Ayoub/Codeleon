@@ -29,6 +29,7 @@ import {
   fetchPublicRooms,
   fetchTemplates,
   importGithub,
+  uploadRoomAsset,
   joinRoom,
   saveRoomSnapshot,
   type GithubImportResponse,
@@ -175,6 +176,14 @@ export function DashboardPage() {
 
       if (createSource === "local") {
         await materializeLocalImport(room.id, localImportReport!.prepared);
+        // Upload the binary assets (images, fonts…) collected during import.
+        for (const asset of localImportReport!.binary) {
+          try {
+            await uploadRoomAsset(room.id, asset.path, asset.file);
+          } catch (ex) {
+            console.warn(`Asset import failed for ${asset.path}:`, ex);
+          }
+        }
       }
 
       if (createSource === "github") {

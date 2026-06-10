@@ -45,6 +45,7 @@ import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
 import { MenuBar } from "@/components/layout/MenuBar";
 import {
   createRoomFile,
+  uploadRoomAsset,
   fetchRoom,
   listRoomFiles,
   runCode,
@@ -525,7 +526,7 @@ export function RoomPage() {
 
       try {
         const report = await prepareLocalImport(fileList);
-        if (report.prepared.length === 0) {
+        if (report.prepared.length === 0 && report.binary.length === 0) {
           setImportStatus(
             `No file imported (${report.skipped.length} skipped). Check size, type, and folder filters.`,
           );
@@ -535,6 +536,7 @@ export function RoomPage() {
         let success = 0;
         let conflicts = 0;
         let failed = 0;
+        let assets = 0;
 
         for (let i = 0; i < report.prepared.length; i += 1) {
           const { path, content } = report.prepared[i];
@@ -569,8 +571,23 @@ export function RoomPage() {
           success += 1;
         }
 
+        // Upload binary assets (images, fonts…) to the room's asset store —
+        // these are materialized into the workspace at run/preview time.
+        for (let i = 0; i < report.binary.length; i += 1) {
+          const { path, file } = report.binary[i];
+          setImportStatus(`Importing asset ${i + 1}/${report.binary.length}: ${path}`);
+          try {
+            await uploadRoomAsset(roomId, path, file);
+            assets += 1;
+          } catch (ex) {
+            failed += 1;
+            console.warn(`Asset import failed for ${path}:`, ex);
+          }
+        }
+
         const parts = [
           `${success} imported`,
+          assets > 0 ? `${assets} assets` : null,
           conflicts > 0 ? `${conflicts} already existed` : null,
           report.skipped.length > 0 ? `${report.skipped.length} skipped` : null,
           report.truncated ? "list truncated at 200 files" : null,
@@ -578,12 +595,14 @@ export function RoomPage() {
         ].filter(Boolean);
         setImportStatus(parts.join(" · "));
 
-        if (success > 0) {
+        if (success > 0 || assets > 0) {
           // Re-fetch the file list so the new files actually show up,
           // then open the first one as a tab.
           await fileExplorerRef.current?.refresh();
           await roomFilesQuery.refetch();
-          openFile(report.prepared[0].path);
+          if (report.prepared.length > 0) {
+            openFile(report.prepared[0].path);
+          }
         }
       } finally {
         setImporting(false);

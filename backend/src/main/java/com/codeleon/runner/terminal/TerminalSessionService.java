@@ -1,6 +1,7 @@
 package com.codeleon.runner.terminal;
 
 import com.codeleon.common.exception.BadRequestException;
+import com.codeleon.room.asset.RoomAssetService;
 import com.codeleon.runner.CodeRunnerProperties;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -40,6 +41,7 @@ public class TerminalSessionService {
     private final TerminalProperties props;
     private final WorkspaceMaterializer materializer;
     private final CodeRunnerProperties runnerProps;
+    private final RoomAssetService assetService;
 
     private final ConcurrentHashMap<String, TerminalSession> sessions = new ConcurrentHashMap<>();
     private volatile Semaphore slots;
@@ -64,7 +66,7 @@ public class TerminalSessionService {
      * the WebSocket handler pumps. Throws {@link BadRequestException} when the
      * feature is disabled or the concurrency cap is reached.
      */
-    public TerminalSession create(String id, List<WorkspaceMaterializer.FileEntry> files) {
+    public TerminalSession create(String id, UUID roomId, List<WorkspaceMaterializer.FileEntry> files) {
         if (!props.enabled()) {
             throw new BadRequestException("Interactive terminal is disabled on this server");
         }
@@ -81,6 +83,9 @@ public class TerminalSessionService {
             Files.createDirectories(baseDir);
             workspace = Files.createTempDirectory(baseDir, "codeleon-term-");
             materializer.materialize(workspace, files);
+            // Room's binary assets (images, fonts…) onto disk too, so a project
+            // run from the shell finds them.
+            assetService.materializeInto(roomId, workspace);
 
             String containerName = "codeleon-term-" + UUID.randomUUID();
             ProcessBuilder pb = new ProcessBuilder(buildCommand(containerName, workspace));

@@ -9,7 +9,8 @@
  */
 
 const MAX_FILES = 200;
-const MAX_FILE_BYTES = 100 * 1024; // 100 KB
+const MAX_FILE_BYTES = 100 * 1024; // 100 KB (text files)
+const MAX_ASSET_BYTES = 5 * 1024 * 1024; // 5 MB (binary assets: images, fonts…)
 const PATH_PATTERN = /^[A-Za-z0-9._-][A-Za-z0-9._/ -]*$/;
 
 const TEXT_EXTENSIONS = new Set([
@@ -84,8 +85,15 @@ export interface PreparedFile {
   content: string;
 }
 
+export interface BinaryFile {
+  path: string;
+  file: File;
+}
+
 export interface ImportFilterReport {
   prepared: PreparedFile[];
+  /** Binary assets (images, fonts…) to upload to the room's asset store. */
+  binary: BinaryFile[];
   skipped: { path: string; reason: string }[];
   truncated: boolean;
 }
@@ -96,17 +104,13 @@ export interface ImportFilterReport {
  */
 export async function prepareLocalImport(fileList: FileList): Promise<ImportFilterReport> {
   const prepared: PreparedFile[] = [];
+  const binary: BinaryFile[] = [];
   const skipped: { path: string; reason: string }[] = [];
   let truncated = false;
 
   const all = Array.from(fileList);
 
   for (const file of all) {
-    if (prepared.length >= MAX_FILES) {
-      truncated = true;
-      break;
-    }
-
     const rawPath = (file as File & { webkitRelativePath: string }).webkitRelativePath || file.name;
     const cleaned = stripTopFolder(rawPath);
 
@@ -127,28 +131,40 @@ export async function prepareLocalImport(fileList: FileList): Promise<ImportFilt
       continue;
     }
 
-    if (file.size > MAX_FILE_BYTES) {
-      skipped.push({ path: cleaned, reason: `larger than ${MAX_FILE_BYTES / 1024} KB` });
-      continue;
-    }
-
-    if (!isLikelyTextFile(cleaned, file)) {
-      skipped.push({ path: cleaned, reason: "binary or non-text" });
-      continue;
-    }
-
-    try {
-      const content = await file.text();
-      prepared.push({ path: cleaned, content });
-    } catch (ex) {
-      skipped.push({
-        path: cleaned,
-        reason: ex instanceof Error ? ex.message : "read failed",
-      });
+    if (isLikelyTextFile(cleaned, file)) {
+      if (prepared.length >= MAX_FILES) {
+        truncated = true;
+        continue;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        skipped.push({ path: cleaned, reason: `larger than ${MAX_FILE_BYTES / 1024} KB` });
+        continue;
+      }
+      try {
+        const content = await file.text();
+        prepared.push({ path: cleaned, content });
+      } catch (ex) {
+        skipped.push({
+          path: cleaned,
+          reason: ex instanceof Error ? ex.message : "read failed",
+        });
+      }
+    } else {
+      // Binary asset (image, font, media…) — uploaded to the room's asset
+      // store and materialized onto disk at run time.
+      if (binary.length >= MAX_FILES) {
+        truncated = true;
+        continue;
+      }
+      if (file.size > MAX_ASSET_BYTES) {
+        skipped.push({ path: cleaned, reason: `larger than ${MAX_ASSET_BYTES / 1024 / 1024} MB` });
+        continue;
+      }
+      binary.push({ path: cleaned, file });
     }
   }
 
-  return { prepared, skipped, truncated };
+  return { prepared, binary, skipped, truncated };
 }
 
 function stripTopFolder(rawPath: string): string {

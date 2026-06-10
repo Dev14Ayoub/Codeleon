@@ -437,6 +437,45 @@ export function previewIframeUrl(roomId: string): string {
   return `${base.replace(/\/$/, "")}/preview/${roomId}/`;
 }
 
+// --- Binary assets (images, fonts, media) -----------------------------------
+
+export interface RoomAssetMeta {
+  id: string;
+  path: string;
+  contentType: string | null;
+  sizeBytes: number;
+  updatedAt: string;
+}
+
+export async function uploadRoomAsset(roomId: string, path: string, file: File) {
+  const form = new FormData();
+  form.append("path", path);
+  form.append("file", file);
+  const { data } = await api.post<RoomAssetMeta>(`/rooms/${roomId}/assets`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function listRoomAssets(roomId: string) {
+  const { data } = await api.get<RoomAssetMeta[]>(`/rooms/${roomId}/assets`);
+  return data;
+}
+
+/** Fetches an asset's bytes with the bearer token and returns a blob URL the
+ *  editor can show in an <img>. Caller must revoke the URL when done. */
+export async function fetchRoomAssetBlobUrl(roomId: string, path: string): Promise<string> {
+  const { data } = await api.get(`/rooms/${roomId}/assets/content`, {
+    params: { path },
+    responseType: "blob",
+  });
+  return URL.createObjectURL(data as Blob);
+}
+
+export async function deleteRoomAsset(roomId: string, path: string) {
+  await api.delete(`/rooms/${roomId}/assets`, { params: { path } });
+}
+
 export interface RoomFile {
   id: string;
   path: string;

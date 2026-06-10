@@ -1,6 +1,7 @@
 package com.codeleon.runner.preview;
 
 import com.codeleon.common.exception.BadRequestException;
+import com.codeleon.room.asset.RoomAssetService;
 import com.codeleon.runner.CodeRunnerProperties;
 import com.codeleon.runner.terminal.WorkspaceMaterializer;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class PreviewService {
     private final PreviewProperties props;
     private final WorkspaceMaterializer materializer;
     private final CodeRunnerProperties runnerProps;
+    private final RoomAssetService assetService;
 
     private final ConcurrentHashMap<UUID, PreviewSession> sessions = new ConcurrentHashMap<>();
     private volatile Semaphore slots;
@@ -89,6 +91,9 @@ public class PreviewService {
             Files.createDirectories(baseDir);
             workspace = Files.createTempDirectory(baseDir, "codeleon-preview-");
             materializer.materialize(workspace, files);
+            // Drop the room's binary assets (images, fonts…) onto disk too, so a
+            // static site or project finds them where its HTML/CSS expects.
+            assetService.materializeInto(roomId, workspace);
 
             String containerName = "codeleon-preview-" + roomId;
             ProcessBuilder pb = new ProcessBuilder(buildCommand(containerName, workspace, command));

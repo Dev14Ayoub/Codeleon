@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -48,6 +49,7 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, WebSocketSession> wsSessions = new ConcurrentHashMap<>();
     private final Map<String, TerminalSession> terminals = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> started = new ConcurrentHashMap<>();
+    private final Map<String, UUID> roomIds = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -56,6 +58,10 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
         WebSocketSession decorated = new ConcurrentWebSocketSessionDecorator(session, 10_000, 1024 * 1024);
         wsSessions.put(session.getId(), decorated);
         started.put(session.getId(), new AtomicBoolean(false));
+        Object roomId = session.getAttributes().get(TerminalHandshakeInterceptor.ATTR_ROOM_ID);
+        if (roomId instanceof UUID uuid) {
+            roomIds.put(session.getId(), uuid);
+        }
     }
 
     @Override
@@ -104,7 +110,7 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
 
         TerminalSession terminal;
         try {
-            terminal = sessionService.create(id, files);
+            terminal = sessionService.create(id, roomIds.get(id), files);
         } catch (BadRequestException ex) {
             sendType(ws, "error", ex.getMessage());
             close(ws);
@@ -173,6 +179,7 @@ public class TerminalWebSocketHandler extends TextWebSocketHandler {
         wsSessions.remove(id);
         terminals.remove(id);
         started.remove(id);
+        roomIds.remove(id);
         sessionService.terminate(id);
     }
 
