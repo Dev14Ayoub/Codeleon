@@ -152,8 +152,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # `internal` to reach Postgres/Redis/Qdrant/Ollama; `preview` to reach the
+    # ephemeral live-preview dev-server containers the backend spawns. Preview
+    # containers join ONLY `preview`, so untrusted user code cannot reach the
+    # data tier — this isolation is the key security control of the webview.
     networks:
       - internal
+      - preview
     restart: unless-stopped
 
   frontend:
@@ -191,6 +196,12 @@ services:
 
 networks:
   internal:
+    driver: bridge
+  # Isolated network for live-preview dev-server containers. NO data service is
+  # attached here; only the backend bridges into it to reverse-proxy previews.
+  # The compose project prefix makes the real network name `codeleon_preview`
+  # (override via RUNNER_PREVIEW_NETWORK if your project name differs).
+  preview:
     driver: bridge
 
 volumes:

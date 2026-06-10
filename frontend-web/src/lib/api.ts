@@ -406,6 +406,37 @@ export async function detectProjectRun(roomId: string, payload: ProjectRunReques
   return data;
 }
 
+export interface PreviewStatus {
+  running: boolean;
+  command: string | null;
+  url: string | null;
+}
+
+export async function startPreview(roomId: string, command: string, files: IndexFile[]) {
+  const { data } = await api.post<PreviewStatus>(`/rooms/${roomId}/preview`, { command, files });
+  return data;
+}
+
+export async function stopPreview(roomId: string) {
+  await api.delete(`/rooms/${roomId}/preview`);
+}
+
+export async function getPreviewStatus(roomId: string) {
+  const { data } = await api.get<PreviewStatus>(`/rooms/${roomId}/preview`);
+  return data;
+}
+
+/**
+ * Absolute URL the preview iframe points at. Works in dev (SPA on :5173,
+ * backend on :8080 — VITE_API_BASE_URL is absolute) and in prod (relative
+ * base resolved against the page origin, then routed by Caddy).
+ */
+export function previewIframeUrl(roomId: string): string {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api/v1") as string;
+  const base = /^https?:\/\//i.test(apiBase) ? apiBase : window.location.origin + apiBase;
+  return `${base.replace(/\/$/, "")}/preview/${roomId}/`;
+}
+
 export interface RoomFile {
   id: string;
   path: string;

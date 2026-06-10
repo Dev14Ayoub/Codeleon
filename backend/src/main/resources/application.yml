@@ -89,6 +89,21 @@ codeleon:
       max-session-ms: ${RUNNER_TERMINAL_MAX_SESSION_MS:900000}
       max-concurrent-sessions: ${RUNNER_TERMINAL_MAX_CONCURRENT:3}
       max-output-bytes: ${RUNNER_TERMINAL_MAX_OUTPUT_BYTES:2097152}
+    preview:
+      enabled: ${RUNNER_PREVIEW_ENABLED:true}
+      # node:20 ships bash + node + npm (Debian) — the common web preview case.
+      image: ${RUNNER_PREVIEW_IMAGE:node:20}
+      # Isolated network (see docker-compose.prod.yml). The compose project
+      # prefix makes the real name `codeleon_preview`.
+      network: ${RUNNER_PREVIEW_NETWORK:codeleon_preview}
+      port: ${RUNNER_PREVIEW_PORT:8000}
+      memory-mb: ${RUNNER_PREVIEW_MEMORY_MB:768}
+      cpus: ${RUNNER_PREVIEW_CPUS:1.0}
+      pids-limit: ${RUNNER_PREVIEW_PIDS_LIMIT:256}
+      idle-timeout-ms: ${RUNNER_PREVIEW_IDLE_TIMEOUT_MS:600000}
+      max-session-ms: ${RUNNER_PREVIEW_MAX_SESSION_MS:1800000}
+      max-concurrent-sessions: ${RUNNER_PREVIEW_MAX_CONCURRENT:1}
+      startup-timeout-ms: ${RUNNER_PREVIEW_STARTUP_TIMEOUT_MS:60000}
     nix:
       enabled: ${RUNNER_NIX_ENABLED:true}
       image: ${RUNNER_NIX_IMAGE:nixos/nix:2.24.11}

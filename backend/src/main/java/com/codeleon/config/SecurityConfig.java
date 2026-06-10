@@ -54,6 +54,10 @@ public class SecurityConfig {
                         .requestMatchers("/auth/register", "/auth/login", "/auth/refresh", "/auth/providers").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        // Live-preview reverse proxy. Permitted because an iframe's
+                        // requests carry no bearer token; access is guarded by the
+                        // Tailscale-only deployment. Start/stop stay JWT-protected.
+                        .requestMatchers("/preview/**").permitAll()
                         // OAuth2 client endpoints handled by Spring Security itself.
                         // /oauth2/authorization/{provider} starts the redirect dance,
                         // /login/oauth2/code/{provider} receives the provider's callback.

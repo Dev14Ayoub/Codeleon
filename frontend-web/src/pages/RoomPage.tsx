@@ -11,6 +11,7 @@ import {
   Database,
   Eye,
   FileText,
+  Globe,
   Loader2,
   Maximize2,
   Minimize2,
@@ -39,6 +40,7 @@ import {
 import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
 import { TerminalPanel } from "@/components/editor/TerminalPanel";
+import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
 import { MenuBar } from "@/components/layout/MenuBar";
 import {
@@ -149,7 +151,7 @@ export function RoomPage() {
   // Which tab the bottom panel shows: the run "Output" or the interactive
   // "Terminal" (xterm.js + sandboxed bash). The terminal only connects while
   // its tab is the visible one (see `active` prop below).
-  const [bottomTab, setBottomTab] = useState<"output" | "terminal">("output");
+  const [bottomTab, setBottomTab] = useState<"output" | "terminal" | "preview">("output");
   const [outputPanelHeight, setOutputPanelHeight] = useState<number>(() => {
     try {
       const stored = window.localStorage.getItem("codeleon.outputPanelHeight");
@@ -1008,6 +1010,12 @@ export function RoomPage() {
                     icon={<SquareTerminal className="h-3 w-3" />}
                     label="Terminal"
                   />
+                  <BottomTabButton
+                    active={bottomTab === "preview"}
+                    onClick={() => setBottomTab("preview")}
+                    icon={<Globe className="h-3 w-3" />}
+                    label="Preview"
+                  />
                 </div>
                 <div className="min-h-0 flex-1">
                   {bottomTab === "output" ? (
@@ -1028,12 +1036,18 @@ export function RoomPage() {
                       onProjectCommandChange={setProjectRunCommand}
                       staticPreviewHtml={staticPreviewHtml}
                     />
-                  ) : (
+                  ) : bottomTab === "terminal" ? (
                     <TerminalPanel
                       roomId={roomId}
                       active={outputPanelOpen && bottomTab === "terminal"}
                       getFiles={getAllFiles}
                       activePath={activePath}
+                    />
+                  ) : (
+                    <PreviewPanel
+                      roomId={roomId}
+                      active={outputPanelOpen && bottomTab === "preview"}
+                      getFiles={getAllFiles}
                     />
                   )}
                 </div>
