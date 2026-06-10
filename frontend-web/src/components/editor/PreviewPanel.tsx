@@ -10,8 +10,14 @@ import {
 } from "@/lib/api";
 
 // Default dev-server command. The server MUST bind 0.0.0.0:8000 to be reachable
-// from the backend (a different container); the flags below do that for Vite.
-const DEFAULT_COMMAND = "npm install && npm run dev -- --host 0.0.0.0 --port 8000";
+// from the backend (a different container). For Vite we also set `--base` to the
+// proxy path so the app's absolute asset URLs resolve through the reverse proxy
+// (the classic path-prefix problem) — this makes React/Vite load without the
+// user having to type anything. Other frameworks: just replace the command.
+function defaultCommand(roomId: string | undefined): string {
+  const base = roomId ? `/api/v1/preview/${roomId}/` : "/";
+  return `npm install && npm run dev -- --host 0.0.0.0 --port 8000 --base=${base}`;
+}
 
 /**
  * Live web preview: starts a sandboxed dev-server container and shows it in an
@@ -29,7 +35,7 @@ export function PreviewPanel({
   active: boolean;
   getFiles: () => IndexFile[];
 }) {
-  const [command, setCommand] = useState(DEFAULT_COMMAND);
+  const [command, setCommand] = useState(() => defaultCommand(roomId));
   const [running, setRunning] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
