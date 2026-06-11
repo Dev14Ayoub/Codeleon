@@ -41,11 +41,13 @@ import { EditorTabs } from "@/components/files/EditorTabs";
 import { FileExplorer, type FileExplorerHandle } from "@/components/files/FileExplorer";
 import { TerminalPanel } from "@/components/editor/TerminalPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
+import { ImagePreview } from "@/components/editor/ImagePreview";
 import { ImportGithubDialog } from "@/components/files/ImportGithubDialog";
 import { MenuBar } from "@/components/layout/MenuBar";
 import {
   createRoomFile,
   uploadRoomAsset,
+  listRoomAssets,
   fetchRoom,
   listRoomFiles,
   runCode,
@@ -398,9 +400,21 @@ export function RoomPage() {
   }, [outputPanelHeight]);
 
   // Open a file as a tab (idempotent) and make it active.
+  const [activeAsset, setActiveAsset] = useState<string | null>(null);
+  const assetsQuery = useQuery({
+    queryKey: ["room-assets", roomId],
+    queryFn: () => listRoomAssets(roomId!),
+    enabled: Boolean(roomId),
+  });
+
   const openFile = useCallback((path: string) => {
     setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
     setActivePath(path);
+    setActiveAsset(null);
+  }, []);
+
+  const openAsset = useCallback((path: string) => {
+    setActiveAsset(path);
   }, []);
 
   // Close a tab and adjust the active selection.
@@ -600,6 +614,7 @@ export function RoomPage() {
           // then open the first one as a tab.
           await fileExplorerRef.current?.refresh();
           await roomFilesQuery.refetch();
+          await assetsQuery.refetch();
           if (report.prepared.length > 0) {
             openFile(report.prepared[0].path);
           }
@@ -937,6 +952,9 @@ export function RoomPage() {
               onFileDeleted={handleFileDeleted}
               onImportLocal={handleImportLocal}
               importing={importing}
+              assets={assetsQuery.data ?? []}
+              activeAsset={activeAsset}
+              onAssetSelected={openAsset}
             />
             {importStatus && (
               <p className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-400">
@@ -968,14 +986,18 @@ export function RoomPage() {
             </div>
           </div>
           <div className="flex-1 min-h-0">
-            <CodeMirrorEditor
-              ref={editorRef}
-              activePath={activePath}
-              ydoc={collab.ydoc}
-              awareness={collab.awareness}
-              canEdit={canEdit}
-              onReadyChange={onEditorReadyChange}
-            />
+            {activeAsset ? (
+              <ImagePreview roomId={roomId!} path={activeAsset} />
+            ) : (
+              <CodeMirrorEditor
+                ref={editorRef}
+                activePath={activePath}
+                ydoc={collab.ydoc}
+                awareness={collab.awareness}
+                canEdit={canEdit}
+                onReadyChange={onEditorReadyChange}
+              />
+            )}
           </div>
           {/* Output strip — always visible at the bottom of the editor
               column. Click to toggle the panel open/closed. Shows the
@@ -1135,6 +1157,9 @@ export function RoomPage() {
               onFileDeleted={handleFileDeleted}
               onImportLocal={handleImportLocal}
               importing={importing}
+              assets={assetsQuery.data ?? []}
+              activeAsset={activeAsset}
+              onAssetSelected={openAsset}
             />
             {importStatus && (
               <p className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-400">

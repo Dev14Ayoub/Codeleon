@@ -9,6 +9,7 @@ import {
   Folder,
   FolderOpen,
   FolderUp,
+  Image,
   Loader2,
   Trash2,
 } from "lucide-react";
@@ -24,7 +25,7 @@ import {
   useState,
 } from "react";
 import { useRoomFiles } from "@/lib/files/useRoomFiles";
-import type { RoomFile } from "@/lib/api";
+import type { RoomAssetMeta, RoomFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface FileExplorerProps {
@@ -39,6 +40,10 @@ interface FileExplorerProps {
   onImportLocal?: (files: FileList) => void;
   /** Indicates an in-flight bulk import; disables the upload button. */
   importing?: boolean;
+  /** Binary assets (images, fonts…) shown alongside text files in the tree. */
+  assets?: RoomAssetMeta[];
+  activeAsset?: string | null;
+  onAssetSelected?: (path: string) => void;
 }
 
 export interface FileExplorerHandle {
@@ -55,7 +60,8 @@ type Pending =
 
 type FileTreeNode =
   | { kind: "folder"; name: string; path: string; children: FileTreeNode[] }
-  | { kind: "file"; name: string; path: string; file: RoomFile };
+  | { kind: "file"; name: string; path: string; file: RoomFile }
+  | { kind: "asset"; name: string; path: string; asset: RoomAssetMeta };
 
 export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
   {
@@ -68,6 +74,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
     onFileDeleted,
     onImportLocal,
     importing,
+    assets,
+    activeAsset,
+    onAssetSelected,
   },
   ref,
 ) {
@@ -75,7 +84,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
   const [pending, setPending] = useState<Pending>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
-  const tree = useMemo(() => buildFileTree(files), [files]);
+  const tree = useMemo(() => buildFileTree(files, assets ?? []), [files, assets]);
 
   const handleImportClick = () => {
     if (importing) return;
@@ -199,6 +208,26 @@ export const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(fu
               </motion.ul>
             )}
           </AnimatePresence>
+        </motion.li>
+      );
+    }
+
+    if (node.kind === "asset") {
+      return (
+        <motion.li
+          key={`asset:${node.path}`}
+          layout
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <AssetRow
+            name={node.name}
+            path={node.path}
+            depth={depth}
+            active={node.path === activeAsset}
+            onClick={() => onAssetSelected?.(node.path)}
+          />
         </motion.li>
       );
     }
@@ -444,6 +473,40 @@ function FileRow({
   );
 }
 
+function AssetRow({
+  name,
+  path,
+  depth,
+  active,
+  onClick,
+}: {
+  name: string;
+  path: string;
+  depth: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ x: 3 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={onClick}
+      title={path}
+      className={cn(
+        "relative flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] transition",
+        active
+          ? "bg-surfaceRaised text-zinc-50 shadow-[inset_2px_0_0_rgba(6,182,212,0.95)]"
+          : "text-zinc-400 hover:bg-surface hover:text-zinc-100",
+      )}
+      style={{ paddingLeft: 26 + depth * TREE_INDENT }}
+    >
+      <Image className={cn("h-3.5 w-3.5 shrink-0", active ? "text-cyan" : "text-violet-400/80")} />
+      <span className="truncate">{name}</span>
+    </motion.button>
+  );
+}
+
 function FileContextMenuContent({
   onRename,
   onDelete,
@@ -564,7 +627,7 @@ function FileNameInput({
   );
 }
 
-function buildFileTree(files: RoomFile[]): FileTreeNode[] {
+function buildFileTree(files: RoomFile[], assets: RoomAssetMeta[]): FileTreeNode[] {
   type MutableFolder = {
     kind: "folder";
     name: string;
@@ -581,21 +644,32 @@ function buildFileTree(files: RoomFile[]): FileTreeNode[] {
     files: [],
   };
 
-  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
-  for (const file of sorted) {
-    const parts = file.path.split("/").filter(Boolean);
+  // Merge text files and binary assets into one ordered list of leaves.
+  const leaves: { path: string; node: FileTreeNode }[] = [];
+  for (const file of files) {
+    const name = file.path.split("/").filter(Boolean).pop() ?? file.path;
+    leaves.push({ path: file.path, node: { kind: "file", name, path: file.path, file } });
+  }
+  for (const asset of assets) {
+    const name = asset.path.split("/").filter(Boolean).pop() ?? asset.path;
+    leaves.push({ path: asset.path, node: { kind: "asset", name, path: asset.path, asset } });
+  }
+  leaves.sort((a, b) => a.path.localeCompare(b.path));
+
+  for (const { path, node } of leaves) {
+    const parts = path.split("/").filter(Boolean);
     if (parts.length === 0) continue;
 
     let current = root;
     for (let i = 0; i < parts.length - 1; i += 1) {
       const name = parts[i];
-      const path = current.path ? `${current.path}/${name}` : name;
+      const folderPath = current.path ? `${current.path}/${name}` : name;
       let folder = current.folders.get(name);
       if (!folder) {
         folder = {
           kind: "folder",
           name,
-          path,
+          path: folderPath,
           folders: new Map(),
           files: [],
         };
@@ -604,12 +678,7 @@ function buildFileTree(files: RoomFile[]): FileTreeNode[] {
       current = folder;
     }
 
-    current.files.push({
-      kind: "file",
-      name: parts[parts.length - 1],
-      path: file.path,
-      file,
-    });
+    current.files.push(node);
   }
 
   const freezeFolder = (folder: MutableFolder): FileTreeNode[] => {
