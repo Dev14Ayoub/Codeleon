@@ -233,7 +233,9 @@ export function DashboardPage() {
     setLocalImportName(projectName);
     setCreateSource("local");
     createForm.setValue("templateId", "", { shouldDirty: true });
-    if (!createForm.getValues("name").trim() && projectName) {
+    // Always name the project after the imported folder — the user can still
+    // edit the field before creating.
+    if (projectName) {
       createForm.setValue("name", projectName, { shouldDirty: true, shouldValidate: true });
     }
   }
@@ -589,7 +591,15 @@ export function DashboardPage() {
                   githubRepoSearch={githubRepoSearch}
                   onGithubRepoSearchChange={setGithubRepoSearch}
                   githubRepoUrl={githubRepoUrl}
-                  onGithubRepoUrlChange={setGithubRepoUrl}
+                  onGithubRepoUrlChange={(value) => {
+                    setGithubRepoUrl(value);
+                    // Auto-name the project after the repo (e.g. owner/my-repo
+                    // or a full URL → "my-repo"). The user can still edit it.
+                    const repoName = repoNameFromInput(value);
+                    if (repoName) {
+                      createForm.setValue("name", repoName, { shouldDirty: true, shouldValidate: true });
+                    }
+                  }}
                   githubBranch={githubBranch}
                   onGithubBranchChange={setGithubBranch}
                   onSelectGithubRepository={(repository) => {
@@ -1737,6 +1747,21 @@ function inferLocalProjectName(fileList: FileList): string | null {
   }
   const [folder] = rawPath.replace(/\\/g, "/").split("/");
   return folder?.trim() || null;
+}
+
+/**
+ * Extracts a project name from a GitHub repo reference — either "owner/repo"
+ * or a full URL (https://github.com/owner/repo[.git]) — by taking the last
+ * path segment. Returns null when nothing usable can be derived.
+ */
+function repoNameFromInput(value: string): string | null {
+  const trimmed = value.trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+  if (!trimmed) return null;
+  const segment = trimmed.split("/").filter(Boolean).pop();
+  if (!segment || segment === "github.com" || segment.includes(":")) {
+    return null;
+  }
+  return segment;
 }
 
 type PaletteAction = {
