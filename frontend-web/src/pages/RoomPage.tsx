@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { RoomChat } from "@/components/chat/RoomChat";
+import { VoiceCallBar } from "@/components/voice/VoiceCallBar";
 import {
   CodeMirrorEditor,
   type CodeMirrorEditorHandle,
@@ -1894,6 +1895,7 @@ function RoomRightPanel({
               <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
                 <ParticipantsList peers={peers} currentUserId={currentUserId} />
               </div>
+              <VoiceCallBar roomId={roomId} />
               <div className="flex-1 min-h-0">
                 <RoomChat
                   ydoc={ydoc}
