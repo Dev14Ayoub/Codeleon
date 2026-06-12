@@ -34,6 +34,8 @@ import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { RoomChat } from "@/components/chat/RoomChat";
 import { VoiceCallBar } from "@/components/voice/VoiceCallBar";
+import { IncomingCallBanner } from "@/components/voice/IncomingCallBanner";
+import { useRoomVoiceCall, VoiceCallContext } from "@/lib/voice/useRoomVoiceCall";
 import {
   CodeMirrorEditor,
   type CodeMirrorEditorHandle,
@@ -100,6 +102,31 @@ export function RoomPage() {
   });
 
   const collab = useCollabRoom(roomId);
+  // Room voice call — owned here so it survives tab switches and so the
+  // incoming-call ring can read it. Broadcasts presence over collab awareness.
+  const voice = useRoomVoiceCall(roomId, collab.awareness);
+
+  const [incomingCall, setIncomingCall] = useState<{ name: string; clientId: number } | null>(null);
+  const [dismissedCallClient, setDismissedCallClient] = useState<number | null>(null);
+  useEffect(() => {
+    const aw = collab.awareness;
+    if (!aw) return;
+    const update = () => {
+      const caller = Array.from(aw.getStates().entries()).find(
+        ([cid, st]) => cid !== aw.clientID && (st as { voice?: { inCall?: boolean } })?.voice?.inCall,
+      );
+      if (caller) {
+        const [cid, st] = caller;
+        setIncomingCall({ name: (st as { user?: { name?: string } })?.user?.name ?? "Quelqu'un", clientId: cid });
+      } else {
+        setIncomingCall(null);
+        setDismissedCallClient(null);
+      }
+    };
+    aw.on("change", update);
+    update();
+    return () => aw.off("change", update);
+  }, [collab.awareness]);
   const setCollabActivePath = collab.setActivePath;
   const currentUser = useAuthStore((state) => state.user);
 
@@ -747,6 +774,7 @@ export function RoomPage() {
   }
 
   return (
+    <VoiceCallContext.Provider value={voice}>
     <main className="flex h-screen flex-col overflow-hidden bg-background text-zinc-100">
       <header className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800 bg-background/95 px-3 backdrop-blur sm:min-h-13 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -883,6 +911,19 @@ export function RoomPage() {
           </Button>
         </div>
       </header>
+
+      {incomingCall &&
+        voice.status === "idle" &&
+        incomingCall.clientId !== dismissedCallClient && (
+          <IncomingCallBanner
+            callerName={incomingCall.name}
+            onAnswer={() => {
+              void voice.join();
+              setIncomingCall(null);
+            }}
+            onDismiss={() => setDismissedCallClient(incomingCall.clientId)}
+          />
+        )}
 
       {/* MenuBar (File/Edit/View/Run/Help) intentionally hidden — its
           actions are now reachable via the top-bar icon buttons (panel
@@ -1231,6 +1272,7 @@ export function RoomPage() {
         )}
       </section>
     </main>
+    </VoiceCallContext.Provider>
   );
 }
 
@@ -1895,7 +1937,7 @@ function RoomRightPanel({
               <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
                 <ParticipantsList peers={peers} currentUserId={currentUserId} />
               </div>
-              <VoiceCallBar roomId={roomId} />
+              <VoiceCallBar />
               <div className="flex-1 min-h-0">
                 <RoomChat
                   ydoc={ydoc}

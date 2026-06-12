@@ -1,14 +1,16 @@
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
-import { useRoomVoiceCall, type VoicePeer } from "@/lib/voice/useRoomVoiceCall";
+import { useVoiceCallContext, type VoicePeer } from "@/lib/voice/useRoomVoiceCall";
 
 /**
- * Voice-call control for a room. Join starts a peer-to-peer WebRTC call
- * (signaling over a WebSocket relay); audio plays automatically. Mute toggles
- * the local mic; Leave tears the call down.
+ * Voice-call control for a room. The call instance is owned by RoomPage (so it
+ * survives tab switches and powers the incoming-call ring) and shared via
+ * context.
  */
-export function VoiceCallBar({ roomId }: { roomId: string | undefined }) {
-  const { status, peers, muted, errorMessage, join, leave, toggleMute } = useRoomVoiceCall(roomId);
+export function VoiceCallBar() {
+  const voice = useVoiceCallContext();
+  if (!voice) return null;
+  const { status, peers, muted, errorMessage, join, leave, toggleMute } = voice;
 
   if (status === "idle" || status === "error") {
     return (

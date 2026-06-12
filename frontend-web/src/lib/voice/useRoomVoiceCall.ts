@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 
 export interface VoicePeer {
@@ -29,12 +29,23 @@ function buildVoiceWsUrl(roomId: string, token: string): string {
   return url.toString();
 }
 
+/** Minimal slice of the collab awareness used to broadcast call presence. */
+export interface VoiceAwareness {
+  setLocalStateField: (field: string, value: unknown) => void;
+}
+
 /**
  * Drives a peer-to-peer voice call for a room. Signaling rides a WebSocket
  * relay; audio is a direct encrypted WebRTC connection per remote peer (mesh).
  * The joining peer offers to existing peers; existing peers answer.
+ *
+ * <p>Pass the collab {@code awareness} so the call broadcasts presence to the
+ * room — members not yet in the call use it to ring an incoming-call banner.
  */
-export function useRoomVoiceCall(roomId: string | undefined) {
+export function useRoomVoiceCall(
+  roomId: string | undefined,
+  awareness?: VoiceAwareness | null,
+) {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const [status, setStatus] = useState<VoiceStatus>("idle");
@@ -226,8 +237,28 @@ export function useRoomVoiceCall(roomId: string | undefined) {
     setMuted(nextMuted);
   }, [muted]);
 
+  // Broadcast call presence to the room over the (always-connected) collab
+  // awareness, so members not in the call can ring an incoming-call banner.
+  useEffect(() => {
+    awareness?.setLocalStateField("voice", {
+      inCall: status === "in-call" || status === "connecting",
+    });
+  }, [status, awareness]);
+
   // Tear down on unmount / room change.
   useEffect(() => () => leave(), [leave]);
 
   return { status, peers, muted, errorMessage, join, leave, toggleMute };
+}
+
+export type RoomVoiceCall = ReturnType<typeof useRoomVoiceCall>;
+
+/**
+ * Shares the single room voice-call instance (owned by RoomPage) with the
+ * deeply-nested VoiceCallBar, without threading props through the right panel.
+ */
+export const VoiceCallContext = createContext<RoomVoiceCall | null>(null);
+
+export function useVoiceCallContext(): RoomVoiceCall | null {
+  return useContext(VoiceCallContext);
 }
