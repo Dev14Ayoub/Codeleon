@@ -8,7 +8,7 @@ import { useRoomVoiceCall, type VoicePeer } from "@/lib/voice/useRoomVoiceCall";
  * the local mic; Leave tears the call down.
  */
 export function VoiceCallBar({ roomId }: { roomId: string | undefined }) {
-  const { status, peers, muted, join, leave, toggleMute } = useRoomVoiceCall(roomId);
+  const { status, peers, muted, errorMessage, join, leave, toggleMute } = useRoomVoiceCall(roomId);
 
   if (status === "idle" || status === "error") {
     return (
@@ -23,7 +23,7 @@ export function VoiceCallBar({ roomId }: { roomId: string | undefined }) {
         </button>
         {status === "error" && (
           <p className="mt-2 text-[11px] text-rose-400">
-            Micro indisponible ou connexion refusée. Vérifie les permissions du micro.
+            {errorMessage ?? "Connexion refusée. Réessaie."}
           </p>
         )}
       </div>

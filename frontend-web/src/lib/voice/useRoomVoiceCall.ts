@@ -40,10 +40,14 @@ export function useRoomVoiceCall(roomId: string | undefined) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [peers, setPeers] = useState<VoicePeer[]>([]);
   const [muted, setMuted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // ICE candidates arriving before the remote description is set are buffered
+  // here (per peer) then flushed — key to reliable mesh connections.
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   const sendSignal = (to: string, data: unknown) => {
     const ws = wsRef.current;
@@ -64,6 +68,7 @@ export function useRoomVoiceCall(roomId: string | undefined) {
   const dropPeer = (id: string) => {
     pcsRef.current.get(id)?.close();
     pcsRef.current.delete(id);
+    pendingCandidatesRef.current.delete(id);
     setPeers((prev) => prev.filter((p) => p.id !== id));
   };
 
@@ -98,19 +103,23 @@ export function useRoomVoiceCall(roomId: string | undefined) {
     wsRef.current = null;
     pcsRef.current.forEach((pc) => pc.close());
     pcsRef.current.clear();
+    pendingCandidatesRef.current.clear();
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     setPeers([]);
     setMuted(false);
+    setErrorMessage(null);
     setStatus("idle");
   }, []);
 
   const join = useCallback(async () => {
     if (!roomId || !accessToken || status !== "idle") return;
+    setErrorMessage(null);
     setStatus("connecting");
     try {
       localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
+      setErrorMessage("Micro indisponible — vérifie les permissions du navigateur.");
       setStatus("error");
       return;
     }
@@ -136,6 +145,7 @@ export function useRoomVoiceCall(roomId: string | undefined) {
         peers?: { id: string; name: string }[];
         id?: string;
         name?: string;
+        max?: number;
         from?: string;
         data?: { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
       };
@@ -159,21 +169,47 @@ export function useRoomVoiceCall(roomId: string | undefined) {
         upsertPeer({ id: msg.id, name: msg.name ?? "" });
       } else if (msg.type === "peer-left" && msg.id) {
         dropPeer(msg.id);
+      } else if (msg.type === "full") {
+        setErrorMessage(`L'appel est complet (max ${msg.max ?? 4} participants).`);
+        setStatus("error");
+        try {
+          wsRef.current?.close();
+        } catch {
+          /* noop */
+        }
       } else if (msg.type === "signal" && msg.from && msg.data) {
         const from = msg.from;
         const pc = createPeerConnection(from);
         if (msg.data.sdp) {
           await pc.setRemoteDescription(msg.data.sdp);
+          // Remote description set — flush ICE candidates we buffered for it.
+          const buffered = pendingCandidatesRef.current.get(from);
+          if (buffered) {
+            for (const candidate of buffered) {
+              try {
+                await pc.addIceCandidate(candidate);
+              } catch {
+                /* noop */
+              }
+            }
+            pendingCandidatesRef.current.delete(from);
+          }
           if (msg.data.sdp.type === "offer") {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             sendSignal(from, { sdp: answer });
           }
         } else if (msg.data.candidate) {
-          try {
-            await pc.addIceCandidate(msg.data.candidate);
-          } catch {
-            /* candidate arrived before remote description — ignored */
+          if (pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(msg.data.candidate);
+            } catch {
+              /* noop */
+            }
+          } else {
+            const list = pendingCandidatesRef.current.get(from) ?? [];
+            list.push(msg.data.candidate);
+            pendingCandidatesRef.current.set(from, list);
           }
         }
       }
@@ -193,5 +229,5 @@ export function useRoomVoiceCall(roomId: string | undefined) {
   // Tear down on unmount / room change.
   useEffect(() => () => leave(), [leave]);
 
-  return { status, peers, muted, join, leave, toggleMute };
+  return { status, peers, muted, errorMessage, join, leave, toggleMute };
 }

@@ -35,6 +35,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class VoiceSignalingHandler extends TextWebSocketHandler {
 
+    /** Mesh topology — each pair is a direct connection, so N peers means
+     *  N×(N-1)/2 links. Cap participants to keep that sane on the browser side. */
+    private static final int MAX_PARTICIPANTS = 4;
+
     private final ObjectMapper objectMapper;
 
     /** roomId → (sessionId → peer). */
@@ -51,10 +55,19 @@ public class VoiceSignalingHandler extends TextWebSocketHandler {
             close(session);
             return;
         }
-        String name = user.getFullName();
-        // The pump and inbound threads can both send — serialize via the decorator.
-        WebSocketSession peerSession = new ConcurrentWebSocketSessionDecorator(session, 10_000, 256 * 1024);
         Map<String, Peer> peers = rooms.computeIfAbsent(roomId, key -> new ConcurrentHashMap<>());
+        // Refuse a peer beyond the mesh cap — tell it the call is full, then close.
+        if (peers.size() >= MAX_PARTICIPANTS) {
+            ObjectNode full = objectMapper.createObjectNode();
+            full.put("type", "full");
+            full.put("max", MAX_PARTICIPANTS);
+            send(session, full);
+            close(session);
+            return;
+        }
+        String name = user.getFullName();
+        // Inbound + relay threads can both send — serialize via the decorator.
+        WebSocketSession peerSession = new ConcurrentWebSocketSessionDecorator(session, 10_000, 256 * 1024);
 
         // Tell the new peer who is already in the call (it will initiate offers).
         ObjectNode list = objectMapper.createObjectNode();
