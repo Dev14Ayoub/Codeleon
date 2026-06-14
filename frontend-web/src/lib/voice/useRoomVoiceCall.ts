@@ -151,6 +151,15 @@ export function useRoomVoiceCall(
       return;
     }
 
+    // leave() may have run while we awaited the mic — it resets joiningRef.
+    // Abort instead of opening a WebSocket that would drop us back into the
+    // call we just left, with a live mic.
+    if (!joiningRef.current) {
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      return;
+    }
+
     const ws = new WebSocket(buildVoiceWsUrl(roomId, accessToken));
     wsRef.current = ws;
 

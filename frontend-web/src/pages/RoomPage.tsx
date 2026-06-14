@@ -108,6 +108,20 @@ export function RoomPage() {
 
   const [incomingCall, setIncomingCall] = useState<{ name: string; clientId: number } | null>(null);
   const [dismissedCallClient, setDismissedCallClient] = useState<number | null>(null);
+  // After we hang up a call we were in, the peer left in it keeps broadcasting
+  // voice.inCall — without this guard the detection below would instantly
+  // re-ring us for the call we just left. Suppress the ring from the moment we
+  // leave until the call fully clears (nobody inCall anymore).
+  const suppressRingRef = useRef(false);
+  const prevVoiceStatusRef = useRef(voice.status);
+  useEffect(() => {
+    const prev = prevVoiceStatusRef.current;
+    prevVoiceStatusRef.current = voice.status;
+    if ((prev === "in-call" || prev === "connecting") && voice.status === "idle") {
+      suppressRingRef.current = true;
+      setIncomingCall(null);
+    }
+  }, [voice.status]);
   useEffect(() => {
     const aw = collab.awareness;
     if (!aw) return;
@@ -116,9 +130,13 @@ export function RoomPage() {
         ([cid, st]) => cid !== aw.clientID && (st as { voice?: { inCall?: boolean } })?.voice?.inCall,
       );
       if (caller) {
+        // Don't re-ring us for a call we just hung up (see suppressRingRef).
+        if (suppressRingRef.current) return;
         const [cid, st] = caller;
         setIncomingCall({ name: (st as { user?: { name?: string } })?.user?.name ?? "Quelqu'un", clientId: cid });
       } else {
+        // Call fully cleared — allow incoming-call rings again.
+        suppressRingRef.current = false;
         setIncomingCall(null);
         setDismissedCallClient(null);
       }
