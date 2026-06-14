@@ -56,38 +56,45 @@ public class VoiceSignalingHandler extends TextWebSocketHandler {
             return;
         }
         Map<String, Peer> peers = rooms.computeIfAbsent(roomId, key -> new ConcurrentHashMap<>());
-        // Refuse a peer beyond the mesh cap — tell it the call is full, then close.
-        if (peers.size() >= MAX_PARTICIPANTS) {
-            ObjectNode full = objectMapper.createObjectNode();
-            full.put("type", "full");
-            full.put("max", MAX_PARTICIPANTS);
-            send(session, full);
-            close(session);
-            return;
-        }
         String name = user.getFullName();
         // Inbound + relay threads can both send — serialize via the decorator.
         WebSocketSession peerSession = new ConcurrentWebSocketSessionDecorator(session, 10_000, 256 * 1024);
 
-        // Tell the new peer who is already in the call (it will initiate offers).
-        ObjectNode list = objectMapper.createObjectNode();
-        list.put("type", "peers");
-        ArrayNode arr = list.putArray("peers");
-        peers.forEach((id, peer) -> {
-            ObjectNode entry = arr.addObject();
-            entry.put("id", id);
-            entry.put("name", peer.name());
-        });
+        ObjectNode list;
+        // The cap check, the snapshot the new peer receives, the announce
+        // to existing peers, and the insertion must run as one critical
+        // section. Otherwise two simultaneous joiners can each read a
+        // snapshot that doesn't contain the other (so neither offers to
+        // the other and they never connect), or the cap can be exceeded.
+        synchronized (peers) {
+            if (peers.size() >= MAX_PARTICIPANTS) {
+                ObjectNode full = objectMapper.createObjectNode();
+                full.put("type", "full");
+                full.put("max", MAX_PARTICIPANTS);
+                send(session, full);
+                close(session);
+                return;
+            }
+            // Snapshot the existing peers for the newcomer.
+            list = objectMapper.createObjectNode();
+            list.put("type", "peers");
+            ArrayNode arr = list.putArray("peers");
+            peers.forEach((id, peer) -> {
+                ObjectNode entry = arr.addObject();
+                entry.put("id", id);
+                entry.put("name", peer.name());
+            });
+
+            // Announce the new peer to everyone already in the call.
+            ObjectNode joined = objectMapper.createObjectNode();
+            joined.put("type", "peer-joined");
+            joined.put("id", session.getId());
+            joined.put("name", name);
+            peers.values().forEach(peer -> send(peer.session(), joined));
+
+            peers.put(session.getId(), new Peer(peerSession, name));
+        }
         send(peerSession, list);
-
-        // Announce the new peer to everyone already in the call.
-        ObjectNode joined = objectMapper.createObjectNode();
-        joined.put("type", "peer-joined");
-        joined.put("id", session.getId());
-        joined.put("name", name);
-        peers.values().forEach(peer -> send(peer.session(), joined));
-
-        peers.put(session.getId(), new Peer(peerSession, name));
     }
 
     @Override
@@ -144,16 +151,20 @@ public class VoiceSignalingHandler extends TextWebSocketHandler {
         if (peers == null) {
             return;
         }
-        Peer removed = peers.remove(sessionId);
-        if (removed == null) {
-            return;
-        }
-        ObjectNode left = objectMapper.createObjectNode();
-        left.put("type", "peer-left");
-        left.put("id", sessionId);
-        peers.values().forEach(peer -> send(peer.session(), left));
-        if (peers.isEmpty()) {
-            rooms.remove(roomId);
+        // Same critical section as the join path so a leave that empties
+        // the room cannot race a concurrent join into a stale map.
+        synchronized (peers) {
+            Peer removed = peers.remove(sessionId);
+            if (removed == null) {
+                return;
+            }
+            ObjectNode left = objectMapper.createObjectNode();
+            left.put("type", "peer-left");
+            left.put("id", sessionId);
+            peers.values().forEach(peer -> send(peer.session(), left));
+            if (peers.isEmpty()) {
+                rooms.remove(roomId, peers);
+            }
         }
     }
 

@@ -3,7 +3,7 @@ import { useAuthStore } from "@/stores/auth-store";
 
 export interface VoicePeer {
   id: string;
-  name: string;
+  name?: string;
   stream?: MediaStream;
 }
 
@@ -56,6 +56,11 @@ export function useRoomVoiceCall(
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Synchronous guard against double-click on "Démarrer" — the `status`
+  // state lags one render behind, so two clicks in the same frame can both
+  // pass an `if (status !== "idle")` check and spawn two WebSockets + two
+  // getUserMedia tracks. A ref flips immediately.
+  const joiningRef = useRef(false);
   // ICE candidates arriving before the remote description is set are buffered
   // here (per peer) then flushed — key to reliable mesh connections.
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
@@ -95,11 +100,26 @@ export function useRoomVoiceCall(
       if (event.candidate) sendSignal(peerId, { candidate: event.candidate });
     };
     pc.ontrack = (event) => {
-      upsertPeer({ id: peerId, name: "", stream: event.streams[0] });
+      upsertPeer({ id: peerId, stream: event.streams[0] });
     };
     pcsRef.current.set(peerId, pc);
     return pc;
   }, []);
+
+  // Tear down every transient piece of call state. Used by leave() and by
+  // the remote-close paths (onclose, onerror, `full`) so the hook always
+  // returns to a clean idle from which a new join() will succeed.
+  const tearDown = () => {
+    pcsRef.current.forEach((pc) => pc.close());
+    pcsRef.current.clear();
+    pendingCandidatesRef.current.clear();
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
+    wsRef.current = null;
+    joiningRef.current = false;
+    setPeers([]);
+    setMuted(false);
+  };
 
   const leave = useCallback(() => {
     const ws = wsRef.current;
@@ -111,20 +131,15 @@ export function useRoomVoiceCall(
     } catch {
       /* noop */
     }
-    wsRef.current = null;
-    pcsRef.current.forEach((pc) => pc.close());
-    pcsRef.current.clear();
-    pendingCandidatesRef.current.clear();
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
-    setPeers([]);
-    setMuted(false);
+    tearDown();
     setErrorMessage(null);
     setStatus("idle");
   }, []);
 
   const join = useCallback(async () => {
     if (!roomId || !accessToken || status !== "idle") return;
+    if (joiningRef.current) return;
+    joiningRef.current = true;
     setErrorMessage(null);
     setStatus("connecting");
     try {
@@ -132,6 +147,7 @@ export function useRoomVoiceCall(
     } catch {
       setErrorMessage("Micro indisponible — vérifie les permissions du navigateur.");
       setStatus("error");
+      joiningRef.current = false;
       return;
     }
 
@@ -139,14 +155,13 @@ export function useRoomVoiceCall(
     wsRef.current = ws;
 
     ws.onopen = () => setStatus("in-call");
-    ws.onerror = () => setStatus("error");
+    ws.onerror = () => {
+      tearDown();
+      setStatus("error");
+    };
     ws.onclose = () => {
       // Remote close — tear down locally.
-      pcsRef.current.forEach((pc) => pc.close());
-      pcsRef.current.clear();
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-      setPeers([]);
+      tearDown();
       setStatus((prev) => (prev === "error" ? prev : "idle"));
     };
 
