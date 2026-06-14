@@ -1299,10 +1299,10 @@ function TodayWidget({
 
 function getTimeGreeting() {
   const hour = new Date().getHours();
-  if (hour < 6) return { label: "Late night", salutation: "Bonne nuit", icon: Sunset };
-  if (hour < 12) return { label: "Morning", salutation: "Bonjour", icon: Sunrise };
-  if (hour < 18) return { label: "Afternoon", salutation: "Bon après-midi", icon: Sun };
-  return { label: "Evening", salutation: "Bonsoir", icon: Sunset };
+  if (hour < 6) return { label: "Late night", salutation: "Good night", icon: Sunset };
+  if (hour < 12) return { label: "Morning", salutation: "Good morning", icon: Sunrise };
+  if (hour < 18) return { label: "Afternoon", salutation: "Good afternoon", icon: Sun };
+  return { label: "Evening", salutation: "Good evening", icon: Sunset };
 }
 
 function ProjectSourcePicker({

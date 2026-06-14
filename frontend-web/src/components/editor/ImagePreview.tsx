@@ -41,7 +41,7 @@ export function ImagePreview({ roomId, path }: { roomId: string; path: string })
       {error ? (
         <div className="flex flex-col items-center gap-2 text-zinc-500">
           <ImageOff className="h-6 w-6" />
-          <p className="text-sm">Impossible de charger l'aperçu</p>
+          <p className="text-sm">Couldn't load preview</p>
         </div>
       ) : !url ? (
         <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
@@ -53,9 +53,9 @@ export function ImagePreview({ roomId, path }: { roomId: string; path: string })
         />
       ) : (
         <div className="flex flex-col items-center gap-2 text-zinc-400">
-          <p className="text-sm">Fichier binaire — aperçu non disponible</p>
+          <p className="text-sm">Binary file — no preview available</p>
           <a href={url} download className="font-mono text-xs text-cyan hover:underline">
-            Télécharger
+            Download
           </a>
         </div>
       )}

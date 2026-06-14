@@ -71,7 +71,7 @@ function useRingtone() {
 
 /**
  * Ringing banner shown to room members who are not yet in a call when someone
- * starts one. Answer joins the call; Ignore dismisses the ring locally.
+ * starts one. Answer joins the call; Decline dismisses the ring locally.
  */
 export function IncomingCallBanner({
   callerName,
@@ -92,7 +92,7 @@ export function IncomingCallBanner({
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
         </span>
         <span className="truncate">
-          <strong>{callerName}</strong> démarre un appel vocal…
+          <strong>{callerName}</strong> is calling…
         </span>
       </span>
       <div className="flex shrink-0 items-center gap-2">
@@ -102,7 +102,7 @@ export function IncomingCallBanner({
           className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-500"
         >
           <Phone className="h-3.5 w-3.5" />
-          Répondre
+          Answer
         </button>
         <button
           type="button"
@@ -110,7 +110,7 @@ export function IncomingCallBanner({
           className="inline-flex items-center gap-1 rounded-md bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-700"
         >
           <PhoneOff className="h-3.5 w-3.5" />
-          Ignorer
+          Decline
         </button>
       </div>
     </div>

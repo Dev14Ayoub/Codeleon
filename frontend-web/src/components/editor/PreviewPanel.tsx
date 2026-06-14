@@ -101,7 +101,7 @@ export function PreviewPanel({
           onChange={(e) => setCommand(e.target.value)}
           spellCheck={false}
           disabled={pending}
-          placeholder="Commande du serveur de dev (doit écouter sur 0.0.0.0:8000)"
+          placeholder="Dev server command (must listen on 0.0.0.0:8000)"
           className="h-6 min-w-0 flex-1 rounded bg-zinc-900 px-2 font-mono text-[11px] text-zinc-200 outline-none placeholder:text-zinc-600"
         />
         {running ? (
@@ -129,7 +129,7 @@ export function PreviewPanel({
           type="button"
           onClick={() => setIframeKey((k) => k + 1)}
           disabled={!running}
-          title="Recharger l'aperçu"
+          title="Reload preview"
           className="inline-flex items-center gap-1 rounded px-2 py-1 font-mono text-[11px] text-zinc-400 transition hover:bg-surfaceRaised disabled:cursor-not-allowed disabled:text-zinc-700"
         >
           <RotateCw className="h-3 w-3" />
@@ -139,7 +139,7 @@ export function PreviewPanel({
             href={url}
             target="_blank"
             rel="noreferrer"
-            title="Ouvrir dans un nouvel onglet"
+            title="Open in a new tab"
             className="inline-flex items-center rounded px-1.5 py-1 text-zinc-400 transition hover:bg-surfaceRaised"
           >
             <ExternalLink className="h-3 w-3" />
@@ -157,7 +157,7 @@ export function PreviewPanel({
         {running ? (
           <iframe
             key={iframeKey}
-            title="Aperçu live"
+            title="Live preview"
             src={url}
             sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
             className="h-full w-full border-0 bg-white"
@@ -166,9 +166,8 @@ export function PreviewPanel({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-zinc-500">
             <Globe className="h-6 w-6 text-zinc-700" />
             <p className="max-w-sm font-mono text-xs leading-5">
-              Lance un serveur de dev pour voir ton app en direct. Le premier
-              démarrage peut prendre un moment (installation des dépendances),
-              puis clique sur recharger.
+              Start a dev server to see your app live. The first start can take
+              a moment (installing dependencies), then click reload.
             </p>
           </div>
         )}

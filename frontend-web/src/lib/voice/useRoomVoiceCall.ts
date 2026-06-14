@@ -56,7 +56,7 @@ export function useRoomVoiceCall(
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  // Synchronous guard against double-click on "Démarrer" — the `status`
+  // Synchronous guard against double-click on "Start voice call" — the `status`
   // state lags one render behind, so two clicks in the same frame can both
   // pass an `if (status !== "idle")` check and spawn two WebSockets + two
   // getUserMedia tracks. A ref flips immediately.
@@ -145,7 +145,7 @@ export function useRoomVoiceCall(
     try {
       localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setErrorMessage("Micro indisponible — vérifie les permissions du navigateur.");
+      setErrorMessage("Couldn't access your microphone. Check your browser permissions.");
       setStatus("error");
       joiningRef.current = false;
       return;
@@ -205,7 +205,7 @@ export function useRoomVoiceCall(
       } else if (msg.type === "peer-left" && msg.id) {
         dropPeer(msg.id);
       } else if (msg.type === "full") {
-        setErrorMessage(`L'appel est complet (max ${msg.max ?? 4} participants).`);
+        setErrorMessage(`This call is full (up to ${msg.max ?? 4} participants).`);
         setStatus("error");
         try {
           wsRef.current?.close();

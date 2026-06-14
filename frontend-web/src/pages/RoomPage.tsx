@@ -133,7 +133,7 @@ export function RoomPage() {
         // Don't re-ring us for a call we just hung up (see suppressRingRef).
         if (suppressRingRef.current) return;
         const [cid, st] = caller;
-        setIncomingCall({ name: (st as { user?: { name?: string } })?.user?.name ?? "Quelqu'un", clientId: cid });
+        setIncomingCall({ name: (st as { user?: { name?: string } })?.user?.name ?? "Someone", clientId: cid });
       } else {
         // Call fully cleared — allow incoming-call rings again.
         suppressRingRef.current = false;
