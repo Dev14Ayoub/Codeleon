@@ -13,7 +13,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -50,6 +52,10 @@ public class GithubImportService {
     static final int MAX_FILES = 200;
     static final int MAX_FILE_BYTES = 100 * 1024;
     static final int MAX_REPOSITORY_PAGES = 10;
+    /** Hard ceiling on the downloaded archive so a huge repo can't OOM the heap. */
+    static final int MAX_ARCHIVE_BYTES = 50 * 1024 * 1024;
+    /** Cap on ZIP entries we will walk, bounding the skipped-files list too. */
+    static final int MAX_ENTRIES_SCANNED = 5_000;
 
     private static final Pattern HTTPS_URL_PATTERN =
             Pattern.compile("^https?://github\\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\\.git)?/?$");
@@ -101,8 +107,9 @@ public class GithubImportService {
 
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(fetch.bytes))) {
             ZipEntry entry;
+            int scanned = 0;
             while ((entry = zis.getNextEntry()) != null) {
-                if (imported.size() >= MAX_FILES) {
+                if (++scanned > MAX_ENTRIES_SCANNED || imported.size() >= MAX_FILES) {
                     truncated = true;
                     break;
                 }
@@ -256,20 +263,23 @@ public class GithubImportService {
         }
         HttpRequest request = builder.build();
         try {
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             int code = response.statusCode();
-            if (code == 404) {
-                throw new BranchNotFoundException();
+            try (InputStream body = response.body()) {
+                if (code == 404) {
+                    throw new BranchNotFoundException();
+                }
+                if (code == 401 || code == 403) {
+                    throw new BadRequestException(authenticated
+                            ? "GitHub authentication failed. Reconnect your GitHub account, then try importing again."
+                            : "GitHub authentication required. Connect your GitHub account to import private repositories.");
+                }
+                if (code / 100 != 2) {
+                    throw new BadRequestException("GitHub returned HTTP " + code + " when fetching the archive");
+                }
+                // Bounded read — never buffer an unbounded archive into the heap.
+                return readBoundedArchive(body, MAX_ARCHIVE_BYTES);
             }
-            if (code == 401 || code == 403) {
-                throw new BadRequestException(authenticated
-                        ? "GitHub authentication failed. Reconnect your GitHub account, then try importing again."
-                        : "GitHub authentication required. Connect your GitHub account to import private repositories.");
-            }
-            if (code / 100 != 2) {
-                throw new BadRequestException("GitHub returned HTTP " + code + " when fetching the archive");
-            }
-            return response.body();
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new BadRequestException("Could not reach github.com: " + ex.getMessage());
@@ -402,6 +412,27 @@ public class GithubImportService {
         while ((n = zis.read(buffer)) > 0) {
             total += n;
             if (total > limit) return null;
+            out.write(buffer, 0, n);
+        }
+        return out.toByteArray();
+    }
+
+    /**
+     * Reads the whole response body into memory but refuses to exceed
+     * {@code limit} bytes — a malicious or accidentally huge repository
+     * archive must not be buffered unbounded and OOM the backend.
+     */
+    private static byte[] readBoundedArchive(InputStream in, int limit) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[16 * 1024];
+        int total = 0;
+        int n;
+        while ((n = in.read(buffer)) != -1) {
+            total += n;
+            if (total > limit) {
+                throw new BadRequestException("The repository archive is larger than "
+                        + (limit / (1024 * 1024)) + " MB. Import a smaller repository.");
+            }
             out.write(buffer, 0, n);
         }
         return out.toByteArray();
