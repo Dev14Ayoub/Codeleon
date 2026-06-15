@@ -1,7 +1,9 @@
 package com.codeleon.auth.oauth;
 
+import com.codeleon.config.EncryptedStringConverter;
 import com.codeleon.user.User;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
@@ -44,6 +46,10 @@ public class OAuthAccount {
     @Column(length = 180)
     private String email;
 
+    // Encrypted at rest (AES-256-GCM) via EncryptedStringConverter — a DB
+    // dump must not expose users' provider access tokens. Ciphertext is
+    // longer than the raw token, hence the generous column length.
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "access_token", length = 4000)
     private String accessToken;
 

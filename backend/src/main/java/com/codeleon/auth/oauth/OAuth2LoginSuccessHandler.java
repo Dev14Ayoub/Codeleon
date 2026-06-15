@@ -28,6 +28,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -118,12 +119,16 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 .revoked(false)
                 .build());
 
-        String target = UriComponentsBuilder.fromUriString(frontendOrigin())
+        String base = UriComponentsBuilder.fromUriString(frontendOrigin())
                 .path("/auth/callback")
-                .queryParam("accessToken", accessToken)
-                .queryParam("refreshToken", refreshToken)
                 .build()
                 .toUriString();
+        // Tokens ride in the URL *fragment*, not the query string: fragments
+        // are never sent to a server (so they don't land in Caddy/proxy access
+        // logs) and are not included in the Referer header, which keeps the
+        // access + refresh tokens out of logs and third-party requests.
+        String target = base + "#accessToken=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8)
+                + "&refreshToken=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8);
 
         log.info("OAuth login success: user={} provider={}", user.getEmail(), provider);
         redirectStrategy.sendRedirect(request, response, target);

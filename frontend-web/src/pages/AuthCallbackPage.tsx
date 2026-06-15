@@ -7,12 +7,13 @@ import { useAuthStore } from "@/stores/auth-store";
 /**
  * Landing page hit by the OAuth2 redirect from Spring Security after a
  * successful social login. The backend appends the freshly-minted
- * accessToken + refreshToken to the URL; we extract them, fetch the
- * matching user profile, push everything into the auth store, and
+ * accessToken + refreshToken to the URL *fragment* (so they never reach
+ * server logs or the Referer header); we read them from window.location.hash,
+ * fetch the matching user profile, push everything into the auth store, and
  * forward to /dashboard.
  *
- * Errors come back as ?oauth_error=... and bounce to /login with the
- * code preserved so the login page can render a friendly message.
+ * Errors come back as ?oauth_error=... (query string) and bounce to /login
+ * with the code preserved so the login page can render a friendly message.
  */
 export function AuthCallbackPage() {
   const [params] = useSearchParams();
@@ -22,9 +23,16 @@ export function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const accessToken = params.get("accessToken");
-    const refreshToken = params.get("refreshToken");
+    // Tokens arrive in the URL fragment (see backend OAuth2LoginSuccessHandler);
+    // oauth errors still come as a query param.
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hashParams.get("accessToken");
+    const refreshToken = hashParams.get("refreshToken");
     const oauthError = params.get("oauth_error");
+    // Strip the tokens out of the address bar / history immediately.
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
 
     if (oauthError) {
       navigate(`/login?oauth_error=${encodeURIComponent(oauthError)}`, { replace: true });
