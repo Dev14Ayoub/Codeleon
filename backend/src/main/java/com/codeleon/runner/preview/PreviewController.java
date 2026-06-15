@@ -4,8 +4,12 @@ import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.RoomFileService;
 import com.codeleon.runner.terminal.WorkspaceMaterializer;
 import com.codeleon.user.User;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,12 +35,15 @@ public class PreviewController {
 
     private final PreviewService previewService;
     private final RoomFileService roomFileService;
+    private final PreviewTokenService previewTokenService;
 
     @PostMapping
     public PreviewStatusResponse start(
             @PathVariable UUID roomId,
             @AuthenticationPrincipal User user,
-            @Valid @RequestBody PreviewStartRequest request
+            @Valid @RequestBody PreviewStartRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         if (!roomFileService.canEdit(roomId, user)) {
             throw new NotFoundException("Room not found");
@@ -47,6 +54,7 @@ public class PreviewController {
                         .map(f -> new WorkspaceMaterializer.FileEntry(f.path(), f.text()))
                         .toList();
         previewService.start(roomId, request.command(), files);
+        issuePreviewCookie(roomId, httpRequest, httpResponse);
         return currentStatus(roomId);
     }
 
@@ -65,11 +73,16 @@ public class PreviewController {
     @GetMapping
     public PreviewStatusResponse status(
             @PathVariable UUID roomId,
-            @AuthenticationPrincipal User user
+            @AuthenticationPrincipal User user,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         if (!roomFileService.canRead(roomId, user)) {
             throw new NotFoundException("Room not found");
         }
+        // Refresh the room-scoped preview cookie on every status poll so the
+        // (unauthenticated) proxy can authorize this member's iframe requests.
+        issuePreviewCookie(roomId, httpRequest, httpResponse);
         return currentStatus(roomId);
     }
 
@@ -77,5 +90,22 @@ public class PreviewController {
         return previewService.get(roomId)
                 .map(session -> new PreviewStatusResponse(true, session.command(), "/api/v1/preview/" + roomId + "/"))
                 .orElse(new PreviewStatusResponse(false, null, null));
+    }
+
+    /**
+     * Sets the signed, HttpOnly, room-scoped preview cookie. Path-scoped to
+     * {@code /api/v1/preview} so it rides the iframe's top-level load and every
+     * sub-resource, but is not sent on other API calls. {@code Secure} tracks
+     * the request scheme so it still works on the plain-HTTP tailnet.
+     */
+    private void issuePreviewCookie(UUID roomId, HttpServletRequest request, HttpServletResponse response) {
+        ResponseCookie cookie = ResponseCookie.from(PreviewTokenService.COOKIE_NAME, previewTokenService.issue(roomId))
+                .httpOnly(true)
+                .secure(request.isSecure())
+                .path("/api/v1/preview")
+                .maxAge(PreviewTokenService.TTL)
+                .sameSite("Lax")
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 }

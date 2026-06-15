@@ -26,10 +26,11 @@ import java.util.UUID;
  * Reverse-proxies {@code /api/v1/preview/{roomId}/**} to the room's live
  * dev-server container ({@code http://codeleon-preview-{roomId}:{port}/**}).
  *
- * <p>This endpoint is permitted without JWT (see SecurityConfig): an iframe's
- * requests do not carry the SPA's bearer token, and the deployment is reachable
- * only from the Tailscale tailnet, which is the access guard. Per-user hardening
- * (a scoped preview cookie) is a documented follow-up.
+ * <p>This endpoint carries no JWT (see SecurityConfig): an iframe's requests
+ * do not include the SPA's bearer token. Access is instead authorized by a
+ * signed, room-scoped, HttpOnly cookie ({@link PreviewTokenService}) that the
+ * authenticated start/status endpoints set for room members — so a request for
+ * a room the caller cannot read is rejected even within the tailnet.
  *
  * <p>HTTP only for now; WebSocket/HMR upgrade is handled separately (B.2).
  */
@@ -45,6 +46,7 @@ public class PreviewProxyController {
             "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length");
 
     private final PreviewService previewService;
+    private final PreviewTokenService previewTokenService;
 
     private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -53,6 +55,12 @@ public class PreviewProxyController {
 
     @RequestMapping("/preview/{roomId}/**")
     public void proxy(@PathVariable UUID roomId, HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        // The iframe carries no JWT; authorize via the room-scoped preview
+        // cookie the authenticated start/status endpoints set for members.
+        if (!previewTokenService.isValid(req.getCookies(), roomId)) {
+            writeNotice(resp, 401, "Preview access denied", "Open this preview from the room editor.");
+            return;
+        }
         PreviewSession session = previewService.get(roomId).orElse(null);
         if (session == null) {
             writeNotice(resp, 503, "No preview running", "Start a preview from the editor.");
