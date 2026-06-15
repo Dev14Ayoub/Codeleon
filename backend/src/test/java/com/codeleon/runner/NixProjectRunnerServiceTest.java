@@ -12,6 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NixProjectRunnerServiceTest {
 
+    // Zeros fall back to the record's defaults; the trailing 0 is
+    // maxConcurrentRuns (added when the runner concurrency gate landed).
+    private static final CodeRunnerProperties RUNNER_PROPS = new CodeRunnerProperties(
+            true, null, null, null, null,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            "/tmp"
+    );
+
     private final NixProjectRunnerService service = new NixProjectRunnerService(
             new NixRunnerProperties(
                     true,
@@ -26,11 +34,8 @@ class NixProjectRunnerServiceTest {
                     64,
                     8_192
             ),
-            new CodeRunnerProperties(
-                    true, null, null, null, null,
-                    0, 0, 0, 0, 0, 0, 0, 0,
-                    "/tmp"
-            )
+            RUNNER_PROPS,
+            new RunnerConcurrencyGate(RUNNER_PROPS)
     );
 
     @Test
