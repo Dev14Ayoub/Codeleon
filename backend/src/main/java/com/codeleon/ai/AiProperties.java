@@ -11,7 +11,7 @@ public record AiProperties(
         Qdrant qdrant
 ) {
     public AiProperties {
-        if (ollama == null) ollama = new Ollama(null, null, null, null, null);
+        if (ollama == null) ollama = new Ollama(null, null, null, null, null, 0);
         if (qdrant == null) qdrant = new Qdrant(null, null, 0, null);
     }
 
@@ -29,13 +29,18 @@ public record AiProperties(
      * calling, {@code qwen2.5-coder:3b} as a 2 GB compromise.
      */
     public record Ollama(String url, String chatModel, String agentModel,
-                          String embedModel, Duration requestTimeout) {
+                          String embedModel, Duration requestTimeout, int numCtx) {
         public Ollama {
             if (url == null || url.isBlank()) url = "http://localhost:11434";
             if (chatModel == null || chatModel.isBlank()) chatModel = "qwen2.5-coder:0.5b";
             if (agentModel == null || agentModel.isBlank()) agentModel = chatModel;
             if (embedModel == null || embedModel.isBlank()) embedModel = "nomic-embed-text";
             if (requestTimeout == null) requestTimeout = Duration.ofSeconds(60);
+            // Context window sent to Ollama as options.num_ctx. Ollama's own
+            // default is ~2048 tokens, which silently truncates a RAG prompt
+            // (active file + retrieved excerpts). 8192 fits the small CPU
+            // models used here; raise it via OLLAMA_NUM_CTX if RAM allows.
+            if (numCtx <= 0) numCtx = 8192;
         }
     }
 

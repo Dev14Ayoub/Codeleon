@@ -7,7 +7,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
 
 @Configuration
 @EnableConfigurationProperties(AiProperties.class)
@@ -17,12 +20,26 @@ public class AiConfig {
 
     @Bean
     public OllamaClient ollamaClient(RestClient.Builder builder, AiProperties props) {
-        return new OllamaClient(builder, props);
+        // Read timeout = the configured Ollama request timeout (CPU inference is
+        // slow). Without it the non-streaming embed/chat/agent calls have no
+        // read timeout, so a hung Ollama would block their threads forever.
+        return new OllamaClient(
+                withTimeouts(builder, Duration.ofSeconds(10), props.ollama().requestTimeout()), props);
     }
 
     @Bean
     public QdrantClient qdrantClient(RestClient.Builder builder, AiProperties props) {
-        return new QdrantClient(builder, props);
+        return new QdrantClient(
+                withTimeouts(builder, Duration.ofSeconds(5), Duration.ofSeconds(30)), props);
+    }
+
+    /** Clones the builder with connect/read timeouts so a stalled upstream
+     *  cannot wedge a request thread indefinitely. */
+    private static RestClient.Builder withTimeouts(RestClient.Builder builder, Duration connect, Duration read) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout((int) connect.toMillis());
+        factory.setReadTimeout((int) read.toMillis());
+        return builder.clone().requestFactory(factory);
     }
 
     @Bean

@@ -134,6 +134,9 @@ codeleon:
       # response. 60s was killing chats halfway through inference and
       # surfacing as a "Chat failed" toast on the frontend.
       request-timeout: ${OLLAMA_REQUEST_TIMEOUT:240s}
+      # Context window sent as options.num_ctx. Ollama's ~2048 default would
+      # silently truncate the RAG prompt; 8192 fits the small CPU models.
+      num-ctx: ${OLLAMA_NUM_CTX:8192}
     qdrant:
       url: ${QDRANT_URL:http://localhost:6333}
       collection: ${QDRANT_COLLECTION:codeleon-room-files}

@@ -42,6 +42,15 @@ public class RoomChatService {
             this is an editor sidebar, not a documentation page.
             """;
 
+    /**
+     * Aggregate char budget for the retrieved-excerpts section. Individual
+     * chunks are capped (~1500 chars), but topK of them together can overflow
+     * the model's context window — so we cap their sum and drop the
+     * lowest-ranked overflow. ~8000 chars ≈ 2000 tokens, leaving room for the
+     * active file, the run error, and the answer within an 8192-token num_ctx.
+     */
+    static final int MAX_EXCERPT_SECTION_CHARS = 8_000;
+
     private final OllamaStreamer streamer;
     private final HybridRetriever retriever;
     /**
@@ -263,8 +272,19 @@ public class RoomChatService {
         }
 
         sb.append("\n--- retrieved project excerpts ---\n");
+        int excerptChars = 0;
         for (int i = 0; i < hits.size(); i++) {
             RetrievedChunk h = hits.get(i);
+            String text = h.text() == null ? "" : h.text();
+            // Aggregate context budget: keep the top hit always, then stop
+            // adding once the excerpts section would exceed its budget. Hits
+            // are sorted best-first, so the dropped ones are the weakest.
+            if (i > 0 && excerptChars + text.length() > MAX_EXCERPT_SECTION_CHARS) {
+                sb.append("\n--- (").append(hits.size() - i)
+                        .append(" lower-ranked excerpt(s) omitted to fit the context budget) ---\n");
+                break;
+            }
+            excerptChars += text.length();
 
             sb.append("\n--- excerpt ").append(i + 1)
                     .append(" (path=").append(h.path());
@@ -280,7 +300,7 @@ public class RoomChatService {
             sb.append(", score=").append(String.format("%.2f", h.finalScore()))
                     .append(", source=").append(provenance(h))
                     .append(") ---\n")
-                    .append(h.text())
+                    .append(text)
                     .append("\n--- end excerpt ").append(i + 1).append(" ---\n");
         }
         return sb.toString();

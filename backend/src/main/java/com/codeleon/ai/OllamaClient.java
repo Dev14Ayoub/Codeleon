@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class OllamaClient {
@@ -31,11 +32,31 @@ public class OllamaClient {
         return response.embedding();
     }
 
+    /**
+     * Embeds a document chunk for indexing. nomic-embed-text is trained with
+     * task prefixes, so we prepend {@code search_document:} for nomic models;
+     * other embedders (e.g. all-minilm) are passed through unchanged.
+     */
+    public float[] embedDocument(String text) {
+        return embed(withEmbedPrefix("search_document: ", text));
+    }
+
+    /** Embeds a search query — see {@link #embedDocument} for the rationale. */
+    public float[] embedQuery(String text) {
+        return embed(withEmbedPrefix("search_query: ", text));
+    }
+
+    private String withEmbedPrefix(String prefix, String text) {
+        String model = config.embedModel();
+        boolean nomic = model != null && model.toLowerCase(Locale.ROOT).contains("nomic");
+        return nomic ? prefix + text : text;
+    }
+
     public String chat(List<ChatMessage> messages) {
         ChatResponse response = http.post()
                 .uri("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new ChatRequest(config.chatModel(), messages, null, false))
+                .body(new ChatRequest(config.chatModel(), messages, null, false, chatOptions()))
                 .retrieve()
                 .body(ChatResponse.class);
         if (response == null || response.message() == null) {
@@ -65,7 +86,7 @@ public class OllamaClient {
         ChatResponse response = http.post()
                 .uri("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new ChatRequest(config.agentModel(), messages, tools, false))
+                .body(new ChatRequest(config.agentModel(), messages, tools, false, chatOptions()))
                 .retrieve()
                 .body(ChatResponse.class);
         if (response == null || response.message() == null) {
@@ -76,6 +97,12 @@ public class OllamaClient {
 
     public AiProperties.Ollama config() {
         return config;
+    }
+
+    /** Per-request Ollama options. Pins the context window so a long RAG
+     *  prompt is not silently truncated to Ollama's ~2048-token default. */
+    private Map<String, Object> chatOptions() {
+        return Map.of("num_ctx", config.numCtx());
     }
 
     /**
@@ -140,7 +167,8 @@ public class OllamaClient {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record ChatRequest(String model, List<ChatMessage> messages, List<Map<String, Object>> tools, boolean stream) {
+    record ChatRequest(String model, List<ChatMessage> messages, List<Map<String, Object>> tools, boolean stream,
+                       Map<String, Object> options) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

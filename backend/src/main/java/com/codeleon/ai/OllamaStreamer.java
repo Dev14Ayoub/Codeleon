@@ -55,7 +55,10 @@ public class OllamaStreamer {
         Map<String, Object> body = Map.of(
                 "model", config.chatModel(),
                 "messages", messages,
-                "stream", true
+                "stream", true,
+                // Explicit context window — without this Ollama falls back to a
+                // ~2048-token default that silently truncates the RAG prompt.
+                "options", Map.of("num_ctx", config.numCtx())
         );
 
         HttpRequest request;

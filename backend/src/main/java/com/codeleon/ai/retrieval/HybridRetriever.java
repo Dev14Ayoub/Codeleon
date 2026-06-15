@@ -58,7 +58,7 @@ public class HybridRetriever {
         // fine — RRF degrades gracefully to whichever list has hits.
         List<QdrantClient.ScoredPoint> vectorHits;
         try {
-            float[] queryVector = ollama.embed(query);
+            float[] queryVector = ollama.embedQuery(query);
             Map<String, Object> filter = Map.of("must", List.of(
                     Map.of("key", "roomId", "match", Map.of("value", roomId.toString()))
             ));

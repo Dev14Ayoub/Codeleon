@@ -107,7 +107,7 @@ public class RoomFileIndexer {
         List<QdrantClient.Point> points = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             CodeChunk chunk = chunks.get(i);
-            float[] vector = ollama.embed(chunk.text());
+            float[] vector = ollama.embedDocument(chunk.text());
             points.add(new QdrantClient.Point(
                     deterministicId(roomId, resolvedPath, i),
                     vector,
