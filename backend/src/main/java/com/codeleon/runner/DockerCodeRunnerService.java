@@ -41,9 +41,11 @@ public class DockerCodeRunnerService implements CodeRunnerService {
     private static final Pattern JAVA_IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z_$][\\w$]*");
 
     private final CodeRunnerProperties props;
+    private final RunnerConcurrencyGate gate;
 
-    public DockerCodeRunnerService(CodeRunnerProperties props) {
+    public DockerCodeRunnerService(CodeRunnerProperties props, RunnerConcurrencyGate gate) {
         this.props = props;
+        this.gate = gate;
     }
 
     @Override
@@ -51,10 +53,10 @@ public class DockerCodeRunnerService implements CodeRunnerService {
         if (!props.enabled()) {
             throw new BadRequestException("Code execution is disabled on this server");
         }
-        return switch (request.language()) {
+        return gate.call(() -> switch (request.language()) {
             case PYTHON -> runPython(request);
             case JAVA -> runJava(request);
-        };
+        });
     }
 
     private RunResult runPython(RunRequest request) {

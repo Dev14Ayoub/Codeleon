@@ -17,6 +17,11 @@ public record CodeRunnerProperties(
         double cpus,
         int pidsLimit,
         int maxOutputBytes,
+        // Host-wide ceiling on concurrent sandbox runs (single-file, Maven
+        // and Nix). Each run spawns a memory/CPU-capped `docker run`; this
+        // bounds how many can stack up at once so a burst of run requests
+        // cannot exhaust the VM. Enforced by RunnerConcurrencyGate.
+        int maxConcurrentRuns,
         // Base directory under which the Maven and Nix runners create
         // per-run workspaces. Must resolve to the SAME absolute path on
         // both sides of the docker.sock bind mount in production — when
@@ -39,6 +44,7 @@ public record CodeRunnerProperties(
         if (cpus <= 0) cpus = 0.5;
         if (pidsLimit <= 0) pidsLimit = 64;
         if (maxOutputBytes <= 0) maxOutputBytes = 64 * 1024;
+        if (maxConcurrentRuns <= 0) maxConcurrentRuns = 3;
         if (workspaceBaseDir == null || workspaceBaseDir.isBlank()) workspaceBaseDir = "/tmp";
     }
 }

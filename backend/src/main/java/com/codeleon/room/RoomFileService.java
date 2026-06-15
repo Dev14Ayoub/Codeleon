@@ -190,6 +190,15 @@ public class RoomFileService {
         if (trimmed.startsWith("/") || trimmed.endsWith("/") || trimmed.contains("//")) {
             throw new BadRequestException("Invalid file path");
         }
+        // Reject traversal segments. Every disk sink (WorkspaceMaterializer,
+        // RoomAssetService, the Docker/Nix runners) already refuses a ".."
+        // path; allowing it here lets a crafted path (e.g. a GitHub import)
+        // be stored and then break materialize() for the whole room.
+        for (String segment : trimmed.split("/")) {
+            if (segment.equals("..")) {
+                throw new BadRequestException("Invalid file path");
+            }
+        }
         return trimmed;
     }
 

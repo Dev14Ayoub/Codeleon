@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -54,7 +55,7 @@ public class PreviewProxyController {
     public void proxy(@PathVariable UUID roomId, HttpServletRequest req, HttpServletResponse resp) throws IOException {
         PreviewSession session = previewService.get(roomId).orElse(null);
         if (session == null) {
-            writeNotice(resp, 503, "Aucun aperçu en cours", "Démarrez un aperçu depuis l'éditeur.");
+            writeNotice(resp, 503, "No preview running", "Start a preview from the editor.");
             return;
         }
         previewService.touch(roomId);
@@ -69,11 +70,22 @@ public class PreviewProxyController {
         URI upstream = URI.create("http://" + session.containerName() + ":" + session.port()
                 + rest + (query != null ? "?" + query : ""));
 
-        byte[] body = req.getInputStream().readAllBytes();
+        // Stream the request body through instead of buffering it with
+        // readAllBytes() — a large upload to the preview must not sit entirely
+        // in the backend heap. content-length is hop-by-hop (stripped below),
+        // so the upstream just receives the body chunked.
+        long contentLength = req.getContentLengthLong();
+        HttpRequest.BodyPublisher bodyPublisher = contentLength == 0
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofInputStream(() -> {
+                    try {
+                        return req.getInputStream();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
         HttpRequest.Builder builder = HttpRequest.newBuilder(upstream)
-                .method(req.getMethod(), body.length > 0
-                        ? HttpRequest.BodyPublishers.ofByteArray(body)
-                        : HttpRequest.BodyPublishers.noBody());
+                .method(req.getMethod(), bodyPublisher);
         Collections.list(req.getHeaderNames()).forEach(name -> {
             if (!HOP_BY_HOP.contains(name.toLowerCase())) {
                 Collections.list(req.getHeaders(name)).forEach(value -> {
@@ -99,11 +111,11 @@ public class PreviewProxyController {
             }
         } catch (IOException ex) {
             log.debug("Preview upstream not reachable for {}", roomId, ex);
-            writeNotice(resp, 502, "Aperçu pas encore prêt",
-                    "Le serveur de développement démarre ou a planté. Consultez les journaux.");
+            writeNotice(resp, 502, "Preview not ready yet",
+                    "The dev server is still starting or has crashed. Check the logs.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            writeNotice(resp, 502, "Aperçu interrompu", "Réessayez.");
+            writeNotice(resp, 502, "Preview interrupted", "Please try again.");
         }
     }
 

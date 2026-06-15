@@ -78,6 +78,10 @@ codeleon:
     cpus: ${RUNNER_CPUS:0.5}
     pids-limit: ${RUNNER_PIDS_LIMIT:64}
     max-output-bytes: ${RUNNER_MAX_OUTPUT_BYTES:65536}
+    # Host-wide ceiling on concurrent sandbox runs (single-file + Maven + Nix).
+    # Beyond this, /run returns a clear "busy" message instead of spawning
+    # another container and risking VM exhaustion.
+    max-concurrent-runs: ${RUNNER_MAX_CONCURRENT_RUNS:3}
     terminal:
       enabled: ${RUNNER_TERMINAL_ENABLED:true}
       # python:3.12-slim ships bash + python3 — a sane default sandbox shell.

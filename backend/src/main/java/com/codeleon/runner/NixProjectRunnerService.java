@@ -35,17 +35,23 @@ public class NixProjectRunnerService {
     // created. Must resolve to the same path host-side and container-side
     // so docker.sock-spawned siblings see what we just wrote.
     private final CodeRunnerProperties runnerProps;
+    // Shared host-wide cap on concurrent sandbox runs (see RunnerConcurrencyGate).
+    private final RunnerConcurrencyGate gate;
 
-    public NixProjectRunnerService(NixRunnerProperties props, CodeRunnerProperties runnerProps) {
+    public NixProjectRunnerService(NixRunnerProperties props, CodeRunnerProperties runnerProps, RunnerConcurrencyGate gate) {
         this.props = props;
         this.runnerProps = runnerProps;
+        this.gate = gate;
     }
 
     public ProjectRunResult run(ProjectRunRequest request) {
         if (!props.enabled()) {
             throw new BadRequestException("Nix project runner is disabled on this server");
         }
+        return gate.call(() -> runInternal(request));
+    }
 
+    private ProjectRunResult runInternal(ProjectRunRequest request) {
         ProjectRunSpec spec = detect(request);
         int fileCount = request.files() == null ? 0 : request.files().size();
         Path workspace = null;
