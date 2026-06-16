@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -40,8 +41,19 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     private final Map<String, TokenBucket> buckets = new ConcurrentHashMap<>();
 
+    /** Off in the test profile so suites that register many users in one run
+     *  are not throttled; on by default in dev/prod. */
+    private final boolean enabled;
+
+    public AuthRateLimitFilter(@Value("${codeleon.auth.rate-limit.enabled:true}") boolean enabled) {
+        this.enabled = enabled;
+    }
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        if (!enabled) {
+            return true;
+        }
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return true;
         }

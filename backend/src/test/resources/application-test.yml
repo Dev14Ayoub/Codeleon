@@ -16,6 +16,11 @@ spring:
     enabled: true
 
 codeleon:
+  auth:
+    # Disable per-IP auth rate limiting in tests — suites register many
+    # users from the same (mock) client and would otherwise hit 429.
+    rate-limit:
+      enabled: false
   security:
     jwt-secret: test_secret_key_for_codeleon_auth_tests_minimum_64_characters_long
     access-token-expiration-ms: 900000

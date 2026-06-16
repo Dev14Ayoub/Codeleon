@@ -40,6 +40,10 @@ app:
     ttl-hours: ${APP_VOICE_TTL_HOURS:24}
 
 codeleon:
+  auth:
+    # Per-IP rate limiting on /auth/login and /auth/register (AuthRateLimitFilter).
+    rate-limit:
+      enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
   security:
     jwt-secret: ${JWT_SECRET:replace_me_with_a_long_random_string_min_64_chars_for_HS256_security}
     access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:900000}
