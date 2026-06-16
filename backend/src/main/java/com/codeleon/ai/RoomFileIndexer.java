@@ -29,6 +29,14 @@ public class RoomFileIndexer {
     static final int CHUNK_SIZE = 500;
     static final int CHUNK_OVERLAP = 50;
 
+    /**
+     * Hard ceiling on chunks embedded per file. Each chunk is one (slow, CPU)
+     * embedding call, so a single huge/generated file (lockfile, minified
+     * bundle) could otherwise produce hundreds of calls and stall a whole
+     * project index. Beyond this we index only the head of the file.
+     */
+    static final int MAX_CHUNKS_PER_FILE = 120;
+
     private final OllamaClient ollama;
     private final QdrantClient qdrant;
     private final CodeChunkerDispatcher chunker;
@@ -101,6 +109,12 @@ public class RoomFileIndexer {
             if (bm25 != null) bm25.deletePath(roomId, resolvedPath);
             if (snapshots != null) snapshots.deletePath(roomId, resolvedPath);
             return new IndexResult(0, System.currentTimeMillis() - start);
+        }
+
+        if (chunks.size() > MAX_CHUNKS_PER_FILE) {
+            log.warn("File {} in room {} produced {} chunks; capping at {} to bound embedding work",
+                    resolvedPath, roomId, chunks.size(), MAX_CHUNKS_PER_FILE);
+            chunks = new ArrayList<>(chunks.subList(0, MAX_CHUNKS_PER_FILE));
         }
 
         Language language = chunker.detect(resolvedPath);

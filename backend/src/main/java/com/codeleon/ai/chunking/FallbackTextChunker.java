@@ -18,11 +18,13 @@ import java.util.List;
  */
 public final class FallbackTextChunker implements CodeChunker {
 
-    /** Window size, in characters. Tuned for the embedding model's input budget. */
-    static final int CHUNK_SIZE = 500;
+    /** Window size, in characters. Aligned with the code chunkers'
+     *  MAX_CHUNK_CHARS (1500) so non-code files don't explode into ~3× more
+     *  chunks — each chunk is one CPU embedding call. */
+    static final int CHUNK_SIZE = 1_500;
 
     /** Sliding overlap so a sentence cut by the window edge appears in both halves. */
-    static final int CHUNK_OVERLAP = 50;
+    static final int CHUNK_OVERLAP = 150;
 
     @Override
     public List<CodeChunk> chunk(String text) {

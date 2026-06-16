@@ -6,6 +6,8 @@ import com.codeleon.room.RoomFileService;
 import com.codeleon.user.User;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +21,8 @@ import java.util.UUID;
 @RequestMapping("/rooms/{roomId}/index")
 @RequiredArgsConstructor
 public class IndexController {
+
+    private static final Logger log = LoggerFactory.getLogger(IndexController.class);
 
     private final RoomFileIndexer indexer;
     private final RoomFileService roomFileService;
@@ -59,12 +63,22 @@ public class IndexController {
         }
         int totalChunks = 0;
         long totalDuration = 0;
+        int failed = 0;
         indexer.deleteRoomIndex(roomId);
         for (IndexAllRequest.IndexFile file : request.files()) {
-            IndexResult result = indexer.index(roomId, file.pathOrDefault(), file.text());
-            totalChunks += result.chunks();
-            totalDuration += result.durationMs();
+            // Per-file isolation: one bad file (embed/Qdrant error, oversized
+            // or pathological content) must NOT abort the whole batch and
+            // leave the room unindexed. Skip it, count it, keep going.
+            try {
+                IndexResult result = indexer.index(roomId, file.pathOrDefault(), file.text());
+                totalChunks += result.chunks();
+                totalDuration += result.durationMs();
+            } catch (RuntimeException ex) {
+                failed++;
+                log.warn("Skipping file '{}' during bulk index of room {}: {}",
+                        file.pathOrDefault(), roomId, ex.getMessage());
+            }
         }
-        return new IndexResult(totalChunks, totalDuration);
+        return new IndexResult(totalChunks, totalDuration, failed);
     }
 }

@@ -40,9 +40,9 @@ class CodeChunkerDispatcherTest {
 
     @Test
     void unknownExtensionUsesFallbackTextChunker() {
-        // path="main" was the default in the pre-AST indexer; behaviour
-        // must match exactly so legacy callers see the same chunk count.
-        String text = "a".repeat(1200);
+        // path="main" routes to the fallback text chunker. 3600 'a's →
+        // 3 windows of 1500 with 150 overlap (step 1350).
+        String text = "a".repeat(3600);
         List<CodeChunk> chunks = dispatcher.chunk("main", text);
         assertThat(chunks).hasSize(3);
         assertThat(chunks).allMatch(c -> c.symbolKind() == CodeChunk.SymbolKind.TEXT);

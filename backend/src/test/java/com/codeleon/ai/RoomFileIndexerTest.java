@@ -37,7 +37,7 @@ class RoomFileIndexerTest {
     void indexesShortTextAsSingleChunk() {
         OllamaClient ollama = mock(OllamaClient.class);
         QdrantClient qdrant = mock(QdrantClient.class);
-        when(ollama.embed(any())).thenReturn(new float[]{0.1f, 0.2f, 0.3f});
+        when(ollama.embedDocument(any())).thenReturn(new float[]{0.1f, 0.2f, 0.3f});
 
         UUID roomId = UUID.randomUUID();
         RoomFileIndexer indexer = new RoomFileIndexer(ollama, qdrant);
@@ -46,7 +46,7 @@ class RoomFileIndexerTest {
         assertThat(result.chunks()).isEqualTo(1);
         verify(qdrant).ensureCollection();
         verify(qdrant).deleteByFilter(any());
-        verify(ollama, times(1)).embed("hello world");
+        verify(ollama, times(1)).embedDocument("hello world");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<QdrantClient.Point>> captor = ArgumentCaptor.forClass(List.class);
@@ -67,15 +67,17 @@ class RoomFileIndexerTest {
     void indexesLongTextAsMultipleChunks() {
         OllamaClient ollama = mock(OllamaClient.class);
         QdrantClient qdrant = mock(QdrantClient.class);
-        when(ollama.embed(any())).thenReturn(new float[]{0.0f});
+        when(ollama.embedDocument(any())).thenReturn(new float[]{0.0f});
 
-        String text = "a".repeat(1200);
+        // 3600 chars → 3 windows of 1500 (overlap 150, step 1350) via the
+        // fallback text chunker.
+        String text = "a".repeat(3600);
         UUID roomId = UUID.randomUUID();
         RoomFileIndexer indexer = new RoomFileIndexer(ollama, qdrant);
         IndexResult result = indexer.index(roomId, "main", text);
 
         assertThat(result.chunks()).isEqualTo(3);
-        verify(ollama, times(3)).embed(any());
+        verify(ollama, times(3)).embedDocument(any());
         verify(qdrant).upsert(anyList());
     }
 

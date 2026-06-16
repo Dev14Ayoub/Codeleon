@@ -554,6 +554,9 @@ export async function importGithub(
 export interface IndexResult {
   chunks: number;
   durationMs: number;
+  /** Files skipped during bulk indexing because they failed (embed/Qdrant
+   *  error, pathological content). 0 or absent on a clean run. */
+  failedFiles?: number;
 }
 
 export async function indexRoom(

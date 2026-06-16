@@ -216,10 +216,13 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
     try {
       const result = await indexRoomAll(roomId, files);
       lastIndexedSignatureRef.current = signature;
+      const failed = result.failedFiles ?? 0;
+      const ok = files.length - failed;
       setIndexStatus("indexed");
       setIndexInfo(
-        `Indexed ${files.length} file${files.length === 1 ? "" : "s"} · ` +
-          `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)`,
+        `Indexed ${ok}/${files.length} file${files.length === 1 ? "" : "s"} · ` +
+          `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)` +
+          (failed > 0 ? ` · ${failed} skipped` : ""),
       );
     } catch (ex) {
       setIndexStatus("failed");

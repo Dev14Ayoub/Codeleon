@@ -27,23 +27,24 @@ class FallbackTextChunkerTest {
 
     @Test
     void longTextSplitsIntoMultipleChunks() {
-        // 1200 'a's → 3 windows of 500 with 50 overlap.
-        List<CodeChunk> chunks = chunker.chunk("a".repeat(1200));
+        // 3600 'a's → 3 windows of 1500 with 150 overlap (step 1350):
+        // [0,1500), [1350,2850), [2700,3600).
+        List<CodeChunk> chunks = chunker.chunk("a".repeat(3600));
         assertThat(chunks).hasSize(3);
     }
 
     @Test
     void chunkAfterBlankWindowReportsCorrectLineRange() {
-        // 600 newlines = 600 chars of pure whitespace. The first 500-char
+        // 1700 newlines = 1700 chars of pure whitespace. The first 1500-char
         // window strips to "" and is therefore SKIPPED. The next window
-        // starts at offset 450 (CHUNK_SIZE - CHUNK_OVERLAP) and overlaps
+        // starts at offset 1350 (CHUNK_SIZE - CHUNK_OVERLAP) and overlaps
         // the real content marker further down.
         //
         // Before the cursor-sync fix this chunk's startLine reported back
         // as line 1 because FallbackTextChunker's cursor stayed at 0
         // (incrementing only per emitted slice, not per attempted window).
         StringBuilder src = new StringBuilder();
-        for (int i = 0; i < 600; i++) src.append('\n');
+        for (int i = 0; i < 1700; i++) src.append('\n');
         src.append("REAL_CONTENT_LINE\nREAL_CONTENT_LINE_2\n");
 
         List<CodeChunk> chunks = chunker.chunk(src.toString());
