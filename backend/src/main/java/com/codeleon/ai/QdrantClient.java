@@ -15,6 +15,14 @@ public class QdrantClient {
 
     private static final Logger log = LoggerFactory.getLogger(QdrantClient.class);
 
+    /** Cap on points per upsert request. A single PUT carrying ~50 chunks of
+     *  768-dim vectors plus text payloads is large enough to occasionally
+     *  trip "Error writing request body" between the backend and Qdrant on
+     *  this single-host deployment. Smaller batches eliminate that. */
+    private static final int UPSERT_BATCH_SIZE = 32;
+    /** Retries per batch on a transient I/O / 5xx error before giving up. */
+    private static final int UPSERT_MAX_RETRIES = 2;
+
     private final RestClient http;
     private final AiProperties.Qdrant config;
 
@@ -56,12 +64,44 @@ public class QdrantClient {
     }
 
     public void upsert(List<Point> points) {
-        http.put()
-                .uri("/collections/{name}/points?wait=true", config.collection())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("points", points))
-                .retrieve()
-                .toBodilessEntity();
+        if (points == null || points.isEmpty()) return;
+        // Split into bounded sub-batches: a big single PUT was the source of
+        // the "Error writing request body to server" failures seen on prod
+        // (Qdrant itself was happy — the error came from the request-write
+        // side). Retry each sub-batch a couple of times to absorb transient
+        // network blips; a sub-batch that still fails is rethrown and only
+        // its slice of chunks is lost, not the whole file.
+        for (int i = 0; i < points.size(); i += UPSERT_BATCH_SIZE) {
+            List<Point> batch = points.subList(i, Math.min(i + UPSERT_BATCH_SIZE, points.size()));
+            upsertBatchWithRetry(batch, i);
+        }
+    }
+
+    private void upsertBatchWithRetry(List<Point> batch, int offset) {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt <= UPSERT_MAX_RETRIES; attempt++) {
+            try {
+                http.put()
+                        .uri("/collections/{name}/points?wait=true", config.collection())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("points", batch))
+                        .retrieve()
+                        .toBodilessEntity();
+                return;
+            } catch (RuntimeException ex) {
+                last = ex;
+                if (attempt == UPSERT_MAX_RETRIES) break;
+                log.debug("Qdrant upsert batch (offset {}, size {}) failed (attempt {}): {} — retrying",
+                        offset, batch.size(), attempt + 1, ex.getMessage());
+                try {
+                    Thread.sleep(150L * (attempt + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw last;
+                }
+            }
+        }
+        throw last;
     }
 
     public void deleteByFilter(Map<String, Object> filter) {
