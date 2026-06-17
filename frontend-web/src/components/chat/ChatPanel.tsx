@@ -8,6 +8,7 @@ import {
   fetchChatHistory,
   fetchChatThreads,
   getApiErrorMessage,
+  indexRoom,
   indexRoomAll,
   type IndexFile,
 } from "@/lib/api";
@@ -40,11 +41,6 @@ interface ChatPanelProps {
    * to a non-interactive label when missing.
    */
   onJumpToFile?: (path: string, line?: number) => void;
-}
-
-/** Cheap change-detection key for a project snapshot. */
-function signatureOf(files: IndexFile[]): string {
-  return JSON.stringify(files.map((file) => [file.path, file.text]));
 }
 
 const MAX_INDEX_FILES = 1_000;
@@ -144,7 +140,9 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Signature of the project the last successful index covered. Lets us
   // skip re-indexing on a chat send when nothing changed since last time.
-  const lastIndexedSignatureRef = useRef<string>("");
+  // path -> last-indexed text, so a re-index only re-embeds the files that
+  // actually changed (the "edit one file, ask again" loop stays fast).
+  const lastIndexedFilesRef = useRef<Map<string, string>>(new Map());
 
   // Owner-only review state: when non-null, the panel renders the
   // chosen member's thread in read-only mode instead of the caller's
@@ -241,25 +239,57 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
       );
       return;
     }
-    const signature = signatureOf(files);
-    if (!force && signature === lastIndexedSignatureRef.current) return;
+    const prev = lastIndexedFilesRef.current;
+    const currentMap = new Map(files.map((file) => [file.path, file.text] as const));
+    const changed = files.filter((file) => prev.get(file.path) !== file.text);
+    const removed = [...prev.keys()].some((path) => !currentMap.has(path));
+
+    // Nothing changed since the last index → no-op (the chat-send path).
+    if (!force && prev.size > 0 && changed.length === 0 && !removed) return;
+
+    // Incremental only when we have a prior baseline, nothing was removed,
+    // and the caller did not force a full rebuild. A removal needs the full
+    // path because deleteRoomIndex is what clears the stale chunks.
+    const incremental = !force && prev.size > 0 && !removed;
 
     setIndexing(true);
     setIndexStatus("indexing");
     setIndexError(null);
     setIndexInfo(null);
     try {
-      const result = await indexRoomAll(roomId, files);
-      lastIndexedSignatureRef.current = signature;
-      const failed = result.failedFiles ?? 0;
-      const ok = files.length - failed;
-      setIndexStatus("indexed");
-      setIndexInfo(
-        `Indexed ${ok}/${files.length} file${files.length === 1 ? "" : "s"} · ` +
-          `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)` +
-          (failed > 0 ? ` · ${failed} skipped` : "") +
-          (excluded > 0 ? ` · ${excluded} generated excluded` : ""),
-      );
+      if (incremental) {
+        let chunks = 0;
+        let durationMs = 0;
+        let failed = 0;
+        for (const file of changed) {
+          try {
+            const r = await indexRoom(roomId, { path: file.path, text: file.text });
+            chunks += r.chunks;
+            durationMs += r.durationMs;
+          } catch {
+            failed += 1;
+          }
+        }
+        lastIndexedFilesRef.current = currentMap;
+        setIndexStatus("indexed");
+        setIndexInfo(
+          `Re-indexed ${changed.length} changed file${changed.length === 1 ? "" : "s"} · ` +
+            `${chunks} chunk${chunks === 1 ? "" : "s"} (${durationMs} ms)` +
+            (failed > 0 ? ` · ${failed} skipped` : ""),
+        );
+      } else {
+        const result = await indexRoomAll(roomId, files);
+        lastIndexedFilesRef.current = currentMap;
+        const failed = result.failedFiles ?? 0;
+        const ok = files.length - failed;
+        setIndexStatus("indexed");
+        setIndexInfo(
+          `Indexed ${ok}/${files.length} file${files.length === 1 ? "" : "s"} · ` +
+            `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)` +
+            (failed > 0 ? ` · ${failed} skipped` : "") +
+            (excluded > 0 ? ` · ${excluded} generated excluded` : ""),
+        );
+      }
     } catch (ex) {
       setIndexStatus("failed");
       setIndexError(getApiErrorMessage(ex, "Indexing failed"));
