@@ -121,15 +121,25 @@ public class RoomFileIndexer {
         List<QdrantClient.Point> points = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             CodeChunk chunk = chunks.get(i);
-            float[] vector = ollama.embedDocument(chunk.text());
-            points.add(new QdrantClient.Point(
-                    deterministicId(roomId, resolvedPath, i),
-                    vector,
-                    buildPayload(roomId, resolvedPath, i, chunk, language)
-            ));
+            // Per-chunk isolation: a chunk that overflows the embedder's token
+            // window (minified or non-Latin content) must not drop the whole
+            // file — skip just that chunk's vector. BM25 still indexes it below.
+            try {
+                float[] vector = ollama.embedDocument(chunk.text());
+                points.add(new QdrantClient.Point(
+                        deterministicId(roomId, resolvedPath, i),
+                        vector,
+                        buildPayload(roomId, resolvedPath, i, chunk, language)
+                ));
+            } catch (RuntimeException ex) {
+                log.warn("Skipping chunk {} of '{}' (room {}): embedding failed: {}",
+                        i, resolvedPath, roomId, ex.getMessage());
+            }
         }
 
-        qdrant.upsert(points);
+        if (!points.isEmpty()) {
+            qdrant.upsert(points);
+        }
         if (bm25 != null) bm25.upsertFile(roomId, resolvedPath, chunks);
         // Mirror the full file text for agent tools (read_file/list_files).
         // The chunker is destructive — symbols are split — so we have to

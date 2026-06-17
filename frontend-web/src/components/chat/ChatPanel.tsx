@@ -51,6 +51,37 @@ const MAX_INDEX_FILES = 1_000;
 const MAX_INDEX_TEXT_CHARS = 200_000;
 type IndexStatus = "idle" | "indexing" | "indexed" | "failed" | "blocked" | "empty";
 
+const INDEX_VENDOR_SEGMENTS = [
+  "node_modules", "dist", "build", "out", ".next", ".nuxt", "vendor",
+  "target", "__pycache__", ".git", "coverage",
+];
+const INDEX_LOCKFILES = new Set([
+  "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "composer.lock",
+  "cargo.lock", "poetry.lock", "gemfile.lock",
+]);
+
+/**
+ * Keeps generated/vendor and minified files OUT of the RAG index. They bloat
+ * the index, slow embedding, and minified/non-Latin bundles overflow the
+ * embedder's token window (e.g. assets/js/translation.js). They are still
+ * materialized for run/preview — this filter is index-only.
+ */
+function isIndexableForRag(file: IndexFile): boolean {
+  const segments = file.path.toLowerCase().split("/");
+  const base = segments[segments.length - 1] ?? "";
+  if (segments.some((s) => INDEX_VENDOR_SEGMENTS.includes(s))) return false;
+  if (INDEX_LOCKFILES.has(base)) return false;
+  if (base.endsWith(".min.js") || base.endsWith(".min.css") || base.endsWith(".map")) return false;
+  // Minified/bundled heuristic: a very long longest-line means it is not
+  // human-written source and would overflow the embedder.
+  let longest = 0;
+  for (const line of file.text.split("\n")) {
+    if (line.length > longest) longest = line.length;
+    if (longest > 5_000) return false;
+  }
+  return true;
+}
+
 /**
  * Slash-command shortcuts shown above the input when it is empty. Each
  * one is a thin template — the textarea is pre-filled with the prompt,
@@ -183,7 +214,11 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
    */
   const indexProject = async (force: boolean): Promise<void> => {
     if (indexing) return;
-    const files = getAllFiles();
+    // Index only real source files; generated/vendor/minified are excluded
+    // (they are still materialized for run/preview).
+    const allFiles = getAllFiles();
+    const files = allFiles.filter(isIndexableForRag);
+    const excluded = allFiles.length - files.length;
     if (files.length === 0) {
       if (force) {
         setIndexStatus("empty");
@@ -222,7 +257,8 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
       setIndexInfo(
         `Indexed ${ok}/${files.length} file${files.length === 1 ? "" : "s"} · ` +
           `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)` +
-          (failed > 0 ? ` · ${failed} skipped` : ""),
+          (failed > 0 ? ` · ${failed} skipped` : "") +
+          (excluded > 0 ? ` · ${excluded} generated excluded` : ""),
       );
     } catch (ex) {
       setIndexStatus("failed");
