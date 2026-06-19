@@ -8,6 +8,7 @@ import {
   indexRoomAll,
   type IndexFile,
 } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
 
 export type IndexStatus = "idle" | "indexing" | "indexed" | "failed" | "blocked" | "empty";
 
@@ -64,6 +65,16 @@ function isAiDisabled(error: unknown): boolean {
   return message.toLowerCase().includes("ai features are disabled");
 }
 
+/**
+ * A 401 surfacing here means the axios refresh interceptor could not recover
+ * the session (expired/rotated tokens). For a background process we must not
+ * surface this as a scary "failed" state — the app's normal auth flow handles
+ * re-login. We just pause until the next trigger.
+ */
+function isAuthError(error: unknown): boolean {
+  return error instanceof AxiosError && error.response?.status === 401;
+}
+
 export interface RoomAutoIndex {
   status: IndexStatus;
   info: string | null;
@@ -111,6 +122,9 @@ export function useRoomAutoIndex(
   const flush = useCallback(
     async (force = false): Promise<void> => {
       if (!enabled || !roomId || aiDisabledRef.current) return;
+      // Never fire a request that is guaranteed to 401: no session, no index.
+      // (e.g. after a logout, or before the auth store is hydrated.)
+      if (!useAuthStore.getState().accessToken) return;
       if (runningRef.current) {
         // Coalesce: remember that more work arrived and run once after.
         queuedRef.current = true;
@@ -127,10 +141,17 @@ export function useRoomAutoIndex(
             const seeded = new Map<string, string>();
             for (const f of serverState.files) seeded.set(f.path, f.hash);
             baselineRef.current = seeded;
-          } catch {
-            // Treat as empty baseline — a full index will follow.
+            baselineLoadedRef.current = true;
+          } catch (ex) {
+            // If the session is gone, abort quietly rather than charging into
+            // a full index that will 401 too and surface a scary error.
+            if (isAuthError(ex)) {
+              setStatus("idle");
+              return;
+            }
+            // Non-auth error → treat as empty baseline; a full index follows.
+            baselineLoadedRef.current = true;
           }
-          baselineLoadedRef.current = true;
         }
 
         const all = getAllFilesRef.current();
@@ -235,6 +256,18 @@ export function useRoomAutoIndex(
         if (isAiDisabled(ex)) {
           aiDisabledRef.current = true;
           setStatus("idle");
+          return;
+        }
+        if (isAuthError(ex)) {
+          // Background runs stay quiet — the interceptor already tried to
+          // refresh; the next trigger (or the user's next action) recovers.
+          // A manual re-index gets a clear, actionable message.
+          if (force) {
+            setStatus("failed");
+            setError("Your session expired. Reload the page or sign in again, then re-index.");
+          } else {
+            setStatus("idle");
+          }
           return;
         }
         setStatus("failed");
