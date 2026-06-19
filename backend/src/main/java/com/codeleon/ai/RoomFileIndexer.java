@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,19 +48,34 @@ public class RoomFileIndexer {
     private final Bm25Searcher bm25;
     /** Optional file content mirror for agent tools. Null in legacy tests. */
     private final RoomFileSnapshotStore snapshots;
+    /** Optional persistent baseline of what is indexed (path -> content hash).
+     *  Null in legacy unit tests; production wiring always supplies it. */
+    private final RoomFileIndexStateRepository indexState;
 
     // @Autowired pins Spring to this constructor; without it the container
-    // sees four public constructors, can't pick one, and falls back to the
+    // sees several public constructors, can't pick one, and falls back to the
     // missing no-arg ctor — wiping every controller that depends on us.
     @Autowired
     public RoomFileIndexer(OllamaClient ollama, QdrantClient qdrant,
                             CodeChunkerDispatcher chunker, Bm25Searcher bm25,
-                            RoomFileSnapshotStore snapshots) {
+                            RoomFileSnapshotStore snapshots,
+                            RoomFileIndexStateRepository indexState) {
         this.ollama = ollama;
         this.qdrant = qdrant;
         this.chunker = chunker;
         this.bm25 = bm25;
         this.snapshots = snapshots;
+        this.indexState = indexState;
+    }
+
+    /**
+     * Backward-compatible constructor for unit tests that pre-date the
+     * persistent index-state store. Drops the durable baseline.
+     */
+    public RoomFileIndexer(OllamaClient ollama, QdrantClient qdrant,
+                            CodeChunkerDispatcher chunker, Bm25Searcher bm25,
+                            RoomFileSnapshotStore snapshots) {
+        this(ollama, qdrant, chunker, bm25, snapshots, null);
     }
 
     /**
@@ -66,7 +84,7 @@ public class RoomFileIndexer {
      */
     public RoomFileIndexer(OllamaClient ollama, QdrantClient qdrant,
                             CodeChunkerDispatcher chunker, Bm25Searcher bm25) {
-        this(ollama, qdrant, chunker, bm25, null);
+        this(ollama, qdrant, chunker, bm25, null, null);
     }
 
     /**
@@ -74,7 +92,7 @@ public class RoomFileIndexer {
      * Skips the lexical index — vector retrieval still works on its own.
      */
     public RoomFileIndexer(OllamaClient ollama, QdrantClient qdrant, CodeChunkerDispatcher chunker) {
-        this(ollama, qdrant, chunker, null, null);
+        this(ollama, qdrant, chunker, null, null, null);
     }
 
     /**
@@ -84,7 +102,7 @@ public class RoomFileIndexer {
      * pre-AST indexer.
      */
     public RoomFileIndexer(OllamaClient ollama, QdrantClient qdrant) {
-        this(ollama, qdrant, CodeChunkerDispatcher.defaultInstance(), null, null);
+        this(ollama, qdrant, CodeChunkerDispatcher.defaultInstance(), null, null, null);
     }
 
     public void deleteRoomIndex(UUID roomId) {
@@ -92,6 +110,7 @@ public class RoomFileIndexer {
         qdrant.deleteByFilter(filterForRoom(roomId));
         if (bm25 != null) bm25.deleteRoom(roomId);
         if (snapshots != null) snapshots.deleteRoom(roomId);
+        if (indexState != null) indexState.deleteByRoomId(roomId);
     }
 
     /**
@@ -109,6 +128,77 @@ public class RoomFileIndexer {
         }
     }
 
+    /**
+     * Best-effort removal of a single file's index entries (vectors, BM25,
+     * snapshot, durable baseline). Used by the room-file delete/rename paths
+     * so a removed file's chunks cannot linger even when no client gets the
+     * chance to re-index (e.g. the browser is closed right after the delete).
+     */
+    public void deletePathQuietly(UUID roomId, String path) {
+        if (path == null || path.isBlank()) return;
+        try {
+            // Empty text routes through index()'s "no chunks" branch, which
+            // deletes the path's vectors, BM25 docs, snapshot and state row.
+            index(roomId, path, "");
+        } catch (RuntimeException ex) {
+            log.warn("Failed to purge index for path '{}' in room {}: {}", path, roomId, ex.getMessage());
+        }
+    }
+
+    /**
+     * Durable index baseline for a room: {@code path -> content hash}. Lets a
+     * client diff the project's current content against what is already
+     * embedded and re-index only the files that changed. Empty when nothing
+     * is indexed or the state store is absent (legacy unit tests).
+     */
+    public Map<String, String> indexState(UUID roomId) {
+        if (indexState == null) return Map.of();
+        Map<String, String> out = new HashMap<>();
+        for (RoomFileIndexState row : indexState.findByRoomId(roomId)) {
+            out.put(row.getPath(), row.getContentHash());
+        }
+        return out;
+    }
+
+    private void persistState(UUID roomId, String path, String text) {
+        try {
+            String hash = sha256(text);
+            RoomFileIndexState row = indexState.findByRoomIdAndPath(roomId, path).orElse(null);
+            if (row == null) {
+                row = RoomFileIndexState.builder()
+                        .roomId(roomId)
+                        .path(path)
+                        .contentHash(hash)
+                        .indexedAt(Instant.now())
+                        .build();
+            } else {
+                row.setContentHash(hash);
+                row.setIndexedAt(Instant.now());
+            }
+            indexState.save(row);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to persist index state for path '{}' in room {}: {}", path, roomId, ex.getMessage());
+        }
+    }
+
+    /** Lowercase hex SHA-256 of the UTF-8 bytes of {@code text}. Must match the
+     *  digest the frontend computes (crypto.subtle SHA-256) so the two views
+     *  of "is this file already indexed" agree. */
+    static String sha256(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
+    }
+
     public IndexResult index(UUID roomId, String path, String text) {
         long start = System.currentTimeMillis();
         String resolvedPath = (path == null || path.isBlank()) ? "main" : path;
@@ -123,6 +213,7 @@ public class RoomFileIndexer {
             // from "had content" to "empty" doesn't leave ghosts in the index.
             if (bm25 != null) bm25.deletePath(roomId, resolvedPath);
             if (snapshots != null) snapshots.deletePath(roomId, resolvedPath);
+            if (indexState != null) indexState.deleteByRoomIdAndPath(roomId, resolvedPath);
             return new IndexResult(0, System.currentTimeMillis() - start);
         }
 
@@ -160,6 +251,10 @@ public class RoomFileIndexer {
         // The chunker is destructive — symbols are split — so we have to
         // store the raw input rather than reconstructing from chunks.
         if (snapshots != null) snapshots.put(roomId, resolvedPath, text);
+        // Record the durable baseline so clients can skip re-embedding this
+        // exact text on a later mount/refresh. Best-effort: a state write
+        // failure must not fail an otherwise successful index.
+        if (indexState != null) persistState(roomId, resolvedPath, text);
         long duration = System.currentTimeMillis() - start;
         log.info("Indexed {} chunks for room {} path {} ({}) in {} ms",
                 chunks.size(), roomId, resolvedPath, language, duration);

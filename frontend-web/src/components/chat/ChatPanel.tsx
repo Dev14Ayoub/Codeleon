@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Database, Eye, Loader2, RefreshCw, Send, Sparkles, Trash2, Users, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Eye, Loader2, RefreshCw, Send, Sparkles, Trash2, Users, Wrench, X, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,19 +7,17 @@ import { useRoomChat, type ChatContextChunk, type ChatMessage, type PatchProposa
 import {
   fetchChatHistory,
   fetchChatThreads,
-  getApiErrorMessage,
-  indexRoom,
-  indexRoomAll,
-  type IndexFile,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { IndexStatus, RoomAutoIndex } from "@/lib/ai/useRoomAutoIndex";
 
 interface ChatPanelProps {
   roomId: string;
   /** Returns the current editor text — sent as live context with each chat turn. */
   getEditorText: () => string;
-  /** Snapshots every file in the project — used to index the whole room for RAG. */
-  getAllFiles: () => IndexFile[];
+  /** Room-level auto-indexer. Owns RAG indexing; the panel only reflects its
+   *  status and triggers a flush before each send / on the manual button. */
+  autoIndex: RoomAutoIndex;
   /** Path of the file the user currently has open, attached to each chat turn. */
   activeFilePath: string | null;
   /** stderr of the most recent Run, if any — lets the assistant debug the actual error. */
@@ -41,41 +39,6 @@ interface ChatPanelProps {
    * to a non-interactive label when missing.
    */
   onJumpToFile?: (path: string, line?: number) => void;
-}
-
-const MAX_INDEX_FILES = 1_000;
-const MAX_INDEX_TEXT_CHARS = 200_000;
-type IndexStatus = "idle" | "indexing" | "indexed" | "failed" | "blocked" | "empty";
-
-const INDEX_VENDOR_SEGMENTS = [
-  "node_modules", "dist", "build", "out", ".next", ".nuxt", "vendor",
-  "target", "__pycache__", ".git", "coverage",
-];
-const INDEX_LOCKFILES = new Set([
-  "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "composer.lock",
-  "cargo.lock", "poetry.lock", "gemfile.lock",
-]);
-
-/**
- * Keeps generated/vendor and minified files OUT of the RAG index. They bloat
- * the index, slow embedding, and minified/non-Latin bundles overflow the
- * embedder's token window (e.g. assets/js/translation.js). They are still
- * materialized for run/preview — this filter is index-only.
- */
-function isIndexableForRag(file: IndexFile): boolean {
-  const segments = file.path.toLowerCase().split("/");
-  const base = segments[segments.length - 1] ?? "";
-  if (segments.some((s) => INDEX_VENDOR_SEGMENTS.includes(s))) return false;
-  if (INDEX_LOCKFILES.has(base)) return false;
-  if (base.endsWith(".min.js") || base.endsWith(".min.css") || base.endsWith(".map")) return false;
-  // Minified/bundled heuristic: a very long longest-line means it is not
-  // human-written source and would overflow the embedder.
-  let longest = 0;
-  for (const line of file.text.split("\n")) {
-    if (line.length > longest) longest = line.length;
-    if (longest > 5_000) return false;
-  }
-  return true;
 }
 
 /**
@@ -125,24 +88,15 @@ function buildSlashTemplate(cmd: SlashCommand, activeFilePath: string | null): s
   return cmd.template(activeFilePath);
 }
 
-export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile }: ChatPanelProps) {
+export function ChatPanel({ roomId, getEditorText, autoIndex, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile }: ChatPanelProps) {
   const chat = useRoomChat(roomId);
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
-  const [indexing, setIndexing] = useState(false);
-  const [indexStatus, setIndexStatus] = useState<IndexStatus>("idle");
-  const [indexInfo, setIndexInfo] = useState<string | null>(null);
-  const [indexError, setIndexError] = useState<string | null>(null);
   // Agent mode is opt-in: it routes each turn through the tool-using
   // loop instead of the one-shot RAG pipeline. Default off so existing
   // muscle memory is preserved.
   const [agentMode, setAgentMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Signature of the project the last successful index covered. Lets us
-  // skip re-indexing on a chat send when nothing changed since last time.
-  // path -> last-indexed text, so a re-index only re-embeds the files that
-  // actually changed (the "edit one file, ask again" loop stays fast).
-  const lastIndexedFilesRef = useRef<Map<string, string>>(new Map());
 
   // Owner-only review state: when non-null, the panel renders the
   // chosen member's thread in read-only mode instead of the caller's
@@ -204,108 +158,14 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
   const isReviewing = reviewingUserId !== null;
   const visibleMessages = isReviewing ? reviewMessages : chat.messages;
 
-  /**
-   * Indexes every file in the project. With force=false it is a no-op
-   * when nothing changed since the last index (the chat-send path), so a
-   * back-and-forth conversation does not re-embed the project every turn.
-   * With force=true (the button) it always re-indexes.
-   */
-  const indexProject = async (force: boolean): Promise<void> => {
-    if (indexing) return;
-    // Index only real source files; generated/vendor/minified are excluded
-    // (they are still materialized for run/preview).
-    const allFiles = getAllFiles();
-    const files = allFiles.filter(isIndexableForRag);
-    const excluded = allFiles.length - files.length;
-    if (files.length === 0) {
-      if (force) {
-        setIndexStatus("empty");
-        setIndexError("No files to index yet — write some code first.");
-      }
-      return;
-    }
-    if (files.length > MAX_INDEX_FILES) {
-      setIndexStatus("blocked");
-      setIndexError(
-        `Indexing supports up to ${MAX_INDEX_FILES} files; this room has ${files.length}. Remove generated/vendor files or split the project before indexing.`,
-      );
-      return;
-    }
-    const oversized = files.find((file) => file.text.length > MAX_INDEX_TEXT_CHARS);
-    if (oversized) {
-      setIndexStatus("blocked");
-      setIndexError(
-        `Cannot index ${oversized.path}: file is ${oversized.text.length.toLocaleString()} characters, above the ${MAX_INDEX_TEXT_CHARS.toLocaleString()} character limit.`,
-      );
-      return;
-    }
-    const prev = lastIndexedFilesRef.current;
-    const currentMap = new Map(files.map((file) => [file.path, file.text] as const));
-    const changed = files.filter((file) => prev.get(file.path) !== file.text);
-    const removed = [...prev.keys()].some((path) => !currentMap.has(path));
-
-    // Nothing changed since the last index → no-op (the chat-send path).
-    if (!force && prev.size > 0 && changed.length === 0 && !removed) return;
-
-    // Incremental only when we have a prior baseline, nothing was removed,
-    // and the caller did not force a full rebuild. A removal needs the full
-    // path because deleteRoomIndex is what clears the stale chunks.
-    const incremental = !force && prev.size > 0 && !removed;
-
-    setIndexing(true);
-    setIndexStatus("indexing");
-    setIndexError(null);
-    setIndexInfo(null);
-    try {
-      if (incremental) {
-        let chunks = 0;
-        let durationMs = 0;
-        let failed = 0;
-        for (const file of changed) {
-          try {
-            const r = await indexRoom(roomId, { path: file.path, text: file.text });
-            chunks += r.chunks;
-            durationMs += r.durationMs;
-          } catch {
-            failed += 1;
-          }
-        }
-        lastIndexedFilesRef.current = currentMap;
-        setIndexStatus("indexed");
-        setIndexInfo(
-          `Re-indexed ${changed.length} changed file${changed.length === 1 ? "" : "s"} · ` +
-            `${chunks} chunk${chunks === 1 ? "" : "s"} (${durationMs} ms)` +
-            (failed > 0 ? ` · ${failed} skipped` : ""),
-        );
-      } else {
-        const result = await indexRoomAll(roomId, files);
-        lastIndexedFilesRef.current = currentMap;
-        const failed = result.failedFiles ?? 0;
-        const ok = files.length - failed;
-        setIndexStatus("indexed");
-        setIndexInfo(
-          `Indexed ${ok}/${files.length} file${files.length === 1 ? "" : "s"} · ` +
-            `${result.chunks} chunk${result.chunks === 1 ? "" : "s"} (${result.durationMs} ms)` +
-            (failed > 0 ? ` · ${failed} skipped` : "") +
-            (excluded > 0 ? ` · ${excluded} generated excluded` : ""),
-        );
-      }
-    } catch (ex) {
-      setIndexStatus("failed");
-      setIndexError(getApiErrorMessage(ex, "Indexing failed"));
-    } finally {
-      setIndexing(false);
-    }
-  };
-
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft.trim() || chat.streaming || indexing || chat.loadingHistory) return;
+    if (!draft.trim() || chat.streaming || autoIndex.indexing || chat.loadingHistory) return;
     const query = draft;
     setDraft("");
     // Make sure the RAG index reflects the current project before asking —
     // a no-op if nothing changed since the last index.
-    await indexProject(false);
+    await autoIndex.flush(false);
     // Attach the live editor context: the open file + its content, and
     // the last run's error. This is what the RAG index can't give us —
     // it lets the assistant answer about unsaved edits and run failures.
@@ -321,7 +181,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
   const onTextareaKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      if (!chat.streaming && !indexing && !chat.loadingHistory) {
+      if (!chat.streaming && !autoIndex.indexing && !chat.loadingHistory) {
         event.currentTarget.form?.requestSubmit();
       }
     }
@@ -410,21 +270,21 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           line under the row when present. */}
       <div className="mb-2 flex flex-col gap-1">
         <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5">
-          <IndexStatusLine status={indexStatus} className="flex-1" />
+          <IndexStatusLine status={autoIndex.status} className="flex-1" />
           <button
             type="button"
-            onClick={() => void indexProject(true)}
-            disabled={indexing}
+            onClick={() => void autoIndex.flush(true)}
+            disabled={autoIndex.indexing}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
             title="Re-index project"
             aria-label="Re-index project"
           >
-            {indexing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {autoIndex.indexing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </button>
         </div>
-        {(indexInfo || indexError) && (
-          <p className={cn("truncate text-[11px]", indexError ? "text-rose-400" : "text-emerald-400")}>
-            {indexError ?? indexInfo}
+        {(autoIndex.info || autoIndex.error) && (
+          <p className={cn("truncate text-[11px]", autoIndex.error ? "text-rose-400" : "text-emerald-400")}>
+            {autoIndex.error ?? autoIndex.info}
           </p>
         )}
       </div>
@@ -595,7 +455,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           onKeyDown={onTextareaKey}
           placeholder="Ask about your code, or paste an error..."
           rows={3}
-          disabled={chat.streaming || indexing || chat.loadingHistory}
+          disabled={chat.streaming || autoIndex.indexing || chat.loadingHistory}
           className={cn(
             "resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100",
             "placeholder:text-zinc-600 focus:border-cyan focus:outline-none disabled:opacity-60",
@@ -608,13 +468,13 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
               Stop
             </Button>
           ) : (
-            <Button type="submit" disabled={!draft.trim() || indexing || chat.loadingHistory}>
-              {indexing || chat.loadingHistory ? (
+            <Button type="submit" disabled={!draft.trim() || autoIndex.indexing || chat.loadingHistory}>
+              {autoIndex.indexing || chat.loadingHistory ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              {chat.loadingHistory ? "Loading..." : indexing ? "Indexing..." : "Send"}
+              {chat.loadingHistory ? "Loading..." : autoIndex.indexing ? "Indexing..." : "Send"}
             </Button>
           )}
         </div>

@@ -1,5 +1,6 @@
 package com.codeleon.room;
 
+import com.codeleon.ai.RoomFileIndexer;
 import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.common.exception.NotFoundException;
 import com.codeleon.room.enums.RoomMemberRole;
@@ -8,6 +9,7 @@ import com.codeleon.room.event.RoomEventService;
 import com.codeleon.room.event.RoomEventType;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,10 @@ public class RoomFileService {
     private final RoomMemberRepository roomMemberRepository;
     private final RoomFileRepository roomFileRepository;
     private final RoomEventService roomEventService;
+    // Optional: lets us purge a deleted/renamed file's AI index entries even
+    // if no client gets the chance to re-index. ObjectProvider so the bean's
+    // absence in slice tests (or a future AI-off build) is tolerated.
+    private final ObjectProvider<RoomFileIndexer> roomFileIndexerProvider;
 
     // ---------------------------------------------------------------------
     // Snapshots — now scoped to the entire Room (one Y.Doc per room, with
@@ -101,6 +107,9 @@ public class RoomFileService {
         RoomFile saved = roomFileRepository.save(file);
         roomEventService.emit(roomId, user, RoomEventType.FILE_RENAMED,
                 Map.of("from", oldPath, "to", trimmed));
+        // Drop the old path's index entries; the client re-indexes the new
+        // path on its next change tick. Best-effort — never blocks the rename.
+        purgeIndexForPath(roomId, oldPath);
         return saved;
     }
 
@@ -115,11 +124,24 @@ public class RoomFileService {
         if (fileCount <= 1) {
             throw new BadRequestException("Cannot delete the only remaining file in this room");
         }
+        String deletedPath = file.getPath();
         roomFileRepository.delete(file);
-        roomEventService.emit(roomId, user, RoomEventType.FILE_DELETED, Map.of("path", file.getPath()));
+        roomEventService.emit(roomId, user, RoomEventType.FILE_DELETED, Map.of("path", deletedPath));
+        // Purge the file's index entries (vectors, BM25, snapshot, baseline)
+        // so its content cannot surface in a later search. Best-effort.
+        purgeIndexForPath(roomId, deletedPath);
         // Note: the Y.Text("path") inside the room's Y.Doc is left orphaned.
         // It does not show up in the file list anymore, and is not exposed by
         // any API. A future migration can prune Y.Doc keys at idle time.
+    }
+
+    /** Best-effort removal of one path's AI index entries. No-op when the
+     *  indexer bean is absent (slice tests / AI-off build). */
+    private void purgeIndexForPath(UUID roomId, String path) {
+        RoomFileIndexer indexer = roomFileIndexerProvider.getIfAvailable();
+        if (indexer != null) {
+            indexer.deletePathQuietly(roomId, path);
+        }
     }
 
     // ---------------------------------------------------------------------

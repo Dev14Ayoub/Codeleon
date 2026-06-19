@@ -9,12 +9,16 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -80,5 +84,37 @@ public class IndexController {
             }
         }
         return new IndexResult(totalChunks, totalDuration, failed);
+    }
+
+    /**
+     * Returns the durable index baseline for the room — {@code path -> content
+     * hash} of every file currently embedded. The frontend fetches this on
+     * mount, hashes the project's current content, and re-embeds only the
+     * files whose hash differs (and clears the ones that disappeared). This
+     * survives refreshes, browser tabs and collaborators.
+     *
+     * <p>Not gated on {@code ai.enabled}: it only reads a table. When AI is
+     * off the table is empty, so the caller simply gets {@code []}.
+     */
+    @GetMapping("/state")
+    public IndexStateResponse indexState(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal User user
+    ) {
+        if (!roomFileService.canEdit(roomId, user)) {
+            throw new NotFoundException("Room not found");
+        }
+        Map<String, String> state = indexer.indexState(roomId);
+        List<FileHash> files = state.entrySet().stream()
+                .map(entry -> new FileHash(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(FileHash::path))
+                .toList();
+        return new IndexStateResponse(files);
+    }
+
+    public record FileHash(String path, String hash) {
+    }
+
+    public record IndexStateResponse(List<FileHash> files) {
     }
 }
