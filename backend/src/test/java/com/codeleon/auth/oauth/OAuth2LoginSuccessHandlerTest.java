@@ -26,6 +26,8 @@ class OAuth2LoginSuccessHandlerTest {
         assertThat(profile.email()).isEqualTo("octocat@github.com");
         assertThat(profile.name()).isEqualTo("The Octocat");
         assertThat(profile.avatarUrl()).isEqualTo("https://avatars.githubusercontent.com/u/123456");
+        // GitHub exposes only verified primary/public emails.
+        assertThat(profile.emailVerified()).isTrue();
     }
 
     @Test
@@ -33,6 +35,7 @@ class OAuth2LoginSuccessHandlerTest {
         Map<String, Object> attrs = Map.of(
                 "sub", "112233445566",
                 "email", "alice@gmail.com",
+                "email_verified", true,
                 "name", "Alice Example",
                 "picture", "https://lh3.googleusercontent.com/a/alice"
         );
@@ -44,6 +47,26 @@ class OAuth2LoginSuccessHandlerTest {
         assertThat(profile.email()).isEqualTo("alice@gmail.com");
         assertThat(profile.name()).isEqualTo("Alice Example");
         assertThat(profile.avatarUrl()).isEqualTo("https://lh3.googleusercontent.com/a/alice");
+        assertThat(profile.emailVerified()).isTrue();
+    }
+
+    @Test
+    void googleEmailUnverifiedWhenClaimMissingOrFalse() {
+        OAuth2LoginSuccessHandler.ProviderProfile missing =
+                OAuth2LoginSuccessHandler.extractProfile("google", Map.of(
+                        "sub", "1", "email", "x@gmail.com"));
+        assertThat(missing.emailVerified()).isFalse();
+
+        OAuth2LoginSuccessHandler.ProviderProfile explicitFalse =
+                OAuth2LoginSuccessHandler.extractProfile("google", Map.of(
+                        "sub", "2", "email", "y@gmail.com", "email_verified", false));
+        assertThat(explicitFalse.emailVerified()).isFalse();
+
+        // Google occasionally serializes the claim as a string.
+        OAuth2LoginSuccessHandler.ProviderProfile stringTrue =
+                OAuth2LoginSuccessHandler.extractProfile("google", Map.of(
+                        "sub", "3", "email", "z@gmail.com", "email_verified", "true"));
+        assertThat(stringTrue.emailVerified()).isTrue();
     }
 
     @Test

@@ -33,6 +33,8 @@ function describeOAuthError(code: string): string {
       return "An account already exists with this email. Sign in with your password first to link your social account.";
     case "oauth_email_missing":
       return "GitHub did not share an email address. Make sure your GitHub account has a verified email, then try connecting again.";
+    case "oauth_email_unverified":
+      return "Your provider email is not verified. Verify it with the provider (e.g. Google), then sign in again.";
     case "oauth_profile_extraction_failed":
       return "We could not read your profile from the provider. Please try again.";
     case "oauth_unexpected_principal":

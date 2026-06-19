@@ -49,7 +49,7 @@ public class UserService implements UserDetailsService {
             String fullName,
             String avatarUrl
     ) {
-        return findOrCreateByOAuth(provider, subject, email, fullName, avatarUrl, null);
+        return findOrCreateByOAuth(provider, subject, email, true, fullName, avatarUrl, null);
     }
 
     @Transactional
@@ -57,6 +57,29 @@ public class UserService implements UserDetailsService {
             String provider,
             String subject,
             String email,
+            String fullName,
+            String avatarUrl,
+            OAuthTokenDetails token
+    ) {
+        return findOrCreateByOAuth(provider, subject, email, true, fullName, avatarUrl, token);
+    }
+
+    /**
+     * Canonical entry point. {@code emailVerified} reflects whether the
+     * provider asserts the user actually controls {@code email} (Google's
+     * {@code email_verified} OIDC claim; GitHub primary/public emails are
+     * verified by policy). It guards the email-matching branch in
+     * {@link #linkOrCreate}: an unverified email must never attach this
+     * external identity to a pre-existing Codeleon account, which would be an
+     * account-takeover vector. Re-authentication of an already-linked
+     * provider+subject is unaffected — that identity is already trusted.
+     */
+    @Transactional
+    public User findOrCreateByOAuth(
+            String provider,
+            String subject,
+            String email,
+            boolean emailVerified,
             String fullName,
             String avatarUrl,
             OAuthTokenDetails token
@@ -78,13 +101,15 @@ public class UserService implements UserDetailsService {
                             ensureLinkedAccount(existing, normalizedProvider, normalizedSubject, email, token);
                             return updateProfile(existing, fullName, avatarUrl);
                         }))
-                .orElseGet(() -> linkOrCreate(normalizedProvider, normalizedSubject, email, fullName, avatarUrl, token));
+                .orElseGet(() -> linkOrCreate(
+                        normalizedProvider, normalizedSubject, email, emailVerified, fullName, avatarUrl, token));
     }
 
     private User linkOrCreate(
             String provider,
             String subject,
             String email,
+            boolean emailVerified,
             String fullName,
             String avatarUrl,
             OAuthTokenDetails token
@@ -95,6 +120,18 @@ public class UserService implements UserDetailsService {
             // reach for password recovery.
             throw new BadRequestException(
                     "OAuth provider " + provider + " did not return an email address"
+            );
+        }
+        // Account-takeover / squatting guard: a first-time OAuth identity must
+        // not be linked to (or create) a Codeleon account on an email the
+        // provider has not verified the user controls. Re-authentication of an
+        // already-linked provider+subject never reaches here, so this only
+        // gates the very first login. Google consumer emails are always
+        // verified; this blocks only genuinely unproven addresses.
+        if (!emailVerified) {
+            throw new BadRequestException(
+                    "Your " + provider + " email address is not verified; verify it with "
+                            + provider + " and sign in again"
             );
         }
         String normalizedEmail = email.trim().toLowerCase();

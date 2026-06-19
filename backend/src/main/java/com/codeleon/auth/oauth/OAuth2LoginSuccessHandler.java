@@ -100,13 +100,17 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     provider,
                     profile.subject,
                     profile.email,
+                    profile.emailVerified,
                     profile.name,
                     profile.avatarUrl,
                     token
             );
         } catch (RuntimeException ex) {
             log.warn("OAuth find-or-create failed for {}/{}: {}", provider, profile.subject, ex.getMessage());
-            redirectWithError(response, blank(profile.email) ? "oauth_email_missing" : "oauth_link_conflict");
+            String code = blank(profile.email) ? "oauth_email_missing"
+                    : !profile.emailVerified ? "oauth_email_unverified"
+                    : "oauth_link_conflict";
+            redirectWithError(response, code);
             return;
         }
 
@@ -180,7 +184,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         if (blank(email)) {
             return profile;
         }
-        return new ProviderProfile(profile.subject, email, profile.name, profile.avatarUrl);
+        // fetchGithubEmail/selectBestGithubEmail prefers a verified primary
+        // address, so the resolved email is verified.
+        return new ProviderProfile(profile.subject, email, profile.emailVerified(), profile.name, profile.avatarUrl);
     }
 
     private String fetchGithubEmail(String accessToken) {
@@ -219,12 +225,20 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             case "github" -> new ProviderProfile(
                     String.valueOf(attributes.get("id")),
                     asString(attributes.get("email")),
+                    // GitHub's /user email is the user's public/primary address,
+                    // which GitHub only exposes once verified; the email fallback
+                    // (resolveMissingProviderEmail) also selects a verified one.
+                    true,
                     asString(attributes.get("name")),
                     asString(attributes.get("avatar_url"))
             );
             case "google" -> new ProviderProfile(
                     asString(attributes.get("sub")),
                     asString(attributes.get("email")),
+                    // OIDC email_verified claim. Google sends a real boolean for
+                    // consumer accounts; treat anything but an explicit true as
+                    // unverified so we never link on an unproven email.
+                    asBoolean(attributes.get("email_verified")),
                     asString(attributes.get("name")),
                     asString(attributes.get("picture"))
             );
@@ -234,6 +248,11 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private static String asString(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    private static boolean asBoolean(Object value) {
+        if (value instanceof Boolean b) return b;
+        return value != null && Boolean.parseBoolean(value.toString());
     }
 
     private static boolean blank(String value) {
@@ -256,7 +275,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         }
     }
 
-    record ProviderProfile(String subject, String email, String name, String avatarUrl) {
+    record ProviderProfile(String subject, String email, boolean emailVerified, String name, String avatarUrl) {
     }
 
     record GithubEmail(String email, Boolean primary, Boolean verified, String visibility) {

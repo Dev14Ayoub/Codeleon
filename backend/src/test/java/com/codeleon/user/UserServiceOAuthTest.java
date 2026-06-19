@@ -174,6 +174,76 @@ class UserServiceOAuthTest {
     }
 
     @Test
+    void blocksLinkingToExistingAccountWhenEmailUnverified() {
+        UserRepository repo = mock(UserRepository.class);
+        OAuthAccountRepository oauthRepo = oauthRepo();
+        UserService service = new UserService(repo, oauthRepo);
+
+        User passwordUser = User.builder()
+                .id(UUID.randomUUID())
+                .fullName("Pwd User")
+                .email("victim@example.com")
+                .passwordHash("$2a$10$existinghash")
+                .role(UserRole.USER)
+                .build();
+        when(repo.findByOauthProviderAndOauthSubject(any(), any())).thenReturn(Optional.empty());
+        lenient().when(repo.findByEmail("victim@example.com")).thenReturn(Optional.of(passwordUser));
+
+        // Unverified provider email must NOT take over the password account.
+        assertThatThrownBy(() -> service.findOrCreateByOAuth(
+                "google", "attacker-sub", "victim@example.com", false, "Attacker", "https://a", null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("not verified");
+
+        verify(oauthRepo, never()).save(any(OAuthAccount.class));
+        assertThat(passwordUser.getOauthProvider()).isNull();
+        assertThat(passwordUser.getOauthSubject()).isNull();
+        assertThat(passwordUser.getPasswordHash()).isEqualTo("$2a$10$existinghash");
+    }
+
+    @Test
+    void blocksNewAccountCreationWhenEmailUnverified() {
+        UserRepository repo = mock(UserRepository.class);
+        OAuthAccountRepository oauthRepo = oauthRepo();
+        UserService service = new UserService(repo, oauthRepo);
+
+        when(repo.findByOauthProviderAndOauthSubject(any(), any())).thenReturn(Optional.empty());
+        lenient().when(repo.findByEmail(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findOrCreateByOAuth(
+                "google", "sub-1", "squatter@example.com", false, "Squatter", null, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("not verified");
+
+        verify(repo, never()).save(any(User.class));
+        verify(oauthRepo, never()).save(any(OAuthAccount.class));
+    }
+
+    @Test
+    void allowsLinkingToExistingAccountWhenEmailVerified() {
+        UserRepository repo = mock(UserRepository.class);
+        OAuthAccountRepository oauthRepo = oauthRepo();
+        UserService service = new UserService(repo, oauthRepo);
+
+        User passwordUser = User.builder()
+                .id(UUID.randomUUID())
+                .fullName("Pwd User")
+                .email("owner@example.com")
+                .passwordHash("$2a$10$existinghash")
+                .role(UserRole.USER)
+                .build();
+        when(repo.findByOauthProviderAndOauthSubject(any(), any())).thenReturn(Optional.empty());
+        when(repo.findByEmail("owner@example.com")).thenReturn(Optional.of(passwordUser));
+        when(repo.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User result = service.findOrCreateByOAuth(
+                "google", "google-sub", "owner@example.com", true, "Google Name", "https://avatar", null);
+
+        assertThat(result).isSameAs(passwordUser);
+        verify(oauthRepo).save(any(OAuthAccount.class));
+    }
+
+    @Test
     void rejectsBlankProviderOrSubject() {
         UserRepository repo = mock(UserRepository.class);
         OAuthAccountRepository oauthRepo = oauthRepo();
