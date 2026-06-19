@@ -32,7 +32,6 @@ import type * as Y from "yjs";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { useRoomAutoIndex, type RoomAutoIndex } from "@/lib/ai/useRoomAutoIndex";
 import { RoomChat } from "@/components/chat/RoomChat";
 import { VoiceCallBar } from "@/components/voice/VoiceCallBar";
 import { IncomingCallBanner } from "@/components/voice/IncomingCallBanner";
@@ -236,13 +235,6 @@ export function RoomPage() {
       text: collab.ydoc.getText(file.path).toString(),
     }));
   }, [roomFilesQuery.data, collab.ydoc]);
-
-  // Room-level RAG auto-indexer. Mounted here (not in the chat panel) so it
-  // keeps the index fresh even when the AI panel is collapsed: it seeds its
-  // baseline from the server on mount, then re-embeds only changed/removed
-  // files on a debounced timer. Gated on edit rights — viewers never index,
-  // and the backend would 404 them anyway.
-  const autoIndex = useRoomAutoIndex(roomId ?? "", getAllFiles, collab.ydoc, canEdit);
 
   /**
    * Opens a file in the editor and (optionally) scrolls to a given line.
@@ -1201,7 +1193,7 @@ export function RoomPage() {
               roomId={roomId}
               activePath={activePath}
               getEditorText={getEditorText}
-              autoIndex={autoIndex}
+              getAllFiles={getAllFiles}
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
@@ -1252,7 +1244,7 @@ export function RoomPage() {
               roomId={roomId}
               activePath={activePath}
               getEditorText={getEditorText}
-              autoIndex={autoIndex}
+              getAllFiles={getAllFiles}
               lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
               isOwner={room?.currentUserRole === "OWNER"}
               onApplyPatch={applyPatch}
@@ -1285,7 +1277,7 @@ export function RoomPage() {
                 roomId={roomId}
                 activePath={activePath}
                 getEditorText={getEditorText}
-                autoIndex={autoIndex}
+                getAllFiles={getAllFiles}
                 lastRunStderr={runResult?.stderr?.trim() ? runResult.stderr : runError}
                 isOwner={room?.currentUserRole === "OWNER"}
                 onApplyPatch={applyPatch}
@@ -1860,7 +1852,7 @@ function RoomRightPanel({
   ydoc,
   roomId,
   getEditorText,
-  autoIndex,
+  getAllFiles,
   activePath,
   lastRunStderr,
   isOwner,
@@ -1881,9 +1873,7 @@ function RoomRightPanel({
   ydoc: Y.Doc;
   roomId: string;
   getEditorText: () => string;
-  /** Room-level auto-indexer, owned by RoomPage so it survives this panel
-   *  being collapsed; handed to ChatPanel for its status row + flush. */
-  autoIndex: RoomAutoIndex;
+  getAllFiles: () => IndexFile[];
   activePath: string | null;
   lastRunStderr: string | null;
   isOwner: boolean;
@@ -1993,7 +1983,7 @@ function RoomRightPanel({
               <ChatPanel
                 roomId={roomId}
                 getEditorText={getEditorText}
-                autoIndex={autoIndex}
+                getAllFiles={getAllFiles}
                 activeFilePath={activePath}
                 lastRunStderr={lastRunStderr}
                 isOwner={isOwner}

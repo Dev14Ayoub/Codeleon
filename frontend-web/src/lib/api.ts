@@ -584,27 +584,6 @@ export async function indexRoomAll(roomId: string, files: IndexFile[]) {
   return data;
 }
 
-export interface IndexStateFile {
-  path: string;
-  /** Lowercase hex SHA-256 of the exact text that was embedded. */
-  hash: string;
-}
-
-export interface IndexStateResponse {
-  files: IndexStateFile[];
-}
-
-/**
- * Returns the server's durable index baseline (path -> content hash). The
- * auto-indexer fetches this on mount, hashes the project's current content,
- * and re-embeds only the files whose hash differs — so a refresh or a second
- * tab does not trigger a full re-index of an already-indexed project.
- */
-export async function fetchIndexState(roomId: string): Promise<IndexStateResponse> {
-  const { data } = await api.get<IndexStateResponse>(`/rooms/${roomId}/index/state`);
-  return data;
-}
-
 export type ChatHistoryRole = "USER" | "ASSISTANT";
 
 export interface ChatHistoryEntry {
