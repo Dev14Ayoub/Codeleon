@@ -94,6 +94,21 @@ public class RoomFileIndexer {
         if (snapshots != null) snapshots.deleteRoom(roomId);
     }
 
+    /**
+     * Best-effort variant of {@link #deleteRoomIndex} for the room-deletion
+     * paths. Deleting a room from the primary database must never be blocked
+     * by an unrelated Qdrant/BM25 outage, so any failure here is logged and
+     * swallowed rather than rolling back the caller's transaction. The worst
+     * case is a few orphan vectors for a room id that is never reused.
+     */
+    public void deleteRoomIndexQuietly(UUID roomId) {
+        try {
+            deleteRoomIndex(roomId);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to purge AI index for deleted room {}: {}", roomId, ex.getMessage());
+        }
+    }
+
     public IndexResult index(UUID roomId, String path, String text) {
         long start = System.currentTimeMillis();
         String resolvedPath = (path == null || path.isBlank()) ? "main" : path;

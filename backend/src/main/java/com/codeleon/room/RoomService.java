@@ -1,5 +1,6 @@
 package com.codeleon.room;
 
+import com.codeleon.ai.RoomFileIndexer;
 import com.codeleon.common.exception.BadRequestException;
 import com.codeleon.common.exception.ForbiddenException;
 import com.codeleon.common.exception.NotFoundException;
@@ -13,6 +14,7 @@ import com.codeleon.room.template.Template;
 import com.codeleon.room.template.TemplateService;
 import com.codeleon.user.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,9 @@ public class RoomService {
     private final RoomPinRepository roomPinRepository;
     private final TemplateService templateService;
     private final RoomEventService roomEventService;
+    // Optional: lets us purge the room's AI index on delete. ObjectProvider so
+    // the bean's absence in slice tests (or a future AI-off build) is tolerated.
+    private final ObjectProvider<RoomFileIndexer> roomFileIndexerProvider;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -208,6 +213,13 @@ public class RoomService {
     public void deleteRoom(UUID roomId, User user) {
         Room room = mustOwnRoom(roomId, user);
         roomRepository.delete(room);
+        // Purge the room's vectors/BM25/snapshot so its indexed content cannot
+        // surface in a later cross-room search. Best-effort: a Qdrant outage
+        // must not block the delete (see deleteRoomIndexQuietly).
+        RoomFileIndexer indexer = roomFileIndexerProvider.getIfAvailable();
+        if (indexer != null) {
+            indexer.deleteRoomIndexQuietly(roomId);
+        }
     }
 
     private Room mustReadRoom(UUID roomId, User user) {

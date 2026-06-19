@@ -157,6 +157,37 @@ class AdminControllerTest {
     }
 
     // ---------------------------------------------------------------
+    // Rooms: force-delete with best-effort index cleanup
+    // ---------------------------------------------------------------
+
+    @Test
+    void adminCanForceDeleteRoom() throws Exception {
+        String adminToken = registerAdmin("admin.roomdelete@example.com");
+        String ownerToken = register("admin.roomowner@example.com");
+
+        String roomResponse = mockMvc.perform(post("/rooms")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "To Force-Delete",
+                                "visibility", "PRIVATE"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String roomId = objectMapper.readTree(roomResponse).get("id").asText();
+
+        // The room-index purge is best-effort (Qdrant is down in tests), so the
+        // delete must still succeed with a 204.
+        mockMvc.perform(delete("/admin/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(delete("/admin/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------
 

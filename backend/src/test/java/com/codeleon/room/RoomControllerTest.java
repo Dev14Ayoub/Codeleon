@@ -268,6 +268,29 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$[0].currentUserRole").value("EDITOR"));
     }
 
+    @Test
+    void ownerCanDeleteRoomEvenWhenIndexCleanupIsUnavailable() throws Exception {
+        // With AI disabled in the test profile, the room-index purge on delete
+        // is best-effort and must not block the delete. A non-owner is forbidden.
+        String ownerToken = register("room.delete.owner@example.com");
+        String guestToken = register("room.delete.guest@example.com");
+        JsonNode room = createRoom(ownerToken, "Disposable", "PRIVATE");
+        String roomId = room.get("id").asText();
+
+        mockMvc.perform(delete("/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNoContent());
+
+        // Room is gone for the owner's listing.
+        mockMvc.perform(get("/rooms").header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
     private String register(String email) throws Exception {
         String response = mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

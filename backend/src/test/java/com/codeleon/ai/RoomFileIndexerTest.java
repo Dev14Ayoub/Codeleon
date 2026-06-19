@@ -10,6 +10,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -103,6 +104,37 @@ class RoomFileIndexerTest {
         assertThat(must).hasSize(2);
         assertThat(must.get(0)).containsEntry("key", "roomId");
         assertThat(must.get(1)).containsEntry("key", "path");
+    }
+
+    @Test
+    void deleteRoomIndexQuietlySwallowsQdrantFailure() {
+        OllamaClient ollama = mock(OllamaClient.class);
+        QdrantClient qdrant = mock(QdrantClient.class);
+        // Simulate Qdrant being unreachable when a room is deleted.
+        doThrow(new RuntimeException("Connection refused")).when(qdrant).ensureCollection();
+
+        RoomFileIndexer indexer = new RoomFileIndexer(ollama, qdrant);
+
+        // Must not propagate — deleting a room from the DB cannot be blocked
+        // by an unrelated vector-store outage.
+        indexer.deleteRoomIndexQuietly(UUID.randomUUID());
+
+        verify(qdrant).ensureCollection();
+    }
+
+    @Test
+    void deleteRoomIndexQuietlyDelegatesOnHappyPath() {
+        OllamaClient ollama = mock(OllamaClient.class);
+        QdrantClient qdrant = mock(QdrantClient.class);
+        UUID room = UUID.fromString("00000000-0000-0000-0000-0000000000ff");
+
+        RoomFileIndexer indexer = new RoomFileIndexer(ollama, qdrant);
+        indexer.deleteRoomIndexQuietly(room);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(qdrant).deleteByFilter(captor.capture());
+        assertThat(captor.getValue()).isEqualTo(RoomFileIndexer.filterForRoom(room));
     }
 
     @Test

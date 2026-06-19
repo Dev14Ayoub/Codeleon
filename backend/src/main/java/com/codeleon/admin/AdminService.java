@@ -4,6 +4,7 @@ import com.codeleon.admin.dto.AdminRoomResponse;
 import com.codeleon.admin.dto.AdminStatsResponse;
 import com.codeleon.admin.dto.AdminUserResponse;
 import com.codeleon.ai.QdrantClient;
+import com.codeleon.ai.RoomFileIndexer;
 import com.codeleon.ai.metrics.AiMetricsService;
 import com.codeleon.ai.metrics.AiMetricsSnapshot;
 import com.codeleon.common.exception.BadRequestException;
@@ -41,6 +42,7 @@ public class AdminService {
     private final RoomMemberRepository roomMemberRepository;
     private final RoomFileRepository roomFileRepository;
     private final ObjectProvider<QdrantClient> qdrantClientProvider;
+    private final ObjectProvider<RoomFileIndexer> roomFileIndexerProvider;
     private final AiMetricsService aiMetrics;
 
     // -----------------------------------------------------------------
@@ -112,6 +114,12 @@ public class AdminService {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new NotFoundException("Room not found"));
         roomRepository.delete(room);
+        // Same orphan-vector cleanup as the owner delete path. Best-effort so a
+        // Qdrant outage cannot stop an admin from removing an abusive room.
+        RoomFileIndexer indexer = roomFileIndexerProvider.getIfAvailable();
+        if (indexer != null) {
+            indexer.deleteRoomIndexQuietly(roomId);
+        }
         log.info("Admin {} deleted room {} ({})", actingAdmin.getEmail(), room.getName(), roomId);
     }
 
