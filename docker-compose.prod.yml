@@ -127,6 +127,15 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CODELEON_BOOTSTRAP_ADMIN_EMAIL: ${ADMIN_EMAIL}
 
+      # Token lifetimes. application.yml defaults the access token to 15 min,
+      # which is short for long editing/indexing sessions on this single-user
+      # tailnet deployment — a too-frequent refresh cycle is where the
+      # recurring "Authentication required" came from. These env vars were NOT
+      # previously forwarded, so setting them in .env had no effect; wire them
+      # here. Access 2 h, refresh 30 days. Override via .env if desired.
+      JWT_ACCESS_TOKEN_EXPIRATION_MS: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:-7200000}
+      JWT_REFRESH_TOKEN_EXPIRATION_MS: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:-2592000000}
+
       # First entry is the SPA origin that the OAuth2 success handler
       # redirects the browser to after a successful GitHub/Google login
       # (see OAuth2LoginSuccessHandler#frontendOrigin). Without this the
