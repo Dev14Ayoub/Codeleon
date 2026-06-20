@@ -161,29 +161,12 @@ api.interceptors.response.use(
       original.headers.Authorization = `Bearer ${newToken}`;
       return api(original);
     } catch (refreshErr) {
-      // Only wipe the session when the refresh token is *definitively* bad:
-      // there is no refresh token, or the server rejected it with 400/401.
-      // A transient failure — the backend restarting mid-deploy (Caddy 502/
-      // 503), a 5xx, or a network blip — must NOT log the user out: the
-      // refresh token is still valid, so we keep the session and let the next
-      // request (or a manual retry) recover. Logging out on every blip is what
-      // made "Authentication required" recur during deploys. We still rethrow
-      // the ORIGINAL 401 so the caller sees the error it expected.
-      const refreshStatus = axios.isAxiosError(refreshErr)
-        ? refreshErr.response?.status
-        : undefined;
-      const definitivelyUnauthenticated =
-        !useAuthStore.getState().refreshToken ||
-        refreshStatus === 400 ||
-        refreshStatus === 401;
-      if (definitivelyUnauthenticated) {
-        // eslint-disable-next-line no-console
-        console.warn("refresh token rejected, logging out", refreshErr);
-        useAuthStore.getState().logout();
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn("token refresh failed transiently, keeping session", refreshErr);
-      }
+      // Refresh failed — wipe the store so ProtectedRoute can redirect
+      // to /login. We rethrow the ORIGINAL error so the caller still sees
+      // the 401 it was expecting; the refresh error is logged only.
+      // eslint-disable-next-line no-console
+      console.warn("token refresh failed, logging out", refreshErr);
+      useAuthStore.getState().logout();
       return Promise.reject(error);
     }
   },

@@ -22,7 +22,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -178,42 +177,6 @@ class IndexControllerTest {
 
         verify(indexer, never()).index(any(), any(), any());
         verify(indexer, never()).deleteRoomIndex(any());
-    }
-
-    @Test
-    void indexStateReturnsBaselineSortedByPath() throws Exception {
-        String token = register("indexer.state.owner@example.com");
-        JsonNode room = createRoom(token, "State Room");
-        String roomId = room.get("id").asText();
-
-        when(indexer.indexState(any())).thenReturn(Map.of(
-                "utils.py", "hash-b",
-                "main.py", "hash-a"
-        ));
-
-        mockMvc.perform(get("/rooms/" + roomId + "/index/state")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.files.length()").value(2))
-                // Endpoint sorts by path regardless of map iteration order.
-                .andExpect(jsonPath("$.files[0].path").value("main.py"))
-                .andExpect(jsonPath("$.files[0].hash").value("hash-a"))
-                .andExpect(jsonPath("$.files[1].path").value("utils.py"))
-                .andExpect(jsonPath("$.files[1].hash").value("hash-b"));
-    }
-
-    @Test
-    void indexStateRejectsNonMember() throws Exception {
-        String ownerToken = register("indexer.state.owner.private@example.com");
-        String outsiderToken = register("indexer.state.outsider@example.com");
-        JsonNode room = createRoom(ownerToken, "Private State Room");
-        String roomId = room.get("id").asText();
-
-        mockMvc.perform(get("/rooms/" + roomId + "/index/state")
-                        .header("Authorization", "Bearer " + outsiderToken))
-                .andExpect(status().isNotFound());
-
-        verify(indexer, never()).indexState(any());
     }
 
     private String register(String email) throws Exception {
