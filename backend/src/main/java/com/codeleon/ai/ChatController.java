@@ -28,11 +28,12 @@ import java.util.concurrent.Semaphore;
 @RequiredArgsConstructor
 public class ChatController {
 
-    // 5 minutes — has to be longer than the Ollama HTTP client timeout
-    // (240s in application.yml) so the SSE doesn't close mid-inference on
-    // a slow CPU-only Ollama. The previous 90s value was the root cause
-    // of the "Chat failed" toast users saw 60-90s into a long chat turn.
-    private static final long EMITTER_TIMEOUT_MS = 300_000L;
+    // 15 minutes — has to be longer than the Ollama HTTP client timeout
+    // (600s) AND tolerate the first-token wait when a large model is paging
+    // in from disk on a constrained host: a 7B Q4 chat model on an 8 GB VM
+    // can take 3-8 min before its first token on a cold start. The previous
+    // 5 min value caused mid-chat "network error" toasts on those cold paths.
+    private static final long EMITTER_TIMEOUT_MS = 900_000L;
 
     // AI chat concurrency is bounded: Ollama serves one inference at a time
     // (OLLAMA_NUM_PARALLEL=1) and a turn can block for minutes, so an unbounded

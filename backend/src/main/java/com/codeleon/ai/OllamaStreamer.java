@@ -58,7 +58,12 @@ public class OllamaStreamer {
                 "stream", true,
                 // Explicit context window — without this Ollama falls back to a
                 // ~2048-token default that silently truncates the RAG prompt.
-                "options", Map.of("num_ctx", config.numCtx())
+                "options", Map.of("num_ctx", config.numCtx()),
+                // Pin the model in RAM between turns so the second question in
+                // a session doesn't pay the cold-load cost again. The Ollama
+                // server's OLLAMA_KEEP_ALIVE env is a default; sending the
+                // field on each request is unambiguous across versions.
+                "keep_alive", "30m"
         );
 
         HttpRequest request;

@@ -56,7 +56,7 @@ public class OllamaClient {
         ChatResponse response = http.post()
                 .uri("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new ChatRequest(config.chatModel(), messages, null, false, chatOptions()))
+                .body(new ChatRequest(config.chatModel(), messages, null, false, chatOptions(), "30m"))
                 .retrieve()
                 .body(ChatResponse.class);
         if (response == null || response.message() == null) {
@@ -86,7 +86,7 @@ public class OllamaClient {
         ChatResponse response = http.post()
                 .uri("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new ChatRequest(config.agentModel(), messages, tools, false, chatOptions()))
+                .body(new ChatRequest(config.agentModel(), messages, tools, false, chatOptions(), "30m"))
                 .retrieve()
                 .body(ChatResponse.class);
         if (response == null || response.message() == null) {
@@ -168,7 +168,8 @@ public class OllamaClient {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record ChatRequest(String model, List<ChatMessage> messages, List<Map<String, Object>> tools, boolean stream,
-                       Map<String, Object> options) {
+                       Map<String, Object> options,
+                       @com.fasterxml.jackson.annotation.JsonProperty("keep_alive") String keepAlive) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
