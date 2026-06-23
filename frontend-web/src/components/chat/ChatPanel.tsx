@@ -303,9 +303,10 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
     if (!draft.trim() || chat.streaming || indexing || chat.loadingHistory) return;
     const query = draft;
     setDraft("");
-    // Make sure the RAG index reflects the current project before asking —
-    // a no-op if nothing changed since the last index.
-    await indexProject(false);
+    // Indexing is explicit: the user clicks "Index project" once at the
+    // start (or after a big edit). Doing it before every chat blocked the
+    // send and loaded the embedder in parallel with the chat model, which
+    // tanked the chat path on memory-constrained hosts.
     // Attach the live editor context: the open file + its content, and
     // the last run's error. This is what the RAG index can't give us —
     // it lets the assistant answer about unsaved edits and run failures.
