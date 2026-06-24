@@ -44,7 +44,7 @@ public class AiConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "codeleon.ai", name = "enabled", havingValue = "true")
-    public ApplicationRunner aiBootstrap(QdrantClient qdrant, AiProperties props) {
+    public ApplicationRunner aiBootstrap(OllamaClient ollama, QdrantClient qdrant, AiProperties props) {
         return args -> {
             AiProperties.Ollama o = props.ollama();
             log.info("AI configured: chat-model={}, agent-model={}, embed-model={}",
@@ -59,7 +59,35 @@ public class AiConfig {
             } catch (Exception ex) {
                 log.warn("Qdrant bootstrap failed (is the 'ai' compose profile up?): {}", ex.getMessage());
             }
+            // Pre-warm the chat model in the background so the very first user
+            // chat doesn't pay the cold-load cost (1-3 min for a 7B Q4 on CPU)
+            // on the critical path. Runs detached so a slow Ollama can't delay
+            // backend startup, and silently no-ops if Ollama is unreachable.
+            Thread.ofVirtual().name("ollama-prewarm").start(() -> prewarm(ollama, o));
         };
+    }
+
+    private static void prewarm(OllamaClient ollama, AiProperties.Ollama o) {
+        long t0 = System.currentTimeMillis();
+        try {
+            ollama.chat(java.util.List.of(OllamaClient.ChatMessage.user("ok")));
+            log.info("Chat model '{}' pre-warmed in {} ms", o.chatModel(), System.currentTimeMillis() - t0);
+        } catch (Exception ex) {
+            log.warn("Chat model pre-warm failed for '{}': {} — the first user chat will pay the cold-load cost",
+                    o.chatModel(), ex.getMessage());
+            return;
+        }
+        // Only pre-warm the agent model separately if it differs from the chat
+        // model — otherwise the call above already covered it.
+        if (!o.agentModel().equals(o.chatModel())) {
+            long t1 = System.currentTimeMillis();
+            try {
+                ollama.chatWithTools(java.util.List.of(OllamaClient.ChatMessage.user("ok")), java.util.List.of());
+                log.info("Agent model '{}' pre-warmed in {} ms", o.agentModel(), System.currentTimeMillis() - t1);
+            } catch (Exception ex) {
+                log.warn("Agent model pre-warm failed for '{}': {}", o.agentModel(), ex.getMessage());
+            }
+        }
     }
 
     /**

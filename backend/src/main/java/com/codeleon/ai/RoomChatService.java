@@ -272,21 +272,31 @@ public class RoomChatService {
         }
 
         sb.append("\n--- retrieved project excerpts ---\n");
+        // Skip chunks from the file the user already has open: the full file
+        // content is already embedded above as the "currently open file" block,
+        // so re-shipping its chunks here just doubles tokens and confuses the
+        // model (it sees the same code twice with two different framings).
+        String activePath = request.hasActiveFile() ? request.activeFilePath() : null;
         int excerptChars = 0;
+        int emitted = 0;
         for (int i = 0; i < hits.size(); i++) {
             RetrievedChunk h = hits.get(i);
+            if (activePath != null && activePath.equals(h.path())) {
+                continue;
+            }
             String text = h.text() == null ? "" : h.text();
             // Aggregate context budget: keep the top hit always, then stop
             // adding once the excerpts section would exceed its budget. Hits
             // are sorted best-first, so the dropped ones are the weakest.
-            if (i > 0 && excerptChars + text.length() > MAX_EXCERPT_SECTION_CHARS) {
+            if (emitted > 0 && excerptChars + text.length() > MAX_EXCERPT_SECTION_CHARS) {
                 sb.append("\n--- (").append(hits.size() - i)
                         .append(" lower-ranked excerpt(s) omitted to fit the context budget) ---\n");
                 break;
             }
             excerptChars += text.length();
+            emitted++;
 
-            sb.append("\n--- excerpt ").append(i + 1)
+            sb.append("\n--- excerpt ").append(emitted)
                     .append(" (path=").append(h.path());
             if (h.symbol() != null) {
                 sb.append(", symbol=").append(h.symbol());
@@ -301,7 +311,7 @@ public class RoomChatService {
                     .append(", source=").append(provenance(h))
                     .append(") ---\n")
                     .append(text)
-                    .append("\n--- end excerpt ").append(i + 1).append(" ---\n");
+                    .append("\n--- end excerpt ").append(emitted).append(" ---\n");
         }
         return sb.toString();
     }

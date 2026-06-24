@@ -82,7 +82,18 @@ public class OllamaStreamer {
         try {
             HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() / 100 != 2) {
-                throw new IllegalStateException("Ollama returned HTTP " + response.statusCode());
+                // Drain + close the body before throwing. Without this, every
+                // non-2xx (a missing model returns 404, OOM kill 503, etc.)
+                // leaks an HTTP connection — the bug that surfaced when the 7B
+                // model was deleted from Ollama. Bonus: we surface Ollama's
+                // error message instead of an opaque status code.
+                String errBody;
+                try (InputStream errStream = response.body()) {
+                    errBody = new String(errStream.readAllBytes(), StandardCharsets.UTF_8);
+                } catch (java.io.IOException drainEx) {
+                    errBody = "(body unavailable: " + drainEx.getMessage() + ")";
+                }
+                throw new IllegalStateException("Ollama returned HTTP " + response.statusCode() + ": " + errBody);
             }
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {

@@ -74,9 +74,19 @@ public class ChatController {
             roomEventService.emit(roomId, user, RoomEventType.AI_ASKED);
 
             SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
-            // Release the slot exactly once when the stream ends — completion,
-            // error and timeout all funnel through onCompletion.
-            emitter.onCompletion(chatSlots::release);
+            // Release the slot on every termination path. SseEmitter fires
+            // onCompletion OR onTimeout OR onError (mutually exclusive), so
+            // wiring only onCompletion leaks the permit on every timeout —
+            // four timeouts and the chat would be "busy" until restart. A
+            // guard makes the release idempotent in case Spring ever invokes
+            // more than one of the callbacks.
+            java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+            Runnable releaseOnce = () -> {
+                if (released.compareAndSet(false, true)) chatSlots.release();
+            };
+            emitter.onCompletion(releaseOnce);
+            emitter.onTimeout(releaseOnce);
+            emitter.onError(ex -> releaseOnce.run());
             CompletableFuture.runAsync(() -> chatService.streamChat(roomId, user, request, emitter), executor);
             started = true;
             return emitter;
