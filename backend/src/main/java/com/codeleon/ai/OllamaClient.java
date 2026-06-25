@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,10 +47,58 @@ public class OllamaClient {
         return embed(withEmbedPrefix("search_query: ", text));
     }
 
+    /**
+     * Batched embedding via Ollama's {@code /api/embed} (plural) endpoint —
+     * sends N inputs in a single HTTP request and gets N vectors back in
+     * order. Eliminates the per-chunk HTTP round-trip overhead of the
+     * indexer. The full benefit (parallel inference) only materialises when
+     * {@code OLLAMA_NUM_PARALLEL > 1}; on a single-parallel host the win is
+     * limited to the saved round-trips.
+     *
+     * <p>Callers should treat a thrown exception as "fall back to per-chunk
+     * embedding", because one bad input fails the whole batch.
+     */
+    public List<float[]> embedBatch(List<String> texts) {
+        if (texts == null || texts.isEmpty()) return List.of();
+        EmbedBatchResponse response = http.post()
+                .uri("/api/embed")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new EmbedBatchRequest(config.embedModel(), texts))
+                .retrieve()
+                .body(EmbedBatchResponse.class);
+        if (response == null || response.embeddings() == null) {
+            throw new IllegalStateException("Ollama returned no embeddings for batch of " + texts.size());
+        }
+        if (response.embeddings().size() != texts.size()) {
+            throw new IllegalStateException("Ollama returned " + response.embeddings().size()
+                    + " embeddings for " + texts.size() + " inputs");
+        }
+        return response.embeddings();
+    }
+
+    /** Batch variant of {@link #embedDocument}. */
+    public List<float[]> embedDocumentBatch(List<String> texts) {
+        return embedBatch(withEmbedPrefix("search_document: ", texts));
+    }
+
+    /** Batch variant of {@link #embedQuery}. */
+    public List<float[]> embedQueryBatch(List<String> texts) {
+        return embedBatch(withEmbedPrefix("search_query: ", texts));
+    }
+
     private String withEmbedPrefix(String prefix, String text) {
         String model = config.embedModel();
         boolean nomic = model != null && model.toLowerCase(Locale.ROOT).contains("nomic");
         return nomic ? prefix + text : text;
+    }
+
+    private List<String> withEmbedPrefix(String prefix, List<String> texts) {
+        String model = config.embedModel();
+        boolean nomic = model != null && model.toLowerCase(Locale.ROOT).contains("nomic");
+        if (!nomic) return texts;
+        List<String> out = new ArrayList<>(texts.size());
+        for (String t : texts) out.add(prefix + (t == null ? "" : t));
+        return out;
     }
 
     public String chat(List<ChatMessage> messages) {
@@ -164,6 +213,13 @@ public class OllamaClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record EmbedResponse(float[] embedding) {
+    }
+
+    record EmbedBatchRequest(String model, List<String> input) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record EmbedBatchResponse(List<float[]> embeddings) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

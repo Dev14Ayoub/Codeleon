@@ -150,21 +150,60 @@ public class RoomFileIndexer {
 
         Language language = chunker.detect(resolvedPath);
         List<QdrantClient.Point> points = new ArrayList<>(chunks.size());
-        for (int i = 0; i < chunks.size(); i++) {
-            CodeChunk chunk = chunks.get(i);
-            // Per-chunk isolation: a chunk that overflows the embedder's token
-            // window (minified or non-Latin content) must not drop the whole
-            // file — skip just that chunk's vector. BM25 still indexes it below.
+
+        // Try a single batched embed call first — one HTTP round-trip instead
+        // of N, and lets Ollama keep the embed model hot between inputs. We
+        // give up the per-chunk error isolation in the happy path (one bad
+        // input fails the whole batch), so we fall back to the per-chunk loop
+        // (with isolation) on any batch failure.
+        List<float[]> batchVectors = null;
+        if (chunks.size() > 1) {
+            List<String> texts = new ArrayList<>(chunks.size());
+            for (CodeChunk c : chunks) texts.add(c.text());
             try {
-                float[] vector = ollama.embedDocument(chunk.text());
+                batchVectors = ollama.embedDocumentBatch(texts);
+            } catch (RuntimeException ex) {
+                log.warn("Batch embed failed for '{}' (room {}, {} chunks): {} — falling back to per-chunk",
+                        resolvedPath, roomId, chunks.size(), ex.getMessage());
+                batchVectors = null;
+            }
+        }
+
+        // Defensive: only use batchVectors when it actually pairs 1:1 with
+        // chunks. Stops a misbehaving mock or upstream from triggering an
+        // IndexOutOfBoundsException — fall back to the per-chunk loop instead.
+        if (batchVectors != null && batchVectors.size() != chunks.size()) {
+            log.warn("Batch embed returned {} vectors for {} chunks in '{}' (room {}) — falling back to per-chunk",
+                    batchVectors.size(), chunks.size(), resolvedPath, roomId);
+            batchVectors = null;
+        }
+
+        if (batchVectors != null) {
+            for (int i = 0; i < chunks.size(); i++) {
                 points.add(new QdrantClient.Point(
                         deterministicId(roomId, resolvedPath, i),
-                        vector,
-                        buildPayload(roomId, resolvedPath, i, chunk, language)
+                        batchVectors.get(i),
+                        buildPayload(roomId, resolvedPath, i, chunks.get(i), language)
                 ));
-            } catch (RuntimeException ex) {
-                log.warn("Skipping chunk {} of '{}' (room {}): embedding failed: {}",
-                        i, resolvedPath, roomId, ex.getMessage());
+            }
+        } else {
+            for (int i = 0; i < chunks.size(); i++) {
+                CodeChunk chunk = chunks.get(i);
+                // Per-chunk isolation: a chunk that overflows the embedder's
+                // token window (minified or non-Latin content) must not drop
+                // the whole file — skip just that chunk's vector. BM25 still
+                // indexes it below.
+                try {
+                    float[] vector = ollama.embedDocument(chunk.text());
+                    points.add(new QdrantClient.Point(
+                            deterministicId(roomId, resolvedPath, i),
+                            vector,
+                            buildPayload(roomId, resolvedPath, i, chunk, language)
+                    ));
+                } catch (RuntimeException ex) {
+                    log.warn("Skipping chunk {} of '{}' (room {}): embedding failed: {}",
+                            i, resolvedPath, roomId, ex.getMessage());
+                }
             }
         }
 
