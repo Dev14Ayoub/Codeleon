@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Hybrid retrieval: vector search (dense, semantic) + BM25 (sparse,
@@ -53,28 +54,39 @@ public class HybridRetriever {
     public List<RetrievedChunk> retrieve(UUID roomId, String query, int topK, String activeFilePath) {
         if (query == null || query.isBlank() || topK <= 0) return List.of();
 
-        // Pull both rankings in turn. Vector first because it always runs;
-        // BM25 returns empty for rooms not yet indexed locally, which is
-        // fine — RRF degrades gracefully to whichever list has hits.
-        List<QdrantClient.ScoredPoint> vectorHits;
-        try {
-            float[] queryVector = ollama.embedQuery(query);
-            Map<String, Object> filter = Map.of("must", List.of(
-                    Map.of("key", "roomId", "match", Map.of("value", roomId.toString()))
-            ));
-            vectorHits = qdrant.search(queryVector, CANDIDATE_POOL, filter);
-        } catch (Exception ex) {
-            log.warn("Vector retrieval failed for room {}: {} — falling back to BM25 only", roomId, ex.getMessage());
-            vectorHits = List.of();
-        }
+        // Vector and BM25 are independent — fan them out in parallel on the
+        // common ForkJoinPool. Embedding the query (1-2 s on CPU Ollama) used
+        // to serialise in front of the in-memory BM25 search, doubling the
+        // pre-Ollama latency of every chat. Each side isolates its own
+        // failure: a vector outage leaves us with BM25 only, and vice versa.
+        CompletableFuture<List<QdrantClient.ScoredPoint>> vectorFuture =
+                CompletableFuture.supplyAsync(() -> {
+                    try {
+                        float[] queryVector = ollama.embedQuery(query);
+                        Map<String, Object> filter = Map.of("must", List.of(
+                                Map.of("key", "roomId", "match", Map.of("value", roomId.toString()))
+                        ));
+                        return qdrant.search(queryVector, CANDIDATE_POOL, filter);
+                    } catch (Exception ex) {
+                        log.warn("Vector retrieval failed for room {}: {} — falling back to BM25 only",
+                                roomId, ex.getMessage());
+                        return List.<QdrantClient.ScoredPoint>of();
+                    }
+                });
 
-        List<Bm25Searcher.Hit> bm25Hits;
-        try {
-            bm25Hits = bm25.search(roomId, query, CANDIDATE_POOL);
-        } catch (Exception ex) {
-            log.warn("BM25 retrieval failed for room {}: {} — falling back to vector only", roomId, ex.getMessage());
-            bm25Hits = List.of();
-        }
+        CompletableFuture<List<Bm25Searcher.Hit>> bm25Future =
+                CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return bm25.search(roomId, query, CANDIDATE_POOL);
+                    } catch (Exception ex) {
+                        log.warn("BM25 retrieval failed for room {}: {} — falling back to vector only",
+                                roomId, ex.getMessage());
+                        return List.<Bm25Searcher.Hit>of();
+                    }
+                });
+
+        List<QdrantClient.ScoredPoint> vectorHits = vectorFuture.join();
+        List<Bm25Searcher.Hit> bm25Hits = bm25Future.join();
 
         return fuse(vectorHits, bm25Hits, topK, activeFilePath);
     }
