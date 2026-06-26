@@ -80,7 +80,12 @@ public class OllamaStreamer {
 
         StringBuilder full = new StringBuilder();
         try {
-            HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            // Send with a single retry on transient pre-stream failures
+            // (Ollama just restarted, brief network blip). Retry is safe
+            // because we haven't emitted any token yet. Once we start
+            // reading the response body, retries become unsafe (the SSE
+            // client may already have seen partial tokens).
+            HttpResponse<InputStream> response = sendWithRetry(request);
             if (response.statusCode() / 100 != 2) {
                 // Drain + close the body before throwing. Without this, every
                 // non-2xx (a missing model returns 404, OOM kill 503, etc.)
@@ -121,6 +126,37 @@ public class OllamaStreamer {
             throw new IllegalStateException("Ollama stream failed: " + ex.getMessage(), ex);
         }
         return full.toString();
+    }
+
+    /**
+     * Sends the chat request with one retry on a transient failure (IOException
+     * or 5xx). Drains the body of a discarded 5xx response so we don't leak
+     * connections. No retry mid-stream — that's the caller's contract.
+     */
+    private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
+            throws java.io.IOException, InterruptedException {
+        java.io.IOException lastIo = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                if (response.statusCode() / 100 == 5 && attempt == 1) {
+                    try (InputStream drain = response.body()) { drain.readAllBytes(); }
+                    log.warn("Ollama returned HTTP {} on attempt 1 — retrying", response.statusCode());
+                    Thread.sleep(500L);
+                    continue;
+                }
+                return response;
+            } catch (java.io.IOException ex) {
+                lastIo = ex;
+                if (attempt == 1) {
+                    log.warn("Ollama send failed on attempt 1: {} — retrying", ex.getMessage());
+                    Thread.sleep(500L);
+                    continue;
+                }
+                throw ex;
+            }
+        }
+        throw lastIo;
     }
 
     record StreamChunk(OllamaClient.ChatMessage message, boolean done) {

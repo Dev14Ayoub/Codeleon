@@ -32,6 +32,7 @@ import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * In-memory BM25 index, one Lucene directory per room. Lives next to the
@@ -85,10 +86,11 @@ public class Bm25Searcher {
      */
     public void upsertFile(UUID roomId, String path, List<CodeChunk> chunks) {
         RoomState state = rooms.computeIfAbsent(roomId, this::createState);
-        synchronized (state) {
+        state.lock.writeLock().lock();
+        try {
             // Re-check the closed flag inside the lock — a concurrent
             // deleteRoom may have already torn down this state's writer
-            // between computeIfAbsent and our acquiring the monitor.
+            // between computeIfAbsent and our acquiring the lock.
             if (state.closed.get()) {
                 log.debug("Skipping BM25 upsert for room {} path {}: room was just deleted", roomId, path);
                 return;
@@ -122,13 +124,16 @@ public class Bm25Searcher {
             } catch (IOException ex) {
                 throw new IllegalStateException("BM25 upsert failed for room " + roomId + " path " + path, ex);
             }
+        } finally {
+            state.lock.writeLock().unlock();
         }
     }
 
     public void deletePath(UUID roomId, String path) {
         RoomState state = rooms.get(roomId);
         if (state == null) return;
-        synchronized (state) {
+        state.lock.writeLock().lock();
+        try {
             if (state.closed.get()) return;
             try {
                 state.writer.deleteDocuments(new Term(FIELD_PATH, path));
@@ -136,19 +141,24 @@ public class Bm25Searcher {
             } catch (IOException ex) {
                 throw new IllegalStateException("BM25 delete failed for room " + roomId + " path " + path, ex);
             }
+        } finally {
+            state.lock.writeLock().unlock();
         }
     }
 
     public void deleteRoom(UUID roomId) {
         RoomState state = rooms.remove(roomId);
         if (state == null) return;
-        synchronized (state) {
-            // Flag first so any thread waiting on this monitor (e.g. a
+        state.lock.writeLock().lock();
+        try {
+            // Flag first so any thread waiting on this lock (e.g. a
             // concurrent search that captured the state ref before our
             // rooms.remove call) bails out instead of touching the
             // closed writer.
             state.closed.set(true);
             closeQuietly(state);
+        } finally {
+            state.lock.writeLock().unlock();
         }
     }
 
@@ -157,7 +167,12 @@ public class Bm25Searcher {
         RoomState state = rooms.get(roomId);
         if (state == null) return List.of();
 
-        synchronized (state) {
+        // Read lock: multiple searches run concurrently, AND a search no longer
+        // blocks on an ongoing index. The old single monitor made every chat
+        // wait for the indexer to finish — visible as "search hangs during
+        // re-index". Readers serialise only with writers.
+        state.lock.readLock().lock();
+        try {
             if (state.closed.get()) return List.of();
             try (DirectoryReader reader = DirectoryReader.open(state.writer)) {
                 if (reader.numDocs() == 0) return List.of();
@@ -186,6 +201,8 @@ public class Bm25Searcher {
                 log.warn("BM25 search for room {} failed: {}", roomId, ex.getMessage());
                 return List.of();
             }
+        } finally {
+            state.lock.readLock().unlock();
         }
     }
 
@@ -282,10 +299,11 @@ public class Bm25Searcher {
             StandardAnalyzer analyzer,
             ByteBuffersDirectory directory,
             IndexWriter writer,
-            AtomicBoolean closed
+            AtomicBoolean closed,
+            ReentrantReadWriteLock lock
     ) {
         RoomState(StandardAnalyzer analyzer, ByteBuffersDirectory directory, IndexWriter writer) {
-            this(analyzer, directory, writer, new AtomicBoolean(false));
+            this(analyzer, directory, writer, new AtomicBoolean(false), new ReentrantReadWriteLock());
         }
     }
 }

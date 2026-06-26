@@ -27,6 +27,11 @@ export interface ChatContextChunk {
    *  by both back-ends is a strong signal — both lexical and semantic
    *  matching agreed it is relevant. */
   source?: string[];
+  /** True when this chunk's text actually reached the LLM. False means the
+   *  chunk was retrieved but dropped (active-file dedup or budget cap). The
+   *  context drawer should grey out chunks where this is false. Defaults to
+   *  true if absent (backward compat with older backend builds). */
+  inPrompt?: boolean;
 }
 
 export interface ChatDoneStats {

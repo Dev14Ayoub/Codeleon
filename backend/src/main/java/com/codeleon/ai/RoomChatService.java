@@ -118,8 +118,13 @@ public class RoomChatService {
                     request.hasActiveFile() ? request.activeFilePath() : null
             );
 
-            // 2. Push the context event so the UI can display retrieved chunks early
-            emitter.send(SseEmitter.event().name("context").data(toContextPayload(hits)));
+            // 2. Push the context event so the UI can display retrieved chunks
+            // early. Mark each chunk with inPrompt so the UI can grey out hits
+            // that were dropped by the active-file dedup or the budget cap —
+            // otherwise the context drawer claims a chunk was used when only
+            // a subset actually reached the model.
+            java.util.Set<String> inPrompt = chunksInPrompt(hits, request);
+            emitter.send(SseEmitter.event().name("context").data(toContextPayload(hits, inPrompt)));
 
             // 3. Assemble messages: system + history + user
             List<OllamaClient.ChatMessage> messages = new ArrayList<>();
@@ -323,7 +328,32 @@ public class RoomChatService {
         return "unknown";
     }
 
+    /**
+     * Replays the same filter logic as {@link #buildSystemPrompt} to compute
+     * which chunks actually reach the LLM. Keys are {@code path#chunkIndex}
+     * so the UI can mark each context entry as inPrompt or omitted.
+     */
+    static java.util.Set<String> chunksInPrompt(List<RetrievedChunk> hits, ChatRequest request) {
+        java.util.Set<String> in = new java.util.HashSet<>();
+        String activePath = request.hasActiveFile() ? request.activeFilePath() : null;
+        int excerptChars = 0;
+        int emitted = 0;
+        for (RetrievedChunk h : hits) {
+            if (activePath != null && activePath.equals(h.path())) continue;
+            String text = h.text() == null ? "" : h.text();
+            if (emitted > 0 && excerptChars + text.length() > MAX_EXCERPT_SECTION_CHARS) break;
+            excerptChars += text.length();
+            emitted++;
+            in.add(h.path() + "#" + h.chunkIndex());
+        }
+        return in;
+    }
+
     static List<Map<String, Object>> toContextPayload(List<RetrievedChunk> hits) {
+        return toContextPayload(hits, null);
+    }
+
+    static List<Map<String, Object>> toContextPayload(List<RetrievedChunk> hits, java.util.Set<String> inPrompt) {
         List<Map<String, Object>> out = new ArrayList<>(hits.size());
         for (RetrievedChunk h : hits) {
             // LinkedHashMap because optional fields (symbol, lines) are
@@ -346,6 +376,16 @@ public class RoomChatService {
             if (h.fromVector()) source.add("vector");
             if (h.fromBm25()) source.add("bm25");
             entry.put("source", source);
+
+            // inPrompt=true means this chunk's text actually reached the LLM
+            // (passed the active-file dedup AND the budget cap). When the set
+            // is null (legacy callers / tests), default to true so behaviour
+            // is unchanged.
+            if (inPrompt == null) {
+                entry.put("inPrompt", true);
+            } else {
+                entry.put("inPrompt", inPrompt.contains(h.path() + "#" + h.chunkIndex()));
+            }
 
             out.add(entry);
         }

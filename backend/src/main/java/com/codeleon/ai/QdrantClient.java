@@ -25,6 +25,11 @@ public class QdrantClient {
 
     private final RestClient http;
     private final AiProperties.Qdrant config;
+    /** Set once the collection is known to exist. The indexer calls
+     *  {@link #ensureCollection()} on every {@code index()}; without this
+     *  cache, a 16-file project incurs 16 GET roundtrips for no reason. */
+    private final java.util.concurrent.atomic.AtomicBoolean collectionEnsured =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public QdrantClient(RestClient.Builder builder, AiProperties props) {
         this.config = props.qdrant();
@@ -32,6 +37,7 @@ public class QdrantClient {
     }
 
     public void ensureCollection() {
+        if (collectionEnsured.get()) return;
         boolean exists = http.get()
                 .uri("/collections/{name}", config.collection())
                 .retrieve()
@@ -42,6 +48,7 @@ public class QdrantClient {
 
         if (exists) {
             log.debug("Qdrant collection '{}' already exists", config.collection());
+            collectionEnsured.set(true);
             return;
         }
 
@@ -61,6 +68,7 @@ public class QdrantClient {
 
         log.info("Created Qdrant collection '{}' (size={}, distance={})",
                 config.collection(), config.vectorSize(), config.distance());
+        collectionEnsured.set(true);
     }
 
     public void upsert(List<Point> points) {

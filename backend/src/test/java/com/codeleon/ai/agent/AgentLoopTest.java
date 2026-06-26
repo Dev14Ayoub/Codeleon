@@ -144,7 +144,14 @@ class AgentLoopTest {
         AgentLoopResult result = loop.run(UUID.randomUUID(), queryOnly("..."),
                 (name, payload) -> {});
 
-        assertThat(tool.calls).isEqualTo(AgentLoop.MAX_ITERATIONS);
+        // The model emits the same list_files{} call every iteration; the
+        // loop runs MAX_ITERATIONS times then triggers the forced answer.
+        // Tool dedup (L3) caches identical (name,args) calls within a single
+        // turn — so the underlying tool runs exactly once even though the
+        // model "asked" five times. What this test really validates is the
+        // iteration cap kicking in and producing the forced answer.
+        assertThat(tool.calls).isEqualTo(1);
+        assertThat(result.toolCalls()).isEqualTo(AgentLoop.MAX_ITERATIONS);
         assertThat(result.answer()).isEqualTo("Forced.");
         verify(ollama, times(AgentLoop.MAX_ITERATIONS + 1)).chatWithTools(anyList(), any());
     }

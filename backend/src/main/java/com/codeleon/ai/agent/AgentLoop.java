@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +98,13 @@ public class AgentLoop {
 
         List<Map<String, Object>> toolCatalogue = registry.toOllamaTools();
 
+        // Cache identical (name, args) tool calls within a single turn — small
+        // models often re-emit the same read_file or search_code call across
+        // iterations, which wastes the iteration budget and dilutes the
+        // context with duplicate tool results. Returning the cached outcome
+        // also signals "no new info" so the model is more likely to converge.
+        Map<String, ToolOutcome> toolCache = new HashMap<>();
+
         for (iterations = 1; iterations <= MAX_ITERATIONS; iterations++) {
             ChatMessage response = ollama.chatWithTools(messages, toolCatalogue);
             List<OllamaClient.ToolCall> effectiveCalls = extractToolCalls(response, registry);
@@ -121,7 +129,14 @@ public class AgentLoop {
                 callEvent.put("arguments", args);
                 onEvent.accept("tool_call", callEvent);
 
-                ToolOutcome outcome = invokeTool(fnName, roomId, args);
+                String cacheKey = fnName + ":" + args.toString();
+                ToolOutcome outcome = toolCache.get(cacheKey);
+                if (outcome != null) {
+                    log.debug("Agent re-issued duplicate tool call {} — replaying cached outcome", cacheKey);
+                } else {
+                    outcome = invokeTool(fnName, roomId, args);
+                    if (!outcome.isError()) toolCache.put(cacheKey, outcome);
+                }
 
                 Map<String, Object> resultEvent = new LinkedHashMap<>();
                 resultEvent.put("id", callId);
