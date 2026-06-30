@@ -9,7 +9,6 @@ import {
   ChevronUp,
   Copy,
   Database,
-  Eye,
   FileText,
   Globe,
   Loader2,
@@ -69,7 +68,7 @@ import { languageDisplayName, languageFromPath } from "@/lib/files/file-language
 import { useCollabRoom, type CollabPeer } from "@/lib/collab/useCollabRoom";
 import { useAuthStore } from "@/stores/auth-store";
 
-type RightPanelTab = "ai" | "participants" | "review";
+type RightPanelTab = "ai" | "participants";
 
 interface ProjectRunEnvironment {
   label: string;
@@ -1889,7 +1888,6 @@ function RoomRightPanel({
   const tabs: { id: RightPanelTab; label: string; icon: JSX.Element }[] = [
     { id: "ai", label: "AI", icon: <Bot className="h-3.5 w-3.5" /> },
     { id: "participants", label: "People", icon: <Users className="h-3.5 w-3.5" /> },
-    ...(isOwner ? [{ id: "review" as const, label: "Review", icon: <Eye className="h-3.5 w-3.5" /> }] : []),
   ];
 
   return (
@@ -1975,11 +1973,6 @@ function RoomRightPanel({
               transition={{ duration: 0.2 }}
               className="flex h-full min-h-0 flex-col p-4"
             >
-              {tab === "review" && (
-                <p className="mb-3 rounded-md border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs text-cyan">
-                  Owner review mode: use the chat picker to inspect member AI threads.
-                </p>
-              )}
               <ChatPanel
                 roomId={roomId}
                 getEditorText={getEditorText}
