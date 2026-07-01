@@ -1942,27 +1942,50 @@ function RoomRightPanel({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -16 }}
               transition={{ duration: 0.2 }}
-              className="flex h-full min-h-0 flex-col gap-3 p-3"
+              className={fullscreen ? "grid h-full min-h-0 grid-cols-2 gap-3 p-3" : "flex h-full min-h-0 flex-col gap-3 p-3"}
             >
-              {/* People tab is split: a compact participants list at the
-                  top (capped to ~12rem so the chat gets most of the
-                  vertical space), then the human-↔-human room chat that
-                  fills the rest. RoomChat stores its messages in a
-                  Y.Array inside the shared Y.Doc so it rides on the
-                  existing WebSocket sync and snapshot persistence. */}
-              <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
-                <ParticipantsList peers={peers} currentUserId={currentUserId} />
-              </div>
-              <VoiceCallBar />
-              <div className="flex-1 min-h-0">
-                <RoomChat
-                  ydoc={ydoc}
-                  roomId={roomId}
-                  currentUserId={currentUserId}
-                  currentUserName={currentUserName}
-                  canSend={true}
-                />
-              </div>
+              {/* People tab. Docked: a compact participants list on top
+                  (capped so the chat gets the vertical space), then the
+                  human-↔-human room chat below. Fullscreen modal: two
+                  columns — the room chat fills the left half, the
+                  participants list + voice controls sit on the right.
+                  RoomChat stores its messages in a Y.Array inside the
+                  shared Y.Doc so it rides the existing WS sync + snapshot. */}
+              {fullscreen ? (
+                <>
+                  <div className="flex min-h-0 flex-col">
+                    <RoomChat
+                      ydoc={ydoc}
+                      roomId={roomId}
+                      currentUserId={currentUserId}
+                      currentUserName={currentUserName}
+                      canSend={true}
+                    />
+                  </div>
+                  <div className="flex min-h-0 flex-col gap-3 overflow-auto">
+                    <div className="shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
+                      <ParticipantsList peers={peers} currentUserId={currentUserId} />
+                    </div>
+                    <VoiceCallBar />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="max-h-48 shrink-0 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 p-2.5">
+                    <ParticipantsList peers={peers} currentUserId={currentUserId} />
+                  </div>
+                  <VoiceCallBar />
+                  <div className="flex-1 min-h-0">
+                    <RoomChat
+                      ydoc={ydoc}
+                      roomId={roomId}
+                      currentUserId={currentUserId}
+                      currentUserName={currentUserName}
+                      canSend={true}
+                    />
+                  </div>
+                </>
+              )}
             </motion.section>
           ) : (
             <motion.section
