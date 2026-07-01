@@ -41,6 +41,10 @@ interface ChatPanelProps {
    * to a non-interactive label when missing.
    */
   onJumpToFile?: (path: string, line?: number) => void;
+  /** When true the panel is shown as a wide fullscreen modal; it switches
+   *  to a two-column layout — conversation on the left half, controls and
+   *  the input on the right half. Docked (sidebar) mode stays single-column. */
+  fullscreen?: boolean;
 }
 
 const MAX_INDEX_FILES = 1_000;
@@ -125,7 +129,7 @@ function buildSlashTemplate(cmd: SlashCommand, activeFilePath: string | null): s
   return cmd.template(activeFilePath);
 }
 
-export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile }: ChatPanelProps) {
+export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile, fullscreen = false }: ChatPanelProps) {
   const chat = useRoomChat(roomId);
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -328,8 +332,8 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
     }
   };
 
-  return (
-    <div className="flex h-full min-h-0 flex-col">
+  const beforeMessages = (
+    <>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
           <Bot className="h-4 w-4 text-cyan" />
@@ -430,7 +434,10 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
         )}
       </div>
 
-      {/* Messages */}
+    </>
+  );
+
+  const messagesBlock = (
       <div
         ref={scrollRef}
         className="mb-3 flex-1 min-h-0 space-y-3 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3"
@@ -511,8 +518,10 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           </div>
         )}
       </div>
+  );
 
-      {/* Context drawer */}
+  const afterMessages = (
+    <>
       {!isReviewing && chat.context.length > 0 && (
         <div className="mb-3 rounded-md border border-zinc-800 bg-zinc-950">
           <button
@@ -595,7 +604,7 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onTextareaKey}
           placeholder="Ask about your code, or paste an error..."
-          rows={3}
+          rows={2}
           disabled={chat.streaming || indexing || chat.loadingHistory}
           className={cn(
             "resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100",
@@ -621,6 +630,29 @@ export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, 
         </div>
       </form>
       )}
+    </>
+  );
+
+  // Fullscreen modal: two columns — the conversation fills the left half,
+  // everything else (header, index status, context drawer, input) sits in
+  // the right half. Docked sidebar keeps the original single column.
+  if (fullscreen) {
+    return (
+      <div className="grid h-full min-h-0 grid-cols-2 gap-3">
+        <div className="flex min-h-0 flex-col">{messagesBlock}</div>
+        <div className="flex min-h-0 flex-col overflow-auto">
+          {beforeMessages}
+          {afterMessages}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {beforeMessages}
+      {messagesBlock}
+      {afterMessages}
     </div>
   );
 }

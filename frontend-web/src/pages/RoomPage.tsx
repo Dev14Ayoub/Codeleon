@@ -1982,6 +1982,7 @@ function RoomRightPanel({
                 isOwner={isOwner}
                 onApplyPatch={onApplyPatch}
                 onJumpToFile={onJumpToFile}
+                fullscreen={fullscreen}
               />
             </motion.section>
           )}
