@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { RoomChat } from "@/components/chat/RoomChat";
+import { useRoomChat, type UseRoomChatResult } from "@/lib/chat/useRoomChat";
 import { VoiceCallBar } from "@/components/voice/VoiceCallBar";
 import { IncomingCallBanner } from "@/components/voice/IncomingCallBanner";
 import { useRoomVoiceCall, VoiceCallContext } from "@/lib/voice/useRoomVoiceCall";
@@ -166,6 +167,9 @@ export function RoomPage() {
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("ai");
+  // The AI chat state lives here, not inside ChatPanel, so an in-flight SSE
+  // reply survives the panel remounting when it toggles docked <-> fullscreen.
+  const chat = useRoomChat(roomId);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(() =>
     readStoredWidth("codeleon.leftSidebarWidth", 272, 192, 448),
   );
@@ -1185,6 +1189,7 @@ export function RoomPage() {
             <RoomRightPanel
               tab={rightPanelTab}
               onTabChange={setRightPanelTab}
+              chat={chat}
               peers={collab.peers}
               currentUserId={currentUser?.id}
               currentUserName={currentUser?.fullName}
@@ -1236,6 +1241,7 @@ export function RoomPage() {
             <RoomRightPanel
               tab={rightPanelTab}
               onTabChange={setRightPanelTab}
+              chat={chat}
               peers={collab.peers}
               currentUserId={currentUser?.id}
               currentUserName={currentUser?.fullName}
@@ -1269,6 +1275,7 @@ export function RoomPage() {
               <RoomRightPanel
                 tab={rightPanelTab}
                 onTabChange={setRightPanelTab}
+                chat={chat}
                 peers={collab.peers}
                 currentUserId={currentUser?.id}
                 currentUserName={currentUser?.fullName}
@@ -1857,6 +1864,7 @@ function RoomRightPanel({
   isOwner,
   onApplyPatch,
   onJumpToFile,
+  chat,
   fullscreen,
   onToggleFullscreen,
 }: {
@@ -1878,6 +1886,9 @@ function RoomRightPanel({
   isOwner: boolean;
   onApplyPatch?: (path: string, find: string, replace: string) => { ok: boolean; reason?: string };
   onJumpToFile?: (path: string, line?: number) => void;
+  /** Chat state owned by RoomPage — passed through so the AI panel keeps
+   *  its in-flight stream when it remounts on a fullscreen toggle. */
+  chat: UseRoomChatResult;
   /** True when the panel is rendered as a fullscreen modal (vs docked
    *  in the right sidebar). The header button label and icon flip
    *  accordingly. */
@@ -1998,6 +2009,7 @@ function RoomRightPanel({
             >
               <ChatPanel
                 roomId={roomId}
+                chat={chat}
                 getEditorText={getEditorText}
                 getAllFiles={getAllFiles}
                 activeFilePath={activePath}

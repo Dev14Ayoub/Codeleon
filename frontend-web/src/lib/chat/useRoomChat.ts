@@ -124,7 +124,7 @@ function tryParsePatchProposal(content: string | undefined): PatchProposal | und
   }
 }
 
-interface UseRoomChatResult {
+export interface UseRoomChatResult {
   messages: ChatMessage[];
   context: ChatContextChunk[];
   /** Tool calls observed for the current turn (cleared on each send). */

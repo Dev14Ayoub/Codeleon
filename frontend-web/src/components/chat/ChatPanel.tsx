@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { useRoomChat, type ChatContextChunk, type ChatMessage, type PatchProposal, type ToolCallEntry } from "@/lib/chat/useRoomChat";
+import { type ChatContextChunk, type ChatMessage, type PatchProposal, type ToolCallEntry, type UseRoomChatResult } from "@/lib/chat/useRoomChat";
 import {
   fetchChatHistory,
   fetchChatThreads,
@@ -41,6 +41,10 @@ interface ChatPanelProps {
    * to a non-interactive label when missing.
    */
   onJumpToFile?: (path: string, line?: number) => void;
+  /** The room's chat state (messages + SSE stream), owned by RoomPage so it
+   *  survives ChatPanel remounts — e.g. toggling the panel between docked and
+   *  fullscreen would otherwise recreate the hook and drop an in-flight reply. */
+  chat: UseRoomChatResult;
   /** When true the panel is shown as a wide fullscreen modal; it switches
    *  to a two-column layout — conversation on the left half, controls and
    *  the input on the right half. Docked (sidebar) mode stays single-column. */
@@ -129,8 +133,7 @@ function buildSlashTemplate(cmd: SlashCommand, activeFilePath: string | null): s
   return cmd.template(activeFilePath);
 }
 
-export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile, fullscreen = false }: ChatPanelProps) {
-  const chat = useRoomChat(roomId);
+export function ChatPanel({ roomId, getEditorText, getAllFiles, activeFilePath, lastRunStderr, isOwner, onApplyPatch, onJumpToFile, chat, fullscreen = false }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [indexing, setIndexing] = useState(false);
